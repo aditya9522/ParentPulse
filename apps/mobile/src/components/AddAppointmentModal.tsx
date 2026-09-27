@@ -1,0 +1,404 @@
+// apps/mobile/src/components/AddAppointmentModal.tsx
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Platform,
+  Alert,
+} from "react-native";
+import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Building2,
+  User,
+  CheckCircle2,
+  X,
+  Stethoscope,
+  BellRing,
+} from "lucide-react-native";
+import { useApp } from "../context/AppContext";
+import { Appointment } from "../types";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass, Gradients } from "../theme";
+
+interface AddAppointmentModalProps {
+  visible: boolean;
+  onClose: () => void;
+}
+
+export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visible, onClose }) => {
+  const { activeParent, addAppointment, seniorMode, language } = useApp();
+
+  const isHindi = language === "hi";
+
+  const [doctorName, setDoctorName] = useState("");
+  const [specialty, setSpecialty] = useState("Cardiologist");
+  const [hospitalName, setHospitalName] = useState("");
+  const [dateStr, setDateStr] = useState("2026-10-15");
+  const [timeStr, setTimeStr] = useState("11:30 AM");
+  const [reason, setReason] = useState("");
+  const [address, setAddress] = useState("");
+
+  const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
+    try {
+      if (Platform.OS !== "web") {
+        Haptics.impactAsync(style);
+      }
+    } catch {}
+  };
+
+  const handleSave = () => {
+    if (!doctorName.trim() || !hospitalName.trim()) {
+      Alert.alert(
+        isHindi ? "जानकारी भरें" : "Missing Information",
+        isHindi
+          ? "कृपया डॉक्टर का नाम और अस्पताल/क्लिनिक का नाम दर्ज करें।"
+          : "Please enter the doctor's name and hospital/clinic name."
+      );
+      return;
+    }
+
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+
+    const newAppt: Appointment = {
+      id: `app_${Date.now()}`,
+      parent_id: activeParent.id,
+      doctor_name: doctorName.startsWith("Dr.") ? doctorName : `Dr. ${doctorName}`,
+      specialty: specialty || "Consultant Physician",
+      hospital_clinic_name: hospitalName,
+      appointment_date: `${dateStr}T10:00:00Z`,
+      status: "upcoming",
+      reason: reason || (isHindi ? "नियमित जांच" : "Routine Consultation"),
+      address: address || "Hospital OPD Wing",
+      latitude: activeParent.latitude || 28.4595,
+      longitude: activeParent.longitude || 77.0725,
+      notes: `Scheduled at ${timeStr}. Caregiver alert configured.`,
+    };
+
+    addAppointment(newAppt);
+    onClose();
+
+    Alert.alert(
+      isHindi ? "✅ परामर्श निर्धारित हुआ!" : "✅ Appointment Scheduled!",
+      isHindi
+        ? `${activeParent.full_name} के लिए ${newAppt.doctor_name} के साथ परामर्श दर्ज हो गया है।`
+        : `Appointment with ${newAppt.doctor_name} has been scheduled and reminders set.`
+    );
+
+    // Reset fields
+    setDoctorName("");
+    setHospitalName("");
+    setReason("");
+    setAddress("");
+  };
+
+  const specialties = [
+    "Cardiologist",
+    "Endocrinologist",
+    "Orthopedic",
+    "Neurologist",
+    "General Physician",
+  ];
+
+  return (
+    <SwipeableBottomSheet
+      visible={visible}
+      onClose={onClose}
+      maxHeight="92%"
+      testID="add-appointment-modal"
+    >
+      <View style={styles.sheetBox}>
+
+          {/* Top Bar */}
+          <View style={styles.topRow}>
+            <View style={styles.titleRow}>
+              <View style={styles.iconCircle}>
+                <Calendar size={18} color="#FFFFFF" />
+              </View>
+              <View>
+                <Text style={styles.sheetTitle}>
+                  {isHindi ? "डॉक्टर परामर्श बुक करें" : "Schedule Consultation"}
+                </Text>
+                <Text style={styles.sheetSub}>
+                  {isHindi ? `${activeParent.full_name} के लिए` : `For ${activeParent.full_name}`}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.8}>
+              <X size={18} color={Colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent}>
+            {/* Doctor Name */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{isHindi ? "डॉक्टर का नाम" : "Doctor's Name"}</Text>
+              <View style={styles.inputBox}>
+                <User size={16} color={Colors.textMuted} />
+                <TextInput
+                  style={[styles.textInput, seniorMode && styles.seniorTextInput]}
+                  placeholder={isHindi ? "उदा. डॉ. अरुण वर्मा" : "e.g. Dr. Arun Verma"}
+                  placeholderTextColor={Colors.textMuted}
+                  value={doctorName}
+                  onChangeText={setDoctorName}
+                />
+              </View>
+            </View>
+
+            {/* Specialty Pills */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{isHindi ? "विशेषज्ञता (Specialty)" : "Specialty"}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {specialties.map((spec) => (
+                  <TouchableOpacity
+                    key={spec}
+                    style={[styles.specPill, specialty === spec && styles.specPillActive]}
+                    onPress={() => {
+                      triggerHaptic();
+                      setSpecialty(spec);
+                    }}
+                  >
+                    <Text style={[styles.specPillText, specialty === spec && styles.specPillTextActive]}>
+                      {spec}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Hospital / Clinic */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{isHindi ? "अस्पताल / क्लिनिक" : "Hospital / Clinic"}</Text>
+              <View style={styles.inputBox}>
+                <Building2 size={16} color={Colors.textMuted} />
+                <TextInput
+                  style={[styles.textInput, seniorMode && styles.seniorTextInput]}
+                  placeholder={isHindi ? "उदा. फोर्टिस अस्पताल" : "e.g. Fortis Memorial Hospital"}
+                  placeholderTextColor={Colors.textMuted}
+                  value={hospitalName}
+                  onChangeText={setHospitalName}
+                />
+              </View>
+            </View>
+
+            {/* Date & Time Row */}
+            <View style={styles.twoColRow}>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>{isHindi ? "तारीख" : "Date (YYYY-MM-DD)"}</Text>
+                <View style={styles.inputBox}>
+                  <Calendar size={16} color={Colors.textMuted} />
+                  <TextInput
+                    style={styles.textInput}
+                    value={dateStr}
+                    onChangeText={setDateStr}
+                    placeholder="2026-10-15"
+                    placeholderTextColor={Colors.textMuted}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>{isHindi ? "समय" : "Time"}</Text>
+                <View style={styles.inputBox}>
+                  <Clock size={16} color={Colors.textMuted} />
+                  <TextInput
+                    style={styles.textInput}
+                    value={timeStr}
+                    onChangeText={setTimeStr}
+                    placeholder="10:30 AM"
+                    placeholderTextColor={Colors.textMuted}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Reason / Clinical Purpose */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{isHindi ? "परामर्श का कारण / नोट्स" : "Purpose / Notes"}</Text>
+              <View style={styles.inputBox}>
+                <TextInput
+                  style={[styles.textInput, seniorMode && styles.seniorTextInput]}
+                  placeholder={
+                    isHindi
+                      ? "उदा. बीपी एवं ईसीजी त्रैमासिक जांच"
+                      : "e.g. Quarterly BP & ECG review, carry reports"
+                  }
+                  placeholderTextColor={Colors.textMuted}
+                  value={reason}
+                  onChangeText={setReason}
+                />
+              </View>
+            </View>
+
+            {/* Automatic Reminder Badge */}
+            <View style={styles.reminderInfoBox}>
+              <BellRing size={16} color="#0D9488" style={{ marginRight: 8 }} />
+              <Text style={styles.reminderInfoText}>
+                {isHindi
+                  ? "परामर्श से 24 घंटे और 2 घंटे पहले केयरगिवर को एसएमएस/पुश नोटिफिकेशन भेजा जाएगा।"
+                  : "Automatic 24-hour and 2-hour reminders will be dispatched to family caregivers."}
+              </Text>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSave} activeOpacity={0.85}>
+              <LinearGradient
+                colors={Gradients.primary}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.submitGradient}
+              >
+                <CheckCircle2 size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.submitBtnText}>
+                  {isHindi ? "परामर्श सुरक्षित करें" : "Confirm Appointment"}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </SwipeableBottomSheet>
+  );
+};
+
+const styles = StyleSheet.create({
+  sheetBox: {
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: Spacing.xl,
+    paddingTop: 4,
+    paddingBottom: Platform.OS === "ios" ? 40 : 25,
+  },
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.secondary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.extraBold,
+    color: Colors.textPrimary,
+  },
+  sheetSub: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  formContent: {
+    paddingBottom: 20,
+    gap: 14,
+  },
+  inputGroup: {
+    gap: 6,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textSecondary,
+  },
+  inputBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(248, 250, 252, 0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.8)",
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    height: 46,
+    gap: 10,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  seniorTextInput: {
+    fontSize: 16,
+  },
+  twoColRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  specPill: {
+    backgroundColor: "rgba(241, 245, 249, 0.8)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(203, 213, 225, 0.8)",
+  },
+  specPillActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  specPillText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: Typography.weights.semibold,
+  },
+  specPillTextActive: {
+    color: Colors.primaryDark,
+    fontWeight: Typography.weights.bold,
+  },
+  reminderInfoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDFA",
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: "#CCFBF1",
+    marginTop: 4,
+  },
+  reminderInfoText: {
+    flex: 1,
+    fontSize: 11,
+    color: Colors.primaryDark,
+    lineHeight: 16,
+  },
+  submitBtn: {
+    borderRadius: BorderRadius.lg,
+    overflow: "hidden",
+    marginTop: Spacing.sm,
+    ...Shadows.card,
+  },
+  submitGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+  },
+  submitBtnText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: Typography.weights.bold,
+  },
+});

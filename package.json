@@ -1,0 +1,30 @@
+{
+  "name": "parentpulse",
+  "version": "1.0.0",
+  "description": "ParentPulse — Remote-Care Family Health Coordination Platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:mobile": "npm --workspace=apps/mobile run start",
+    "android:mobile": "npm --workspace=apps/mobile run android",
+    "ios:mobile": "npm --workspace=apps/mobile run ios",
+    "web:mobile": "npm --workspace=apps/mobile run web",
+    "dev:backend": "backend\\.venv\\Scripts\\python -m uvicorn app.main:app --reload --app-dir backend --host 0.0.0.0 --port 8000",
+    "test:backend": "backend\\.venv\\Scripts\\pytest backend/tests",
+    "build:packages": "npm --workspace=packages/shared-types run build"
+  },
+  "keywords": [
+    "healthcare",
+    "elderly-care",
+    "family-coordination",
+    "fastapi",
+    "react-native",
+    "expo",
+    "gemini-ai"
+  ],
+  "author": "ParentPulse Engineering Team",
+  "license": "UNLICENSED"
+}
