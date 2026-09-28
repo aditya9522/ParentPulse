@@ -127,9 +127,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
       }
     } catch (err) {
       console.warn("Camera capture error:", err);
-      Alert.alert("Camera", "Photo captured. Running OCR extraction pipeline...");
-      onScanDocument?.("captured_rx_sample.jpg");
-      onClose();
+      Alert.alert("Camera unavailable", "The image was not captured. Check camera permission or choose a photo from the gallery.");
     } finally {
       setCapturing(false);
     }

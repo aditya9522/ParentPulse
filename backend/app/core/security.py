@@ -1,19 +1,21 @@
 # backend/app/core/security.py
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 import httpx
-from jose import jwt, JWTError
+from jose import JWTError, jwt
+
 from app.core.config import get_settings
 from app.core.exceptions import AuthenticationError
 from app.core.logging import logger
 
-_jwks_cache: Optional[dict[str, Any]] = None
-_jwks_cache_time: Optional[datetime] = None
+_jwks_cache: dict[str, Any] | None = None
+_jwks_cache_time: datetime | None = None
 
 
 async def get_supabase_jwks() -> dict[str, Any]:
     global _jwks_cache, _jwks_cache_time
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if _jwks_cache and _jwks_cache_time and (now - _jwks_cache_time).total_seconds() < 3600:
         return _jwks_cache
 
@@ -26,22 +28,12 @@ async def get_supabase_jwks() -> dict[str, Any]:
                 _jwks_cache_time = now
                 return _jwks_cache
     except Exception as exc:
-        logger.warning(f"Failed to fetch remote JWKS, proceeding with token fallback: {exc}")
+        logger.warning(f"Failed to refresh remote JWKS; legacy HMAC validation may still apply: {exc}")
     return {}
 
 
 async def verify_access_token(token: str) -> dict[str, Any]:
     settings = get_settings()
-
-    # For local/testing mock bypass if mock token
-    if settings.environment in ("local", "test") and token.startswith("dev-token-"):
-        user_id = token.replace("dev-token-", "")
-        return {
-            "sub": user_id,
-            "email": f"{user_id}@example.com",
-            "role": "authenticated",
-            "aud": "authenticated",
-        }
 
     try:
         # First try unverified decode to inspect headers
@@ -51,14 +43,15 @@ async def verify_access_token(token: str) -> dict[str, Any]:
 
         key = next((k for k in keys if k.get("kid") == unverified_header.get("kid")), None)
         secret_or_key = key or settings.supabase_secret_key.get_secret_value()
+        algorithms = ["RS256"] if key else ["HS256"]
 
         payload = jwt.decode(
             token,
             secret_or_key,
-            algorithms=["RS256", "HS256"],
+            algorithms=algorithms,
             audience=settings.access_token_audience,
-            options={"verify_aud": False},  # flexible for Supabase auth
+            options={"verify_aud": True},
         )
         return payload
     except JWTError as err:
-        raise AuthenticationError(f"Token validation failed: {str(err)}")
+        raise AuthenticationError(f"Token validation failed: {err!s}")

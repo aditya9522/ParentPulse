@@ -9,6 +9,8 @@ from app.schemas.appointment import AppointmentCreate, AppointmentUpdate, Appoin
 from app.schemas.common import ApiResponse
 from app.helpers.response_builder import build_response
 from app.services.appointment_service import AppointmentService
+from app.core.exceptions import AuthorizationError, ResourceNotFoundError
+from app.core.permissions import verify_parent_access
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
@@ -19,6 +21,9 @@ async def create_appointment(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    _, member = await verify_parent_access(session, current_user.id, data.parent_id)
+    if not member.can_manage_appointments:
+        raise AuthorizationError("Appointment management permission is required.")
     service = AppointmentService(session)
     appointment = await service.create_appointment(data)
     return build_response(AppointmentResponse.model_validate(appointment))
@@ -44,5 +49,11 @@ async def update_appointment(
     session: AsyncSession = Depends(get_db),
 ):
     service = AppointmentService(session)
+    existing = await service.app_repo.get_by_id(appointment_id)
+    if not existing:
+        raise ResourceNotFoundError("Appointment", appointment_id)
+    _, member = await verify_parent_access(session, current_user.id, existing.parent_id)
+    if not member.can_manage_appointments:
+        raise AuthorizationError("Appointment management permission is required.")
     updated = await service.update_appointment(appointment_id, data)
     return build_response(AppointmentResponse.model_validate(updated))

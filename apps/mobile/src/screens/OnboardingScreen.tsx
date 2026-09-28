@@ -14,7 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "../theme";
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -93,24 +93,21 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   // Step 2 State: Family & User Role
   const [caregiverRole, setCaregiverRole] = useState("daughter");
-  const [familyName, setFamilyName] = useState("Sharma Family Care");
+  const [familyName, setFamilyName] = useState("");
 
   // Step 3 State: Parent Profile Form
-  const [parentName, setParentName] = useState("Ramesh Sharma");
-  const [parentRelationship, setParentRelationship] = useState("Father");
-  const [parentDob, setParentDob] = useState("1954-08-15");
-  const [parentGender, setParentGender] = useState("male");
-  const [bloodGroup, setBloodGroup] = useState("B+");
-  const [preferredLang, setPreferredLang] = useState("hi");
-  const [address, setAddress] = useState("Sector 14, Gurugram, Haryana");
-  const [phoneNumber, setPhoneNumber] = useState("+91 98123 45678");
-  const [selectedConditions, setSelectedConditions] = useState<string[]>([
-    "Hypertension",
-    "Type 2 Diabetes",
-  ]);
-  const [selectedAllergies, setSelectedAllergies] = useState<string[]>(["Penicillin"]);
-  const [primaryDoctor, setPrimaryDoctor] = useState("Dr. Arun Verma (Fortis Hospital)");
-  const [emergencyContact, setEmergencyContact] = useState("Priya Sharma (+91 98765 43210)");
+  const [parentName, setParentName] = useState("");
+  const [parentRelationship, setParentRelationship] = useState("");
+  const [parentDob, setParentDob] = useState("");
+  const [parentGender] = useState("other");
+  const [bloodGroup, setBloodGroup] = useState("");
+  const [preferredLang] = useState("en");
+  const [address, setAddress] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
+  const [primaryDoctor, setPrimaryDoctor] = useState("");
+  const [emergencyContact] = useState("");
 
   // Step 4 State: Loading / Backend Sync
   const [isSyncing, setIsSyncing] = useState(false);
@@ -141,6 +138,10 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   // Submit to Backend API
   const handleCreateProfile = async () => {
+    if (!familyName.trim() || !parentName.trim() || !parentDob.trim() || !address.trim() || !phoneNumber.trim()) {
+      setErrorMessage("Complete the required family and parent details before continuing.");
+      return;
+    }
     setIsSyncing(true);
     setErrorMessage(null);
     setSyncStatus("Connecting to ParentPulse API...");
@@ -160,23 +161,21 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
         chronic_conditions: selectedConditions,
         disabilities: [],
         surgeries: [],
-        emergency_contacts: [
-          {
-            name: emergencyContact.split("(")[0].trim() || "Emergency Contact",
-            relationship: "Daughter / Primary Caregiver",
-            phone_number: phoneNumber,
-            is_primary: true,
-          },
-        ],
+        emergency_contacts: emergencyContact.trim() ? [{
+          name: emergencyContact.split("(")[0].trim(),
+          relationship: caregiverRole,
+          phone_number: emergencyContact.match(/\(([^)]+)\)/)?.[1]?.trim() || "",
+          is_primary: true,
+        }] : [],
         primary_doctors: primaryDoctor
           ? [
               {
                 name: primaryDoctor.split("(")[0].trim(),
-                specialty: "General Physician",
+                specialty: "",
                 hospital_or_clinic: primaryDoctor.includes("(")
                   ? primaryDoctor.replace(/.*\((.*?)\).*/, "$1")
-                  : "Primary Clinic",
-                phone_number: "+91 98223 34455",
+                  : "",
+                phone_number: "",
               },
             ]
           : [],
@@ -191,12 +190,8 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
         setStep(5); // Celebration state
       }, 700);
     } catch (err: any) {
-      console.warn("Backend onboarding error:", err);
-      setErrorMessage("Notice: Saved in offline-first mode. Will sync with cloud automatically.");
-      setTimeout(() => {
-        setIsSyncing(false);
-        setStep(5);
-      }, 900);
+      setErrorMessage(err instanceof Error ? err.message : "The care circle could not be created. Try again.");
+      setIsSyncing(false);
     }
   };
 
@@ -535,14 +530,14 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
               style={styles.textInput}
               value={familyName}
               onChangeText={setFamilyName}
-              placeholder="e.g. Sharma Family Care"
+              placeholder="e.g. Our family care"
               placeholderTextColor={Colors.textSubtle}
             />
           </View>
 
           {/* Quick Presets */}
           <View style={styles.presetChipsRow}>
-            {["Sharma Family Care", "Parents Health Circle", "Maa & Papa Care Hub"].map((p) => (
+            {["Our Family Care", "Parents Health Circle", "Family Care Hub"].map((p) => (
               <TouchableOpacity
                 key={p}
                 style={[styles.presetChip, familyName === p && styles.presetChipActive]}
@@ -591,7 +586,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
               style={styles.textInput}
               value={parentName}
               onChangeText={setParentName}
-              placeholder="e.g. Ramesh Sharma"
+              placeholder="Parent's full name"
               placeholderTextColor={Colors.textSubtle}
             />
           </View>
@@ -723,7 +718,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
               style={styles.textInput}
               value={primaryDoctor}
               onChangeText={setPrimaryDoctor}
-              placeholder="e.g. Dr. Arun Verma (Fortis Hospital)"
+              placeholder="Doctor name and clinic"
               placeholderTextColor={Colors.textSubtle}
             />
           </View>

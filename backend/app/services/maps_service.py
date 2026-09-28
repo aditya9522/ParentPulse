@@ -1,8 +1,12 @@
 # backend/app/services/maps_service.py
-from typing import List, Optional
 from app.clients.google_maps import google_maps_client
 from app.clients.upstash import cache_get, cache_set
-from app.schemas.map import PlaceSummary, PlaceCategory, DistanceCalculationResponse, GeocodeResponse
+from app.schemas.map import (
+    DistanceCalculationResponse,
+    GeocodeResponse,
+    PlaceCategory,
+    PlaceSummary,
+)
 
 
 class MapsService:
@@ -12,7 +16,7 @@ class MapsService:
         longitude: float,
         category: PlaceCategory,
         radius_meters: int = 5000,
-    ) -> List[PlaceSummary]:
+    ) -> list[PlaceSummary]:
         cache_key = f"maps:nearby:{round(latitude, 3)}:{round(longitude, 3)}:{category.value}:{radius_meters}"
         cached = await cache_get(cache_key)
         if cached:
@@ -52,10 +56,4 @@ class MapsService:
 
     @staticmethod
     async def geocode_address(address: str) -> GeocodeResponse:
-        # Geocode mock fallback or client
-        return GeocodeResponse(
-            formatted_address=address,
-            latitude=28.4595,
-            longitude=77.0725,
-            place_id="geocode_sample_01",
-        )
+        return GeocodeResponse(**(await google_maps_client.geocode(address)))

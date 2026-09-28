@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/MapsScreen.tsx
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -45,6 +45,7 @@ import { useApp } from "../context/AppContext";
 import { HealthcarePlace, PlaceCategory } from "../types";
 import { Colors, Typography, Spacing, Shadows, Gradients, Glass, BorderRadius } from "../theme";
 import { GlassView } from "../components/GlassView";
+import { apiClient } from "../api/client";
 
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
@@ -55,8 +56,8 @@ export const MapsScreen: React.FC = () => {
   const [maxDistanceKm, setMaxDistanceKm] = useState<number>(10);
 
   // Real-Time Google Maps State
-  const initialLat = activeParent.latitude || 28.4595;
-  const initialLng = activeParent.longitude || 77.0725;
+  const initialLat = userLocation?.latitude ?? activeParent.latitude ?? 0;
+  const initialLng = userLocation?.longitude ?? activeParent.longitude ?? 0;
   const [centerCoords, setCenterCoords] = useState<{ lat: number; lng: number }>({
     lat: initialLat,
     lng: initialLng,
@@ -66,6 +67,9 @@ export const MapsScreen: React.FC = () => {
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [mapImageLoading, setMapImageLoading] = useState<boolean>(false);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const [nearbyPlaces, setNearbyPlaces] = useState<HealthcarePlace[]>([]);
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [placesError, setPlacesError] = useState<string | null>(null);
 
   // 3-Tier Drawer state: "expanded" (72%) | "half" (44%) | "collapsed" (docked pill)
   const [sheetState, setSheetState] = useState<"expanded" | "half" | "collapsed">("half");
@@ -124,7 +128,7 @@ export const MapsScreen: React.FC = () => {
     {
       id: "hospital" as PlaceCategory,
       label: "Hospitals",
-      hindiLabel: "अस्पताल",
+      hindiLabel: "à¤…à¤¸à¥à¤ªà¤¤à¤¾à¤²",
       icon: Hospital,
       color: Colors.emergency,
       bg: "#FEE2E2",
@@ -132,7 +136,7 @@ export const MapsScreen: React.FC = () => {
     {
       id: "pharmacy" as PlaceCategory,
       label: "Pharmacies",
-      hindiLabel: "दवा की दुकानें",
+      hindiLabel: "à¤¦à¤µà¤¾ à¤•à¥€ à¤¦à¥à¤•à¤¾à¤¨à¥‡à¤‚",
       icon: Pill,
       color: Colors.primary,
       bg: Colors.primaryLight,
@@ -140,7 +144,7 @@ export const MapsScreen: React.FC = () => {
     {
       id: "laboratory" as PlaceCategory,
       label: "Diagnostic Labs",
-      hindiLabel: "जांच प्रयोगशालाएं",
+      hindiLabel: "à¤œà¤¾à¤‚à¤š à¤ªà¥à¤°à¤¯à¥‹à¤—à¤¶à¤¾à¤²à¤¾à¤à¤‚",
       icon: FlaskConical,
       color: "#7C3AED",
       bg: "#F3E8FF",
@@ -148,97 +152,42 @@ export const MapsScreen: React.FC = () => {
     {
       id: "doctor" as PlaceCategory,
       label: "Specialist Clinics",
-      hindiLabel: "विशेषज्ञ क्लिनिक",
+      hindiLabel: "à¤µà¤¿à¤¶à¥‡à¤·à¤œà¥à¤ž à¤•à¥à¤²à¤¿à¤¨à¤¿à¤•",
       icon: Stethoscope,
       color: "#0284C7",
       bg: "#E0F2FE",
     },
   ];
 
-  // Sample verified nearby healthcare places with GPS coordinates
-  const samplePlaces: HealthcarePlace[] = [
-    {
-      place_id: "p_01",
-      name: "Fortis Memorial Research Institute",
-      category: "hospital",
-      address: "Sector 44, Gurugram, Haryana",
-      latitude: 28.4595,
-      longitude: 77.0725,
-      phone_number: "+91 98223 34455",
-      rating: 4.6,
-      user_ratings_total: 3420,
-      is_open_now: true,
-      distance_meters: 1800,
-      duration_minutes: 8,
-    },
-    {
-      place_id: "p_02",
-      name: "Max Super Speciality Hospital",
-      category: "hospital",
-      address: "B-Block, Sushant Lok 1, Gurugram",
-      latitude: 28.4682,
-      longitude: 77.0812,
-      phone_number: "+91 98334 45566",
-      rating: 4.4,
-      user_ratings_total: 2180,
-      is_open_now: true,
-      distance_meters: 3200,
-      duration_minutes: 14,
-    },
-    {
-      place_id: "p_03",
-      name: "Apollo Pharmacy 24/7",
-      category: "pharmacy",
-      address: "Main Market, Sector 14, Gurugram",
-      latitude: 28.4731,
-      longitude: 77.0435,
-      phone_number: "+91 98123 44556",
-      rating: 4.7,
-      user_ratings_total: 512,
-      is_open_now: true,
-      distance_meters: 450,
-      duration_minutes: 3,
-    },
-    {
-      place_id: "p_04",
-      name: "Dr. Lal PathLabs & Diagnostics",
-      category: "laboratory",
-      address: "SCO 42, Commercial Belt, Sector 14, Gurugram",
-      latitude: 28.4745,
-      longitude: 77.0448,
-      phone_number: "+91 98765 11223",
-      rating: 4.5,
-      user_ratings_total: 620,
-      is_open_now: true,
-      distance_meters: 650,
-      duration_minutes: 5,
-    },
-    {
-      place_id: "p_05",
-      name: "Dr. Verma Heart & Chest Clinic",
-      category: "doctor",
-      address: "Near Galleria Market, DLF Phase 4, Gurugram",
-      latitude: 28.4612,
-      longitude: 77.0855,
-      phone_number: "+91 98711 22334",
-      rating: 4.9,
-      user_ratings_total: 184,
-      is_open_now: true,
-      distance_meters: 2100,
-      duration_minutes: 9,
-    },
-  ];
+  useEffect(() => {
+    const latitude = userLocation?.latitude ?? activeParent.latitude;
+    const longitude = userLocation?.longitude ?? activeParent.longitude;
+    if (latitude == null || longitude == null) {
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      if (!active) return;
+      setPlacesLoading(true);
+      setPlacesError(null);
+      void apiClient.getNearbyHealthcare(latitude, longitude, selectedCategory, maxDistanceKm * 1000)
+        .then((places) => { if (active) setNearbyPlaces(places); })
+        .catch((error) => { if (active) { setNearbyPlaces([]); setPlacesError(error instanceof Error ? error.message : "Nearby search is unavailable."); } })
+        .finally(() => { if (active) setPlacesLoading(false); });
+    }, 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [activeParent.latitude, activeParent.longitude, maxDistanceKm, selectedCategory, userLocation?.latitude, userLocation?.longitude]);
 
-  const currentPlaces = samplePlaces.filter(
-    (p) =>
-      p.category === selectedCategory &&
-      (p.distance_meters ? p.distance_meters / 1000 <= maxDistanceKm : true)
-  );
+  const hasSearchCoordinates = (userLocation?.latitude ?? activeParent.latitude) != null && (userLocation?.longitude ?? activeParent.longitude) != null;
+  const currentPlaces = hasSearchCoordinates ? nearbyPlaces : [];
+  const currentPlacesError = hasSearchCoordinates ? placesError : "Enable location access or add coordinates to the parent profile.";
 
   // Construct Real-Time Google Maps Static URL with Key and Markers
   const getGoogleMapUrl = () => {
     const center = `${centerCoords.lat},${centerCoords.lng}`;
-    const parentMarker = `&markers=color:red%7Clabel:P%7C${activeParent.latitude || 28.4595},${activeParent.longitude || 77.0725}`;
+    const parentMarker = activeParent.latitude != null && activeParent.longitude != null
+      ? `&markers=color:red%7Clabel:P%7C${activeParent.latitude},${activeParent.longitude}`
+      : "";
     const placeMarkers = currentPlaces
       .slice(0, 5)
       .map(
@@ -295,9 +244,9 @@ export const MapsScreen: React.FC = () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
     recordNewVisit(place.name, place.category, place.address);
     Alert.alert(
-      isHindi ? "📍 विज़िट दर्ज की गई!" : "📍 Visit Confirmed!",
+      isHindi ? "ðŸ“ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤¦à¤°à¥à¤œ à¤•à¥€ à¤—à¤ˆ!" : "ðŸ“ Visit Confirmed!",
       isHindi
-        ? `${activeParent.full_name} के लिए ${place.name} की विज़िट दर्ज की गई और फ़ैमिली टाइमलाइन में सिंक हो गई।`
+        ? `${activeParent.full_name} à¤•à¥‡ à¤²à¤¿à¤ ${place.name} à¤•à¥€ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤¦à¤°à¥à¤œ à¤•à¥€ à¤—à¤ˆ à¤”à¤° à¤«à¤¼à¥ˆà¤®à¤¿à¤²à¥€ à¤Ÿà¤¾à¤‡à¤®à¤²à¤¾à¤‡à¤¨ à¤®à¥‡à¤‚ à¤¸à¤¿à¤‚à¤• à¤¹à¥‹ à¤—à¤ˆà¥¤`
         : `Recorded healthcare visit to ${place.name} for ${activeParent.full_name}. Synced to family timeline and map history.`
     );
   };
@@ -320,7 +269,7 @@ export const MapsScreen: React.FC = () => {
               color={viewMode === "nearby" ? Colors.primaryDark : Colors.textMuted}
             />
             <Text style={[styles.viewToggleText, viewMode === "nearby" && styles.viewToggleTextActive]}>
-              {isHindi ? "आसपास की स्वास्थ्य सेवाएं" : "Nearby Healthcare"}
+              {isHindi ? "à¤†à¤¸à¤ªà¤¾à¤¸ à¤•à¥€ à¤¸à¥à¤µà¤¾à¤¸à¥à¤¥à¥à¤¯ à¤¸à¥‡à¤µà¤¾à¤à¤‚" : "Nearby Healthcare"}
             </Text>
           </TouchableOpacity>
 
@@ -337,7 +286,7 @@ export const MapsScreen: React.FC = () => {
               color={viewMode === "visits" ? Colors.primaryDark : Colors.textMuted}
             />
             <Text style={[styles.viewToggleText, viewMode === "visits" && styles.viewToggleTextActive]}>
-              {isHindi ? `विज़िट इतिहास (${visits.length})` : `Visit Log (${visits.length})`}
+              {isHindi ? `à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤‡à¤¤à¤¿à¤¹à¤¾à¤¸ (${visits.length})` : `Visit Log (${visits.length})`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -400,7 +349,7 @@ export const MapsScreen: React.FC = () => {
 
             {/* Distance Filter Chips */}
             <View style={styles.radiusRowFloating}>
-              <Text style={styles.radiusLabelFloating}>{isHindi ? "दायरा:" : "Radius:"}</Text>
+              <Text style={styles.radiusLabelFloating}>{isHindi ? "à¤¦à¤¾à¤¯à¤°à¤¾:" : "Radius:"}</Text>
               {[2, 5, 10, 20].map((dist) => (
                 <TouchableOpacity
                   key={dist}
@@ -458,7 +407,7 @@ export const MapsScreen: React.FC = () => {
           <View style={styles.parentGpsHud}>
             <View style={styles.pulseDot} />
             <Text style={styles.parentGpsText} numberOfLines={1}>
-              {activeParent.full_name} • Sector 14, Gurugram
+              {activeParent.full_name} · {activeParent.address}
             </Text>
           </View>
 
@@ -479,7 +428,7 @@ export const MapsScreen: React.FC = () => {
                     <MapPin size={14} color="#FFFFFF" />
                   </View>
                   <Text style={styles.sheetCollapsedText} numberOfLines={1}>
-                    {currentPlaces.length} {isHindi ? "केंद्र नज़दीक • सूची देखने के लिए टैप करें" : "Verified Centers Nearby • Tap to view"}
+                    {currentPlaces.length} {isHindi ? "à¤•à¥‡à¤‚à¤¦à¥à¤° à¤¨à¤œà¤¼à¤¦à¥€à¤• â€¢ à¤¸à¥‚à¤šà¥€ à¤¦à¥‡à¤–à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤Ÿà¥ˆà¤ª à¤•à¤°à¥‡à¤‚" : "Healthcare places nearby · Tap to view"}
                   </Text>
                   <View style={styles.sheetCollapsedArrow}>
                     <ChevronUp size={16} color={Colors.primaryDark} />
@@ -503,10 +452,10 @@ export const MapsScreen: React.FC = () => {
               <View style={styles.sheetHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.sheetTitle}>
-                    {currentPlaces.length} {isHindi ? "नज़दीकी केंद्र उपलब्ध" : "Verified Centers Nearby"}
+                    {currentPlaces.length} {isHindi ? "à¤¨à¤œà¤¼à¤¦à¥€à¤•à¥€ à¤•à¥‡à¤‚à¤¦à¥à¤° à¤‰à¤ªà¤²à¤¬à¥à¤§" : "Healthcare places nearby"}
                   </Text>
                   <Text style={styles.sheetSub}>
-                    {selectedCategory.toUpperCase()} • {maxDistanceKm}km radius
+                    {selectedCategory.toUpperCase()} â€¢ {maxDistanceKm}km radius
                   </Text>
                 </View>
 
@@ -521,8 +470,8 @@ export const MapsScreen: React.FC = () => {
                   >
                     <Text style={styles.expandToggleText}>
                       {sheetState === "expanded"
-                        ? (isHindi ? "छोटा करें" : "Half")
-                        : (isHindi ? "विस्तार" : "Expand")}
+                        ? (isHindi ? "à¤›à¥‹à¤Ÿà¤¾ à¤•à¤°à¥‡à¤‚" : "Half")
+                        : (isHindi ? "à¤µà¤¿à¤¸à¥à¤¤à¤¾à¤°" : "Expand")}
                     </Text>
                   </TouchableOpacity>
 
@@ -545,6 +494,9 @@ export const MapsScreen: React.FC = () => {
                 contentContainerStyle={{ paddingBottom: 95 }}
                 showsVerticalScrollIndicator={false}
               >
+              {placesLoading && <View style={styles.mapLoadingOverlay}><ActivityIndicator color={Colors.primary} /><Text style={styles.travelStatText}>Loading live Google Places results…</Text></View>}
+              {!placesLoading && currentPlacesError && <View style={styles.mapLoadingOverlay}><Text style={styles.placeAddress}>{currentPlacesError}</Text></View>}
+              {!placesLoading && !currentPlacesError && currentPlaces.length === 0 && <View style={styles.mapLoadingOverlay}><Text style={styles.placeAddress}>No matching healthcare places were returned for this area.</Text></View>}
               {currentPlaces.map((place) => {
                 const isSelected = selectedPlaceId === place.place_id;
                 return (
@@ -577,15 +529,15 @@ export const MapsScreen: React.FC = () => {
                         <View style={styles.travelStat}>
                           <Navigation size={12} color={Colors.primaryDark} />
                           <Text style={styles.travelStatText}>
-                            {place.distance_meters ? `${(place.distance_meters / 1000).toFixed(1)} km` : "Nearby"}
+                            {place.distance_meters ? `${(place.distance_meters / 1000).toFixed(1)} km` : "Distance unavailable"}
                           </Text>
                         </View>
-                        <View style={styles.travelStat}>
+                        {place.duration_minutes != null && <View style={styles.travelStat}>
                           <Clock size={12} color={Colors.primaryDark} />
                           <Text style={styles.travelStatText}>
-                            {place.duration_minutes ? `~${place.duration_minutes} min` : "8 mins"}
+                            ~{place.duration_minutes} min
                           </Text>
-                        </View>
+                        </View>}
                       </View>
 
                       <View style={styles.actionButtonsRow}>
@@ -596,7 +548,7 @@ export const MapsScreen: React.FC = () => {
                         >
                           <CheckCircle2 size={13} color={Colors.primaryDark} />
                           <Text style={styles.checkInText}>
-                            {isHindi ? "विज़िट दर्ज" : "Check-in"}
+                            {isHindi ? "à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤¦à¤°à¥à¤œ" : "Check-in"}
                           </Text>
                         </TouchableOpacity>
 
@@ -607,7 +559,7 @@ export const MapsScreen: React.FC = () => {
                         >
                           <ArrowUpRight size={14} color="#FFFFFF" />
                           <Text style={styles.directionsText}>
-                            {isHindi ? "दिशा-निर्देश" : "Directions"}
+                            {isHindi ? "à¤¦à¤¿à¤¶à¤¾-à¤¨à¤¿à¤°à¥à¤¦à¥‡à¤¶" : "Directions"}
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -624,11 +576,11 @@ export const MapsScreen: React.FC = () => {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>
-              {isHindi ? `${activeParent.full_name} का विज़िट इतिहास` : `Healthcare Visit Log for ${activeParent.full_name}`}
+              {isHindi ? `${activeParent.full_name} à¤•à¤¾ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤‡à¤¤à¤¿à¤¹à¤¾à¤¸` : `Healthcare Visit Log for ${activeParent.full_name}`}
             </Text>
             <Text style={styles.historySub}>
               {isHindi
-                ? "अस्पताल, क्लिनिक और लैब की दर्ज की गई पिछली विज़िट्स:"
+                ? "à¤…à¤¸à¥à¤ªà¤¤à¤¾à¤², à¤•à¥à¤²à¤¿à¤¨à¤¿à¤• à¤”à¤° à¤²à¥ˆà¤¬ à¤•à¥€ à¤¦à¤°à¥à¤œ à¤•à¥€ à¤—à¤ˆ à¤ªà¤¿à¤›à¤²à¥€ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿà¥à¤¸:"
                 : "Timeline of verified healthcare visits with location timestamps:"}
             </Text>
           </View>

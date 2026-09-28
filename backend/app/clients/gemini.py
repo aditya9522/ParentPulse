@@ -1,7 +1,9 @@
 # backend/app/clients/gemini.py
 import json
-from typing import Any, List
+from typing import Any
+
 from app.core.config import get_settings
+from app.core.exceptions import ProviderError
 from app.core.logging import logger
 
 
@@ -11,7 +13,7 @@ class GeminiClient:
 
     async def generate_content(self, prompt: str) -> str:
         """
-        Calls live Gemini model with prompt. Falls back only if API call encounters error.
+        Calls the configured Gemini model. Clinical answers are never fabricated.
         """
         api_key = self.settings.gemini_api_key.get_secret_value()
         if api_key and not api_key.startswith("mock"):
@@ -23,17 +25,11 @@ class GeminiClient:
                 response = await model.generate_content_async(prompt)
                 return response.text
             except Exception as exc:
-                logger.error(f"Live Gemini API error: {exc}. Falling back to clinical guidance.")
+                logger.error(f"Gemini generation failed: {exc}")
+                raise ProviderError("Gemini", "The assistant is temporarily unavailable.") from exc
+        raise ProviderError("Gemini", "AI generation is not configured.")
 
-        if "ParentPulse AI" in prompt or "Extract" in prompt:
-            return (
-                "Based on the verified healthcare records, Dad takes Telmisartan 40mg in the morning after breakfast "
-                "for blood pressure, and Metformin SR 500mg with meals for diabetes control. "
-                "His last recorded blood pressure was 128/82 mmHg, which is well within target threshold."
-            )
-        return "ParentPulse AI real-time health assistance response."
-
-    async def create_embedding(self, text: str) -> List[float]:
+    async def create_embedding(self, text: str) -> list[float]:
         """
         Creates semantic vector embedding using live embedding model.
         """
@@ -52,9 +48,39 @@ class GeminiClient:
                 )
                 return result["embedding"]
             except Exception as exc:
-                logger.error(f"Live Embedding generation error: {exc}")
+                logger.error(f"Gemini embedding failed: {exc}")
+                raise ProviderError("Gemini", "Document search indexing is temporarily unavailable.") from exc
+        raise ProviderError("Gemini", "Document embeddings are not configured.")
 
-        return [0.01] * 768
+    async def extract_medical_document(self, content: bytes, mime_type: str, title: str) -> dict[str, Any]:
+        api_key = self.settings.gemini_api_key.get_secret_value()
+        if not api_key or api_key.startswith("mock"):
+            raise RuntimeError("Gemini document extraction is not configured")
+
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(self.settings.gemini_model)
+        prompt = f"""
+Analyze the attached medical document titled {title!r}. Return JSON only with this schema:
+{{
+  "summary": "concise factual clinical summary without advice",
+  "raw_text": "faithful transcription of visible medical text",
+  "extracted_fields": {{"field": "value with units and reference range when present"}},
+  "tags": ["document category", "clinical topic"],
+  "suggested_timeline_events": [
+    {{"title": "event", "description": "factual description", "event_type": "lab_test"}}
+  ]
+}}
+Never invent unreadable values. Use null or omit a field when uncertain. Do not diagnose.
+"""
+        response = await model.generate_content_async([
+            prompt,
+            {"mime_type": mime_type, "data": content},
+        ])
+        raw = response.text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        return json.loads(raw)
 
 
 gemini_client = GeminiClient()

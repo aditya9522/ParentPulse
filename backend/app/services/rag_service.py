@@ -1,15 +1,16 @@
 # backend/app/services/rag_service.py
 from uuid import UUID
-from typing import List
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.crud.parents import ParentRepository
-from app.crud.medicines import MedicineRepository
-from app.crud.appointments import AppointmentRepository
+
 from app.clients.gemini import gemini_client
 from app.clients.pinecone import pinecone_client
+from app.core.exceptions import ResourceNotFoundError
+from app.crud.appointments import AppointmentRepository
+from app.crud.medicines import MedicineRepository
+from app.crud.parents import ParentRepository
 from app.helpers.prompt_builder import build_rag_grounded_prompt
 from app.schemas.ai import AIChatResponse, AISourceCitation
-from app.core.exceptions import ResourceNotFoundError
 
 
 class RAGService:
@@ -21,11 +22,13 @@ class RAGService:
 
     async def answer_health_query(self, parent_id: UUID, query: str) -> AIChatResponse:
         parent = await self.parent_repo.get_by_id(parent_id)
-        parent_name = parent.full_name if parent else "Ramesh Sharma"
-        conditions = parent.chronic_conditions if parent else ["Type 2 Diabetes Mellitus", "Hypertension"]
-        allergies = parent.allergies if parent else ["Penicillin", "Sulfa drugs"]
-        blood_group = parent.blood_group if parent else "B+"
-        doctors = parent.primary_doctors if parent else []
+        if not parent:
+            raise ResourceNotFoundError("ParentProfile", parent_id)
+        parent_name = parent.full_name
+        conditions = parent.chronic_conditions
+        allergies = parent.allergies
+        blood_group = parent.blood_group
+        doctors = parent.primary_doctors
 
         # 1. Fetch live medicines and appointments from database
         meds = await self.med_repo.list_by_parent(parent_id)
@@ -33,7 +36,7 @@ class RAGService:
 
         # 2. Create embedding for search query and retrieve vector matches
         context_chunks = []
-        citations: List[AISourceCitation] = []
+        citations: list[AISourceCitation] = []
 
         try:
             query_embedding = await gemini_client.create_embedding(query)
@@ -57,8 +60,11 @@ class RAGService:
                         snippet=meta.get("content", "")[:120],
                     )
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            # Profile, medicine, and appointment records below remain available
+            # even when optional semantic document search is unavailable.
+            from app.core.logging import logger
+            logger.warning(f"Semantic document search unavailable for {parent_id}: {exc}")
 
         # 3. Always include authoritative profile, medicine schedule, and appointment records
         meds_summary = "; ".join([

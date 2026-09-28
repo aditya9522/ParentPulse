@@ -7,6 +7,7 @@ import {
   StatusBar,
   Platform,
   Animated,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -17,7 +18,7 @@ import { AmbientBackground } from "./src/components/AmbientBackground";
 import { GlassView } from "./src/components/GlassView";
 import { GlassBlurProvider } from "./src/components/GlassBlurProvider";
 import { HomeScreen } from "./src/screens/HomeScreen";
-import { DocumentsScreen } from "./src/screens/DocumentsScreen";
+import { DocumentVaultScreen } from "./src/screens/DocumentVaultScreen";
 import { TimelineScreen } from "./src/screens/TimelineScreen";
 import { MedicinesScreen } from "./src/screens/MedicinesScreen";
 import { MapsScreen } from "./src/screens/MapsScreen";
@@ -26,13 +27,14 @@ import { ParentProfileScreen } from "./src/screens/ParentProfileScreen";
 import { ExpensesScreen } from "./src/screens/ExpensesScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
-import { EmergencySosModal } from "./src/components/EmergencySosModal";
-import { DoctorBriefModal } from "./src/components/DoctorBriefModal";
+import { EmergencyCenterModal } from "./src/components/EmergencyCenterModal";
+import { SecureDoctorShareModal } from "./src/components/SecureDoctorShareModal";
 import { AiAssistantModal } from "./src/components/AiAssistantModal";
 import { LogVitalModal } from "./src/components/LogVitalModal";
 import { ScannerModal } from "./src/components/ScannerModal";
 import { AuthModal } from "./src/components/AuthModal";
 import { HealthReportModal } from "./src/components/HealthReportModal";
+import { apiClient } from "./src/api/client";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "./src/theme";
 
 type TabId = "home" | "documents" | "timeline" | "medicines" | "maps";
@@ -65,8 +67,15 @@ const MainApp: React.FC = () => {
     scannerMode,
     addDocument,
     activeParent,
+    parentList,
     activeScreen,
     setActiveScreen,
+    runtimeReady,
+    isAuthenticated,
+    dataLoading,
+    dataError,
+    refreshData,
+    setAuthModalVisible,
   } = useApp();
 
   useEffect(() => {
@@ -78,6 +87,20 @@ const MainApp: React.FC = () => {
     }).start();
   }, [dockEntrance]);
 
+  if (!runtimeReady || (dataLoading && parentList.length === 0)) {
+    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="pulse" size={32} color={Colors.primaryDark} /><Text style={styles.stateTitle}>Loading secure care data</Text><Text style={styles.stateCopy}>Connecting to ParentPulse and verifying your care circle.</Text></View></View>;
+  }
+
+  if (!isAuthenticated) {
+    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><View style={styles.stateIcon}><Ionicons name="shield-checkmark" size={31} color="#FFFFFF" /></View><Text style={styles.stateEyebrow}>PRIVATE FAMILY HEALTH</Text><Text style={styles.stateTitle}>Your real care data, securely connected</Text><Text style={styles.stateCopy}>Sign in to load your family profiles, medicines, records, appointments, tasks, and alerts from the production service.</Text><TouchableOpacity style={styles.stateAction} onPress={() => setAuthModalVisible(true)}><Text style={styles.stateActionText}>Sign in or create account</Text><Ionicons name="arrow-forward" size={18} color="#FFFFFF" /></TouchableOpacity></View><AuthModal /></View>;
+  }
+
+  if (dataError && parentList.length === 0) {
+    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="cloud-offline-outline" size={34} color="#B45309" /><Text style={styles.stateTitle}>Live data is unavailable</Text><Text style={styles.stateCopy}>{dataError}</Text><TouchableOpacity style={styles.stateAction} onPress={() => void refreshData()}><Text style={styles.stateActionText}>Try again</Text><Ionicons name="refresh" size={18} color="#FFFFFF" /></TouchableOpacity></View></View>;
+  }
+
+  const showOnboarding = activeScreen === "onboarding" || parentList.length === 0;
+
   return (
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
@@ -86,17 +109,17 @@ const MainApp: React.FC = () => {
       <AmbientBackground />
 
       {/* Top Universal App Header (Hidden during Onboarding) */}
-      {activeScreen !== "onboarding" && <Header />}
+      {!showOnboarding && <Header />}
 
       {/* Primary Screen View */}
       <View style={styles.screenContainer}>
-        {activeScreen === "onboarding" && (
+        {showOnboarding && (
           <OnboardingScreen onComplete={() => setActiveScreen("tabs")} />
         )}
-        {activeScreen === "tabs" && (
+        {!showOnboarding && activeScreen === "tabs" && (
           <>
             {activeTab === "home" && <HomeScreen onNavigateTab={(tab) => setActiveTab(tab as TabId)} />}
-            {activeTab === "documents" && <DocumentsScreen />}
+            {activeTab === "documents" && <DocumentVaultScreen />}
             {activeTab === "timeline" && <TimelineScreen />}
             {activeTab === "medicines" && <MedicinesScreen />}
             {activeTab === "maps" && <MapsScreen />}
@@ -109,7 +132,7 @@ const MainApp: React.FC = () => {
       </View>
 
       {/* Modern Floating Frosted Glass Bottom Navigation Dock (Visible on all screens except Onboarding) */}
-      {activeScreen !== "onboarding" && (
+      {!showOnboarding && (
         <Animated.View
           style={[
             styles.floatingNavWrapper,
@@ -180,8 +203,8 @@ const MainApp: React.FC = () => {
       )}
 
       {/* Global Interactive Feature Modals */}
-      <EmergencySosModal />
-      <DoctorBriefModal />
+      {!showOnboarding && <><EmergencyCenterModal />
+      <SecureDoctorShareModal />
       <AiAssistantModal />
       <LogVitalModal />
       <AuthModal />
@@ -191,27 +214,25 @@ const MainApp: React.FC = () => {
         mode={scannerMode}
         onClose={() => setScannerModalVisible(false)}
         onScanDocument={(uri) => {
-          // Document captured via real camera scanner
-          const newDoc = {
-            id: `doc_${Date.now()}`,
-            parent_id: activeParent.id,
-            title: "Camera Scanned Prescription",
-            document_type: "prescription" as const,
-            file_url: uri,
-            document_date: new Date().toISOString().split("T")[0],
-            status: "extracted" as const,
-            doctor_name: activeParent.primary_doctors[0]?.name || "Dr. Arun Verma",
-            hospital_name: activeParent.primary_doctors[0]?.hospital_or_clinic || "Fortis Memorial",
-            summary: "Prescription captured with mobile camera scanner. Clinical OCR extracted medicines and dosage instructions.",
-            extracted_tags: ["Prescription", "Camera Scan", "Gemini OCR"],
-            extracted_fields: { captured: "Camera Scan", processed: "Immediate" },
-          };
-          addDocument(newDoc);
+          void apiClient.uploadDocument({
+            parentId: activeParent.id,
+            familyId: activeParent.family_id,
+            title: "Camera scanned prescription",
+            documentType: "prescription",
+            documentDate: new Date().toISOString().slice(0, 10),
+            uri,
+            filename: `prescription-${Date.now()}.jpg`,
+            mimeType: "image/jpeg",
+            doctorName: activeParent.primary_doctors[0]?.name,
+            hospitalName: activeParent.primary_doctors[0]?.hospital_or_clinic,
+          }).then(addDocument).catch((error) => {
+            Alert.alert("Upload failed", error instanceof Error ? error.message : "The scan could not be uploaded.");
+          });
         }}
         onScanQrCode={(code) => {
           console.log("QR Code scanned:", code);
         }}
-      />
+      /></>}
     </View>
   );
 };
@@ -237,6 +258,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "transparent",
   },
+  stateScreen: { flex: 1, alignItems: "center", justifyContent: "center", padding: Spacing.xl, backgroundColor: "#F8FAFC" },
+  stateCard: { width: "100%", maxWidth: 470, alignItems: "center", padding: 30, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: "rgba(255,255,255,0.95)", ...Shadows.card },
+  stateIcon: { width: 66, height: 66, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryDark, marginBottom: 18 },
+  stateEyebrow: { fontSize: 10, letterSpacing: 1.5, fontWeight: "900", color: Colors.primaryDark, marginBottom: 8 },
+  stateTitle: { fontSize: 24, lineHeight: 30, fontWeight: "900", color: Colors.textPrimary, textAlign: "center", marginTop: 12 },
+  stateCopy: { fontSize: 13, lineHeight: 20, color: Colors.textMuted, textAlign: "center", marginTop: 10 },
+  stateAction: { minHeight: 52, marginTop: 22, paddingHorizontal: 20, borderRadius: 17, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: Colors.primaryDark },
+  stateActionText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
   floatingNavWrapper: {
     position: "absolute",
     left: Spacing.md,

@@ -1,50 +1,58 @@
-# backend/app/clients/pinecone.py
-from typing import Any, List, Optional
-from app.core.config import get_settings
-from app.core.logging import logger
+import asyncio
+from typing import Any
 
-_mock_vector_store: List[dict[str, Any]] = []
+from app.core.config import get_settings
+from app.core.exceptions import ProviderError
+from app.core.logging import logger
 
 
 class PineconeClient:
     def __init__(self):
         self.settings = get_settings()
+        self._index: Any | None = None
 
-    async def upsert_vector(
-        self,
-        vector_id: str,
-        embedding: List[float],
-        metadata: dict[str, Any],
-    ) -> None:
-        """
-        Stores an embedding with metadata (family_id, parent_id, document_id, etc.)
-        """
-        logger.info(f"Upserting vector {vector_id} for parent {metadata.get('parent_id')}")
-        # In mock/local environment:
-        _mock_vector_store.append({
-            "id": vector_id,
-            "values": embedding,
-            "metadata": metadata,
-        })
+    def _get_index(self):
+        api_key = self.settings.pinecone_api_key.get_secret_value()
+        if not api_key or api_key.startswith("mock"):
+            raise ProviderError("Pinecone", "Semantic document search is not configured.")
+        if self._index is None:
+            from pinecone import Pinecone
 
-    async def query_vectors(
-        self,
-        query_embedding: List[float],
-        metadata_filter: dict[str, Any],
-        top_k: int = 5,
-    ) -> List[dict[str, Any]]:
-        """
-        Queries Pinecone with authorization filters.
-        """
-        parent_id = metadata_filter.get("parent_id")
-        matches = []
-        for item in _mock_vector_store:
-            item_meta = item.get("metadata", {})
-            if parent_id and item_meta.get("parent_id") == str(parent_id):
-                matches.append(item)
-            if len(matches) >= top_k:
-                break
-        return matches
+            self._index = Pinecone(api_key=api_key).Index(self.settings.pinecone_index_name)
+        return self._index
+
+    async def upsert_vector(self, vector_id: str, embedding: list[float], metadata: dict[str, Any]) -> None:
+        try:
+            index = self._get_index()
+            await asyncio.to_thread(
+                index.upsert,
+                vectors=[{"id": vector_id, "values": embedding, "metadata": metadata}],
+                namespace=self.settings.pinecone_namespace,
+            )
+        except ProviderError:
+            raise
+        except Exception as exc:
+            logger.error(f"Pinecone upsert failed: {exc}")
+            raise ProviderError("Pinecone", "Document indexing is temporarily unavailable.") from exc
+
+    async def query_vectors(self, query_embedding: list[float], metadata_filter: dict[str, Any], top_k: int = 5) -> list[dict[str, Any]]:
+        try:
+            index = self._get_index()
+            result = await asyncio.to_thread(
+                index.query,
+                vector=query_embedding,
+                filter=metadata_filter,
+                top_k=top_k,
+                include_metadata=True,
+                namespace=self.settings.pinecone_namespace,
+            )
+            matches = result.get("matches", []) if isinstance(result, dict) else getattr(result, "matches", [])
+            return [match if isinstance(match, dict) else match.to_dict() for match in matches]
+        except ProviderError:
+            raise
+        except Exception as exc:
+            logger.error(f"Pinecone query failed: {exc}")
+            raise ProviderError("Pinecone", "Semantic document search is temporarily unavailable.") from exc
 
 
 pinecone_client = PineconeClient()

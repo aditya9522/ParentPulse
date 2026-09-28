@@ -7,7 +7,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Modal,
   Alert,
   Linking,
   Platform,
@@ -15,13 +14,10 @@ import {
 } from "react-native";
 import {
   User,
-  Heart,
   ShieldAlert,
   Activity,
   Phone,
-  Mail,
   MapPin,
-  Calendar,
   Stethoscope,
   Plus,
   Edit3,
@@ -30,16 +26,13 @@ import {
   AlertTriangle,
   FileText,
   Share2,
-  Trash2,
-  ChevronRight,
-  ExternalLink,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass } from "../theme";
-import { ParentProfile, EmergencyContact, PrimaryDoctor } from "../types";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { EmergencyContact, PrimaryDoctor } from "../types";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 
 export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
@@ -575,7 +568,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <Text style={styles.inputLabel}>{isHindi ? "नाम *" : "Full Name *"}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Priya Sharma"
+              placeholder="Emergency contact name"
               value={contactName}
               onChangeText={setContactName}
             />
@@ -636,7 +629,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <Text style={styles.inputLabel}>{isHindi ? "डॉक्टर का नाम *" : "Doctor Name *"}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Dr. Arun Verma"
+              placeholder="Doctor's full name"
               value={docName}
               onChangeText={setDocName}
             />

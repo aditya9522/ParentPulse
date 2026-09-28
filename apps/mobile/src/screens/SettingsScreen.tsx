@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/SettingsScreen.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   View,
@@ -11,86 +11,59 @@ import {
   Alert,
   Platform,
   Linking,
+  Share,
 } from "react-native";
 import {
-  Settings,
-  User,
   Globe,
   Eye,
   Mic,
   MapPin,
-  Shield,
   Download,
   LogOut,
-  Trash2,
   ChevronRight,
-  Check,
-  Smartphone,
-  ExternalLink,
-  ShieldAlert,
   Heart,
-  Key,
+  Bell,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import { useApp } from "../context/AppContext";
-import { SupportedLanguage } from "../context/AppContext";
-import { UserRole } from "../types";
+import { useApp , SupportedLanguage } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
-import { ConfirmationModal } from "../components/ConfirmationModal";
+import * as Notifications from "expo-notifications";
+import { registerRemotePushDevice, syncCareReminders } from "../services/reminders";
+import { apiClient } from "../api/client";
 
-const INDIAN_LANGUAGES: Array<{ code: SupportedLanguage; label: string; native: string }> = [
-  { code: "en", label: "English", native: "English" },
-  { code: "hi", label: "Hindi", native: "हिन्दी" },
-  { code: "mr", label: "Marathi", native: "मराठी" },
-  { code: "gu", label: "Gujarati", native: "ગુજરાતી" },
-  { code: "ta", label: "Tamil", native: "தமிழ்" },
-  { code: "te", label: "Telugu", native: "తెలుగు" },
-  { code: "bn", label: "Bengali", native: "বাংলা" },
-  { code: "kn", label: "Kannada", native: "ಕನ್ನಡ" },
-  { code: "ml", label: "Malayalam", native: "മലയാളം" },
-  { code: "pa", label: "Punjabi", native: "ਪੰਜਾਬੀ" },
+const INDIAN_LANGUAGES: { code: SupportedLanguage; label: string; native: string; available: boolean }[] = [
+  { code: "en", label: "English", native: "English", available: true },
+  { code: "hi", label: "Hindi", native: "हिन्दी", available: true },
+  { code: "mr", label: "Marathi", native: "मराठी", available: false },
+  { code: "gu", label: "Gujarati", native: "ગુજરાતી", available: false },
+  { code: "ta", label: "Tamil", native: "தமிழ்", available: false },
+  { code: "te", label: "Telugu", native: "తెలుగు", available: false },
+  { code: "bn", label: "Bengali", native: "বাংলা", available: false },
+  { code: "kn", label: "Kannada", native: "ಕನ್ನಡ", available: false },
+  { code: "ml", label: "Malayalam", native: "മലയാളം", available: false },
+  { code: "pa", label: "Punjabi", native: "ਪੰਜਾਬੀ", available: false },
 ];
 
-const ROLES: Array<{ role: UserRole; label: string; desc: string }> = [
-  {
-    role: "family_member",
-    label: "Adult Child (Remote)",
-    desc: "Full family care, appointments, medicines, tasks & doctor briefs",
-  },
-  {
-    role: "parent",
-    label: "Parent / Patient",
-    desc: "Senior-friendly layout, medications checklist & emergency card",
-  },
-  {
-    role: "caregiver",
-    label: "Family Caregiver",
-    desc: "Day-to-day medicines logging, appointment transit & care tasks",
-  },
-  {
-    role: "doctor",
-    label: "Consulting Doctor",
-    desc: "Authorized medical records, timeline review & prescription issuance",
-  },
-  {
-    role: "admin",
-    label: "Administrator",
-    desc: "Account security, access audits & family setup",
-  },
-];
 
 export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const {
     currentUser,
-    setCurrentUserRole,
     seniorMode,
     toggleSeniorMode,
     language,
     setLanguage,
     activeParent,
-    setAuthModalVisible,
     setActiveScreen,
+    medicines,
+    appointments,
+    documents,
+    measurements,
+    tasks,
+    expenses,
+    insurance,
+    visits,
+    setReportModalVisible,
   } = useApp();
 
   const isHindi = language === "hi";
@@ -98,7 +71,22 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
   const [locationTrackingOptIn, setLocationTrackingOptIn] = useState(true);
   const [voiceAssistanceEnabled, setVoiceAssistanceEnabled] = useState(true);
   const [sosGpsBroadcast, setSosGpsBroadcast] = useState(true);
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+
+  useEffect(() => {
+    void Notifications.getPermissionsAsync().then((permission) => setRemindersEnabled(permission.status === "granted"));
+  }, []);
+
+  const enableReminders = async () => {
+    triggerHaptic();
+    await syncCareReminders(medicines, appointments, true);
+    await registerRemotePushDevice().catch(() => false);
+    const permission = await Notifications.getPermissionsAsync();
+    setRemindersEnabled(permission.status === "granted");
+    if (permission.status !== "granted") {
+      Alert.alert("Notifications are off", "Enable notifications in system settings to receive medicine and appointment reminders.");
+    }
+  };
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -108,23 +96,10 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
     } catch {}
   };
 
-  const handleExportData = (type: "pdf" | "json") => {
+  const handleExportData = async () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    if (type === "pdf") {
-      Alert.alert(
-        isHindi ? "📄 स्वास्थ्य सारांश तैयार" : "📄 PDF Health Summary Generated",
-        isHindi
-          ? `${activeParent.full_name} की 30-दिवसीय मेडिकल रिपोर्ट, दवाइयां व लैब परिणाम पीडीएफ रूप में तैयार हैं।`
-          : `Clinical summary PDF for ${activeParent.full_name} with vitals, medicines, and latest tests is ready to download or print.`
-      );
-    } else {
-      Alert.alert(
-        isHindi ? "📦 डेटा बैकअप तैयार" : "📦 JSON Data Archive Ready",
-        isHindi
-          ? "सभी मेडिकल रिकॉर्ड्स, टाइमलाइन और अपॉइंटमेंट डेटा सुरक्षित रूप से एक्सपोर्ट किया गया।"
-          : "Complete structured JSON archive generated containing records, timeline events, and prescriptions."
-      );
-    }
+    const archive = { exported_at: new Date().toISOString(), parent: activeParent, medicines, appointments, documents, measurements, tasks, expenses, insurance, visits };
+    await Share.share({ title: `ParentPulse data · ${activeParent.full_name}`, message: JSON.stringify(archive, null, 2) });
   };
 
   return (
@@ -173,54 +148,13 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               style={styles.switchAccountBtn}
               onPress={() => {
                 triggerHaptic();
-                setAuthModalVisible(true);
+                void apiClient.signOut();
               }}
               activeOpacity={0.8}
             >
-              <Key size={14} color={Colors.primaryDark} />
-              <Text style={styles.switchAccountBtnText}>{isHindi ? "लॉगिन" : "Sign In"}</Text>
+              <LogOut size={14} color={Colors.primaryDark} />
+              <Text style={styles.switchAccountBtnText}>{isHindi ? "लॉग आउट" : "Sign out"}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Role Switcher (Simulate Role-Based Permissions) */}
-        <View style={[styles.sectionCard, Shadows.card]}>
-          <Text style={styles.sectionHeaderTitle}>
-            {isHindi ? "सक्रिय उपयोगकर्ता भूमिका (अनुमतियाँ)" : "Active User Role (Permissions)"}
-          </Text>
-          <Text style={styles.sectionHeaderSub}>
-            {isHindi
-              ? "विभिन्न पारिवारिक जिम्मेदारियों के अनुसार अनुमतियाँ बदलें"
-              : "Switch perspective to preview role-based access for each family member"}
-          </Text>
-
-          <View style={styles.rolesList}>
-            {ROLES.map((r) => {
-              const isSelected = currentUser.role === r.role;
-              return (
-                <TouchableOpacity
-                  key={r.role}
-                  style={[styles.roleItem, isSelected && styles.roleItemActive]}
-                  onPress={() => {
-                    triggerHaptic();
-                    setCurrentUserRole(r.role);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.roleItemLeft}>
-                    <View style={[styles.roleDot, isSelected && styles.roleDotActive]} />
-                    <View>
-                      <Text style={[styles.roleItemLabel, isSelected && styles.roleItemLabelActive]}>
-                        {r.label}
-                      </Text>
-                      <Text style={styles.roleItemDesc}>{r.desc}</Text>
-                    </View>
-                  </View>
-
-                  {isSelected && <Check size={16} color={Colors.primary} />}
-                </TouchableOpacity>
-              );
-            })}
           </View>
         </View>
 
@@ -233,7 +167,7 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                 {isHindi ? "क्षेत्रीय भाषा चुनें" : "Regional Language"}
               </Text>
               <Text style={styles.sectionHeaderSub}>
-                {isHindi ? "10 भारतीय क्षेत्रीय भाषाएं समर्थित" : "10 Indian languages supported across all screens"}
+                {isHindi ? "अंग्रेज़ी और हिन्दी उपलब्ध • अन्य भाषाएं जल्द आ रही हैं" : "English and Hindi available • more languages in translation"}
               </Text>
             </View>
           </View>
@@ -244,10 +178,21 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               return (
                 <TouchableOpacity
                   key={lang.code}
-                  style={[styles.langChip, isSelected && styles.langChipActive]}
+                  style={[
+                    styles.langChip,
+                    !lang.available && styles.langChipUnavailable,
+                    isSelected && styles.langChipActive,
+                  ]}
                   onPress={() => {
                     triggerHaptic();
-                    setLanguage(lang.code);
+                    if (lang.available) {
+                      setLanguage(lang.code);
+                    } else {
+                      Alert.alert(
+                        "Translation in progress",
+                        `${lang.label} is planned for the regional-language release. English and Hindi are fully selectable today.`,
+                      );
+                    }
                   }}
                   activeOpacity={0.7}
                 >
@@ -255,7 +200,7 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
                     {lang.native}
                   </Text>
                   <Text style={[styles.langLabel, isSelected && styles.langLabelActive]}>
-                    {lang.label}
+                    {lang.label}{!lang.available ? " · Soon" : ""}
                   </Text>
                 </TouchableOpacity>
               );
@@ -294,6 +239,35 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
         {/* Onboarding & Family Care Circle Setup */}
         <View style={[styles.sectionCard, Shadows.card]}>
+          <View style={styles.switchRow}>
+            <View style={styles.switchTextInfo}>
+              <View style={styles.cardHeaderWithIcon}>
+                <Bell size={18} color={Colors.primaryDark} />
+                <Text style={styles.sectionHeaderTitle}>Care reminders</Text>
+              </View>
+              <Text style={styles.sectionHeaderSub}>
+                Native medicine alerts and appointment reminders, scheduled privately on this device.
+              </Text>
+            </View>
+            <Switch
+              value={remindersEnabled}
+              onValueChange={() => {
+                if (remindersEnabled) {
+                  Alert.alert("System setting required", "Notification permission can be disabled from your device settings.", [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Open settings", onPress: () => void Linking.openSettings() },
+                  ]);
+                } else {
+                  void enableReminders();
+                }
+              }}
+              trackColor={{ false: Colors.border, true: Colors.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
+        <View style={[styles.sectionCard, Shadows.card]}>
           <View style={styles.cardHeaderWithIcon}>
             <Heart size={18} color={Colors.primaryDark} />
             <Text style={styles.sectionHeaderTitle}>
@@ -329,6 +303,7 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         </View>
 
         {/* Voice Assistant & Search */}
+        {false && (
         <View style={[styles.sectionCard, Shadows.card]}>
           <View style={styles.switchRow}>
             <View style={styles.switchTextInfo}>
@@ -356,6 +331,7 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
             />
           </View>
         </View>
+        )}
 
         {/* Location Privacy & Healthcare Visit History */}
         <View style={[styles.sectionCard, Shadows.card]}>
@@ -419,75 +395,32 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
           <Text style={styles.sectionHeaderSub}>
             {isHindi
               ? "डॉक्टर परामर्श या यात्रा के लिए संपूर्ण रिकॉर्ड डाउनलोड करें"
-              : "Generate portable medical summaries or download complete health archive"}
+              : "Review a factual care summary or share the currently loaded records as JSON"}
           </Text>
 
           <View style={styles.exportButtonsRow}>
             <TouchableOpacity
               style={styles.exportBtn}
-              onPress={() => handleExportData("pdf")}
+              onPress={() => setReportModalVisible(true)}
               activeOpacity={0.8}
             >
               <Download size={15} color={Colors.primaryDark} />
-              <Text style={styles.exportBtnText}>{isHindi ? "PDF रिपोर्ट एक्सपोर्ट" : "Export PDF Summary"}</Text>
+              <Text style={styles.exportBtnText}>{isHindi ? "केयर सारांश" : "Open care summary"}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.exportBtn}
-              onPress={() => handleExportData("json")}
+              onPress={() => void handleExportData()}
               activeOpacity={0.8}
             >
               <Download size={15} color={Colors.secondaryDark} />
-              <Text style={styles.exportBtnText}>{isHindi ? "JSON डेटा बैकअप" : "Download JSON Data"}</Text>
+              <Text style={styles.exportBtnText}>{isHindi ? "JSON डेटा शेयर" : "Share JSON data"}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Danger Zone: Account Deletion */}
-        <View style={[styles.sectionCard, { borderColor: "#FCA5A5" }]}>
-          <Text style={[styles.sectionHeaderTitle, { color: Colors.emergencyDark }]}>
-            {isHindi ? "खाता व डेटा प्रबंधन" : "Account & Data Controls"}
-          </Text>
-          <Text style={styles.sectionHeaderSub}>
-            {isHindi
-              ? "स्थायी रूप से खाता और सभी स्वास्थ्य डेटा हटाना"
-              : "Permanently delete account, parent profiles, and encrypted health vaults"}
-          </Text>
-
-          <TouchableOpacity
-            style={styles.deleteAccountBtn}
-            onPress={() => setDeleteModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <Trash2 size={16} color={Colors.emergencyDark} />
-            <Text style={styles.deleteAccountBtnText}>
-              {isHindi ? "खाता और डेटा हटाएं" : "Delete Account & All Data"}
-            </Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
-      {/* Delete Account Confirmation Modal */}
-      <ConfirmationModal
-        visible={deleteModalVisible}
-        title={isHindi ? "खाता स्थायी रूप से हटाएं?" : "Delete Account & Medical Data?"}
-        message={
-          isHindi
-            ? "यह क्रिया अपरिवर्तनीय है। सभी मेडिकल रिकॉर्ड्स, नुस्खे, टाइमलाइन और पारिवारिक अनुमतियाँ स्थायी रूप से नष्ट हो जाएंगी।"
-            : "This action is permanent and cannot be undone. All clinical vaults, documents, appointments, and care permissions will be deleted."
-        }
-        confirmText={isHindi ? "हाँ, स्थायी रूप से हटाएं" : "Yes, Delete Everything"}
-        cancelText={isHindi ? "रद्द करें" : "Cancel"}
-        isDestructive={true}
-        onConfirm={() => {
-          setDeleteModalVisible(false);
-          Alert.alert(
-            isHindi ? "खाता हटाया गया" : "Account Deleted",
-            isHindi ? "आपका खाता और स्वास्थ्य डेटा सुरक्षित रूप से मिटा दिया गया है।" : "Your account and medical records have been permanently expunged."
-          );
-        }}
-        onCancel={() => setDeleteModalVisible(false)}
-      />
     </View>
   );
 };
@@ -691,6 +624,10 @@ const styles = StyleSheet.create({
   langChipActive: {
     backgroundColor: Colors.secondaryLight,
     borderColor: Colors.secondary,
+  },
+  langChipUnavailable: {
+    opacity: 0.58,
+    backgroundColor: "rgba(241, 245, 249, 0.6)",
   },
   langNative: {
     fontSize: Typography.sizes.sm,

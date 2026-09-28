@@ -1,6 +1,6 @@
 # backend/app/api/v1/endpoints/maps.py
 from typing import List
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from app.api.dependencies import get_current_user, get_optional_current_user
 from app.models.user import User
 from app.schemas.map import (
@@ -35,8 +35,10 @@ async def calculate_distance(
     data: DistanceCalculationRequest,
     current_user: User | None = Depends(get_optional_current_user),
 ):
-    dest_lat = data.destination_latitude or 28.4595
-    dest_lng = data.destination_longitude or 77.0725
+    if data.destination_latitude is None or data.destination_longitude is None:
+        raise HTTPException(status_code=422, detail="Destination latitude and longitude are required.")
+    dest_lat = data.destination_latitude
+    dest_lng = data.destination_longitude
     result = await MapsService.get_distance_and_route(
         data.origin_latitude,
         data.origin_longitude,

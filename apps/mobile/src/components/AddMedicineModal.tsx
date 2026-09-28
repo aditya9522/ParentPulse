@@ -9,10 +9,12 @@ import {
   StyleSheet,
   Platform,
   KeyboardAvoidingView,
+  Alert,
 } from "react-native";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 import * as Haptics from "expo-haptics";
-import { Pill, X, Clock, AlertCircle, Plus, User, Stethoscope } from "lucide-react-native";
+import * as Crypto from "expo-crypto";
+import { Pill, X, Plus } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useApp } from "../context/AppContext";
 import { MedicineSchedule } from "../types";
@@ -28,18 +30,17 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
   const isHindi = language === "hi";
 
   const [name, setName] = useState("");
-  const [dosage, setDosage] = useState("500 mg");
-  const [form, setForm] = useState("Tablet");
-  const [frequency, setFrequency] = useState("2x Daily");
-  const [scheduleTime1, setScheduleTime1] = useState("08:30 AM");
-  const [scheduleTime2, setScheduleTime2] = useState("08:30 PM");
+  const [dosage, setDosage] = useState("");
+  const [form, setForm] = useState("");
+  const [scheduleTime1, setScheduleTime1] = useState("");
+  const [scheduleTime2, setScheduleTime2] = useState("");
   const [instructions, setInstructions] = useState<MedicineSchedule["instructions"]>("after_food");
   const [prescribingDoctor, setPrescribingDoctor] = useState(
-    activeParent.primary_doctors[0]?.name || "Dr. Arun Verma"
+    activeParent.primary_doctors[0]?.name || ""
   );
   const [reason, setReason] = useState("");
-  const [inventory, setInventory] = useState("30");
-  const [refillThreshold, setRefillThreshold] = useState("6");
+  const [inventory, setInventory] = useState("");
+  const [refillThreshold, setRefillThreshold] = useState("");
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -50,38 +51,57 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
   };
 
   const handleSave = () => {
-    if (!name.trim()) return;
+    const timePattern = /^(0?[1-9]|1[0-2]):[0-5]\d\s*(AM|PM)$/i;
+    const stock = Number.parseInt(inventory, 10);
+    const threshold = Number.parseInt(refillThreshold, 10);
+    if (
+      !name.trim() ||
+      !dosage.trim() ||
+      !form.trim() ||
+      !timePattern.test(scheduleTime1.trim()) ||
+      (scheduleTime2.trim() && !timePattern.test(scheduleTime2.trim())) ||
+      !Number.isInteger(stock) ||
+      stock < 0 ||
+      !Number.isInteger(threshold) ||
+      threshold < 0
+    ) {
+      Alert.alert(
+        "Check medicine details",
+        "Enter the medicine, dosage, form, a valid first dose time, and non-negative stock values.",
+      );
+      return;
+    }
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
 
-    const times: string[] = [scheduleTime1];
-    if (frequency === "2x Daily" || frequency === "3x Daily") {
-      times.push(scheduleTime2);
-    }
-    if (frequency === "3x Daily") {
-      times.push("02:00 PM");
-    }
+    const times = [scheduleTime1.trim(), scheduleTime2.trim()].filter(Boolean);
 
     const newMed: MedicineSchedule = {
-      id: `med_${Date.now()}`,
+      id: Crypto.randomUUID(),
       parent_id: activeParent.id,
       name: name.trim(),
-      dosage: dosage.trim() || "1 tab",
-      form,
+      dosage: dosage.trim(),
+      form: form.trim(),
       frequency_times_per_day: times.length,
       schedule_times: times,
       instructions,
       prescribing_doctor: prescribingDoctor.trim(),
-      reason: reason.trim() || "Maintenance therapy",
+      reason: reason.trim(),
       start_date: new Date().toISOString().split("T")[0],
-      current_inventory: parseInt(inventory, 10) || 30,
-      refill_alert_threshold: parseInt(refillThreshold, 10) || 5,
+      current_inventory: stock,
+      refill_alert_threshold: threshold,
       is_active: true,
     };
 
     addMedicine(newMed);
     setName("");
+    setDosage("");
+    setForm("");
+    setScheduleTime1("");
+    setScheduleTime2("");
     setReason("");
+    setInventory("");
+    setRefillThreshold("");
     onClose();
   };
 
@@ -129,7 +149,7 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
             </Text>
             <TextInput
               style={styles.input}
-              placeholder={isHindi ? "उदा. Metformin 500mg" : "e.g. Metformin, Telmisartan"}
+              placeholder={isHindi ? "दवा का नाम" : "Medicine name"}
               placeholderTextColor={Colors.textMuted}
               value={name}
               onChangeText={setName}
@@ -220,7 +240,7 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
             </Text>
             <TextInput
               style={styles.input}
-              placeholder="Dr. Arun Verma (Cardiologist)"
+              placeholder="Prescribing doctor (optional)"
               placeholderTextColor={Colors.textMuted}
               value={prescribingDoctor}
               onChangeText={setPrescribingDoctor}

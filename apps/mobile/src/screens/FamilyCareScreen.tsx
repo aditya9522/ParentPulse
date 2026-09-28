@@ -15,30 +15,26 @@ import {
 import {
   Users,
   CheckCircle2,
-  Clock,
   Plus,
-  AlertCircle,
   Calendar,
   User,
-  Shield,
   Trash2,
   Sparkles,
   Phone,
   Mail,
-  ChevronRight,
-  Filter,
   Check,
   X,
-  FileText,
   UserPlus,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import * as Crypto from "expo-crypto";
 import { useApp } from "../context/AppContext";
-import { CareTask, FamilyMemberItem, TaskPriority, TaskStatus, UserRole } from "../types";
+import { CareTask, TaskPriority, UserRole } from "../types";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass } from "../theme";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
+import { apiClient } from "../api/client";
 
 export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const {
@@ -48,10 +44,9 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
     toggleTaskCompleted,
     deleteTask,
     familyMembers,
-    inviteFamilyMember,
+    refreshData,
     seniorMode,
     language,
-    setActiveScreen,
   } = useApp();
 
   const isHindi = language === "hi";
@@ -64,8 +59,8 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
   const [taskPriority, setTaskPriority] = useState<TaskPriority>("medium");
-  const [taskDueDate, setTaskDueDate] = useState("Tomorrow, 10:00 AM");
-  const [taskAssignee, setTaskAssignee] = useState(familyMembers[0]?.name || "Priya Sharma");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState(familyMembers[0]?.name || "");
 
   // Invite Member Modal State
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
@@ -73,7 +68,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
   const [memberEmail, setMemberEmail] = useState("");
   const [memberPhone, setMemberPhone] = useState("");
   const [memberRelation, setMemberRelation] = useState("Caregiver");
-  const [memberRole, setMemberRole] = useState<UserRole>("caregiver");
+  const [memberRole] = useState<UserRole>("caregiver");
   const [canMeds, setCanMeds] = useState(true);
   const [canAppts, setCanAppts] = useState(true);
   const [canDocs, setCanDocs] = useState(false);
@@ -103,18 +98,23 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
       Alert.alert(isHindi ? "शीर्षक आवश्यक है" : "Title Required", isHindi ? "कृपया कार्य का नाम लिखें।" : "Please enter a task title.");
       return;
     }
+    if (taskDueDate && !Number.isFinite(Date.parse(taskDueDate))) {
+      Alert.alert("Invalid due date", "Use an ISO date and time, for example 2026-10-05T10:00:00Z.");
+      return;
+    }
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     const newTask: CareTask = {
-      id: `task_${Date.now()}`,
+      id: Crypto.randomUUID(),
       parent_id: activeParent.id,
       family_id: activeParent.family_id,
       title: taskTitle.trim(),
       description: taskDesc.trim() || undefined,
       priority: taskPriority,
       status: "pending",
-      due_date: taskDueDate,
+      due_date: taskDueDate || undefined,
       assigned_to_name: taskAssignee,
+      assigned_to_user_id: familyMembers.find((member) => member.name === taskAssignee)?.user_id,
       created_at: new Date().toISOString(),
     };
 
@@ -124,47 +124,34 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
     setAddTaskModalVisible(false);
   };
 
-  const handleInviteMember = () => {
+  const handleInviteMember = async () => {
     if (!memberName.trim() || !memberEmail.trim()) {
-      Alert.alert(isHindi ? "विवरण आवश्यक है" : "Details Required", isHindi ? "कृपया नाम और ईमेल दर्ज करें।" : "Please enter name and email address.");
+      Alert.alert("Details required", "Enter the family member's name and email address.");
       return;
     }
-
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const newMember: FamilyMemberItem = {
-      id: `mem_${Date.now()}`,
-      family_id: activeParent.family_id,
-      user_id: `user_${Date.now()}`,
-      name: memberName.trim(),
-      relationship: memberRelation,
-      role: memberRole,
-      email: memberEmail.trim(),
-      phone: memberPhone.trim() || undefined,
-      avatar_initials: memberName
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2),
-      can_manage_medicines: canMeds,
-      can_manage_appointments: canAppts,
-      can_upload_documents: canDocs,
-      can_share_doctor_brief: canBrief,
-      can_view_location_history: canLoc,
-    };
-
-    inviteFamilyMember(newMember);
-    setMemberName("");
-    setMemberEmail("");
-    setMemberPhone("");
-    setInviteModalVisible(false);
-
-    Alert.alert(
-      isHindi ? "🎉 आमंत्रण भेजा गया" : "🎉 Invitation Sent",
-      isHindi
-        ? `${newMember.name} को पारिवारिक देखभाल में शामिल होने का ईमेल आमंत्रण भेजा गया है।`
-        : `Invitation sent to ${newMember.email}. They can now collaborate on ${activeParent.full_name}'s care.`
-    );
+    try {
+      await apiClient.inviteFamilyMember(activeParent.family_id, {
+        email: memberEmail.trim(),
+        full_name: memberName.trim(),
+        phone_number: memberPhone.trim() || undefined,
+        relationship: memberRelation,
+        role: memberRole,
+        can_manage_medicines: canMeds,
+        can_manage_appointments: canAppts,
+        can_upload_documents: canDocs,
+        can_share_doctor_brief: canBrief,
+        can_view_location_history: canLoc,
+      });
+      await refreshData();
+      setMemberName("");
+      setMemberEmail("");
+      setMemberPhone("");
+      setInviteModalVisible(false);
+      Alert.alert("Invitation sent", `A secure account invitation was sent to ${memberEmail.trim()}.`);
+    } catch (error) {
+      Alert.alert("Invitation failed", error instanceof Error ? error.message : "Try again shortly.");
+    }
   };
 
   const getPriorityBadge = (priority: TaskPriority) => {
@@ -322,7 +309,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                       <View style={styles.taskMetaRow}>
                         <View style={styles.metaItem}>
                           <Calendar size={12} color={Colors.textMuted} />
-                          <Text style={styles.metaText}>{t.due_date || "Today"}</Text>
+                          <Text style={styles.metaText}>{t.due_date || "No due date"}</Text>
                         </View>
 
                         {t.assigned_to_name && (
@@ -543,6 +530,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                 style={styles.textInput}
                 value={taskDueDate}
                 onChangeText={setTaskDueDate}
+                placeholder="YYYY-MM-DDTHH:mm:ssZ (optional)"
                 placeholderTextColor={Colors.textMuted}
               />
 
@@ -596,7 +584,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
               <Text style={styles.inputLabel}>{isHindi ? "पूरा नाम *" : "Full Name *"}</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="e.g. Rohit Sharma"
+                placeholder="Family member's full name"
                 value={memberName}
                 onChangeText={setMemberName}
                 placeholderTextColor={Colors.textMuted}

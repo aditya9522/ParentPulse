@@ -1,6 +1,7 @@
 # backend/app/clients/upstash.py
-from typing import Optional, Any
 import json
+from typing import Any
+
 from app.core.config import get_settings
 from app.core.logging import logger
 
@@ -9,15 +10,15 @@ try:
 except ImportError:
     UpstashRedis = None  # type: ignore
 
-_redis_client: Optional[Any] = None
+_redis_client: Any | None = None
 _in_memory_cache: dict[str, Any] = {}
 
 
-def get_redis_client() -> Optional[Any]:
+def get_redis_client() -> Any | None:
     global _redis_client
     if _redis_client is None and UpstashRedis is not None:
         settings = get_settings()
-        if "mock" not in settings.upstash_redis_rest_url:
+        if settings.upstash_redis_rest_url and settings.upstash_redis_rest_token.get_secret_value():
             try:
                 _redis_client = UpstashRedis(
                     url=settings.upstash_redis_rest_url,
@@ -28,7 +29,7 @@ def get_redis_client() -> Optional[Any]:
     return _redis_client
 
 
-async def cache_get(key: str) -> Optional[Any]:
+async def cache_get(key: str) -> Any | None:
     client = get_redis_client()
     if client:
         try:
@@ -56,6 +57,6 @@ async def cache_delete(key: str) -> None:
     if client:
         try:
             await client.delete(key)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"Cache delete error for key '{key}': {exc}")
     _in_memory_cache.pop(key, None)

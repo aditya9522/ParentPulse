@@ -1,8 +1,9 @@
 # backend/app/schemas/family.py
 import uuid
 from datetime import datetime
-from typing import Optional, List
+
 from pydantic import BaseModel, ConfigDict
+
 from app.schemas.user import UserResponse
 
 
@@ -16,6 +17,8 @@ class FamilyUpdate(BaseModel):
 
 class FamilyMemberInvite(BaseModel):
     email: str
+    full_name: str | None = None
+    phone_number: str | None = None
     role: str = "family_member"
     relationship: str
     can_manage_medicines: bool = True
@@ -37,7 +40,7 @@ class FamilyMemberResponse(BaseModel):
     can_share_doctor_brief: bool
     can_view_location_history: bool
     created_at: datetime
-    user: Optional[UserResponse] = None
+    user: UserResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,6 +51,6 @@ class FamilyResponse(BaseModel):
     created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    members: Optional[List[FamilyMemberResponse]] = None
+    members: list[FamilyMemberResponse] | None = None
 
     model_config = ConfigDict(from_attributes=True)

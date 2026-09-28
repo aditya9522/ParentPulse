@@ -1,16 +1,19 @@
 # backend/app/services/sharing_service.py
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
-from datetime import datetime, timezone, timedelta
-from typing import Any
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.crud.sharing import ShareRepository
-from app.crud.parents import ParentRepository
-from app.crud.medicines import MedicineRepository
+
+from app.core.exceptions import AuthenticationError, ResourceNotFoundError
 from app.crud.documents import DocumentRepository
+from app.crud.medicines import MedicineRepository
+from app.crud.parents import ParentRepository
+from app.crud.sharing import ShareRepository
+from app.models.measurement import Measurement
 from app.models.share import Share
 from app.schemas.sharing import DoctorBriefResponse
 from app.utils.hashing import generate_secure_token
-from app.core.exceptions import ResourceNotFoundError, AuthenticationError
 
 
 class SharingService:
@@ -29,7 +32,7 @@ class SharingService:
         expires_in_hours: int = 72,
     ) -> Share:
         token = generate_secure_token(24)
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
+        expires_at = datetime.now(UTC) + timedelta(hours=expires_in_hours)
         return await self.share_repo.create(
             parent_id=parent_id,
             token=token,
@@ -43,7 +46,7 @@ class SharingService:
         if not share or share.is_revoked:
             raise AuthenticationError("Doctor share link is invalid or has been revoked.")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if share.expires_at < now:
             raise AuthenticationError("Doctor share link has expired.")
 
@@ -58,7 +61,7 @@ class SharingService:
         documents = await self.doc_repo.list_by_parent(parent.id)
 
         # Calculate age
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(UTC).date()
         age = today.year - parent.date_of_birth.year
 
         active_meds = [
@@ -66,10 +69,28 @@ class SharingService:
             for m in medicines
         ]
 
+        document_limit = 5 if share.share_scope == "summary_only" else len(documents)
         recent_reports = [
             {"title": d.title, "date": str(d.document_date), "summary": d.summary or ""}
-            for d in documents[:5]
+            for d in documents[:document_limit]
         ]
+
+        vital_result = await self.session.execute(
+            select(Measurement)
+            .where(Measurement.parent_id == parent.id)
+            .order_by(Measurement.recorded_at.desc())
+            .limit(10 if share.share_scope == "full_history" else 3)
+        )
+        recent_vitals = []
+        for vital in vital_result.scalars().all():
+            value = str(vital.value_numeric)
+            if vital.value_secondary is not None:
+                value = f"{value}/{vital.value_secondary}"
+            recent_vitals.append({
+                "vital_type": vital.vital_type,
+                "value": f"{value} {vital.unit}",
+                "date": vital.recorded_at.isoformat(),
+            })
 
         return DoctorBriefResponse(
             parent_name=parent.full_name,
@@ -79,7 +100,7 @@ class SharingService:
             chronic_conditions=parent.chronic_conditions,
             active_medicines=active_meds,
             recent_reports=recent_reports,
-            recent_vitals=[{"vital_type": "Blood Pressure", "value": "128/82 mmHg", "date": "Yesterday"}],
+            recent_vitals=recent_vitals,
             emergency_contacts=parent.emergency_contacts,
             generated_at=now,
         )

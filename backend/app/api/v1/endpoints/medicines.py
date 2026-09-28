@@ -4,6 +4,8 @@ from typing import List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
+from app.core.exceptions import AuthorizationError
+from app.core.permissions import verify_parent_access
 from app.models.user import User
 from app.schemas.medicine import MedicineCreate, MedicineUpdate, MedicineResponse, DoseRecordRequest, DoseLogResponse
 from app.schemas.common import ApiResponse
@@ -19,6 +21,9 @@ async def create_medicine(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    _, member = await verify_parent_access(session, current_user.id, data.parent_id)
+    if not member.can_manage_medicines:
+        raise AuthorizationError("Medicine management permission is required.")
     service = MedicineService(session)
     med = await service.create_medicine(data)
     return build_response(MedicineResponse.model_validate(med))
@@ -44,6 +49,13 @@ async def update_medicine(
     session: AsyncSession = Depends(get_db),
 ):
     service = MedicineService(session)
+    existing = await service.med_repo.get_by_id(medicine_id)
+    if not existing:
+        from app.core.exceptions import ResourceNotFoundError
+        raise ResourceNotFoundError("Medicine", medicine_id)
+    _, member = await verify_parent_access(session, current_user.id, existing.parent_id)
+    if not member.can_manage_medicines:
+        raise AuthorizationError("Medicine management permission is required.")
     med = await service.update_medicine(medicine_id, data)
     return build_response(MedicineResponse.model_validate(med))
 
@@ -56,6 +68,13 @@ async def record_dose(
     session: AsyncSession = Depends(get_db),
 ):
     service = MedicineService(session)
+    existing = await service.med_repo.get_by_id(medicine_id)
+    if not existing:
+        from app.core.exceptions import ResourceNotFoundError
+        raise ResourceNotFoundError("Medicine", medicine_id)
+    _, member = await verify_parent_access(session, current_user.id, existing.parent_id)
+    if not member.can_manage_medicines:
+        raise AuthorizationError("Medicine management permission is required.")
     dose = await service.record_dose(medicine_id, current_user.id, dose_data)
     return build_response(DoseLogResponse.model_validate(dose))
 

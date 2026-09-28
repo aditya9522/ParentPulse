@@ -1,472 +1,112 @@
-// apps/mobile/src/components/AuthModal.tsx
 import React, { useState } from "react";
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  Platform,
-} from "react-native";
-import {
-  Lock,
-  Mail,
-  User,
-  X,
-  CheckCircle2,
-  Key,
-  ShieldCheck,
-  Sparkles,
-  ArrowRight,
-} from "lucide-react-native";
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ArrowLeft, ArrowRight, Lock, Mail, ShieldCheck, User, X } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../context/AppContext";
 import { apiClient } from "../api/client";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { BorderRadius, Colors, Gradients, Spacing, Typography } from "../theme";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 
-export const AuthModal: React.FC = () => {
-  const { authModalVisible, setAuthModalVisible, language, currentUser, setCurrentUserRole } = useApp();
-  const isHindi = language === "hi";
+type AuthMode = "login" | "signup" | "forgot";
 
-  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+export const AuthModal: React.FC = () => {
+  const { authModalVisible, setAuthModalVisible } = useApp();
+  const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
-    try {
-      if (Platform.OS !== "web") {
-        Haptics.impactAsync(style);
-      }
-    } catch {}
-  };
-
-  const handleEmailAuth = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert(isHindi ? "विवरण भरें" : "Missing Fields", isHindi ? "कृपया ईमेल और पासवर्ड दर्ज करें।" : "Please enter your email and password.");
+  const submit = async () => {
+    if (!email.trim() || (mode !== "forgot" && !password)) {
+      Alert.alert("Missing details", "Enter the required account details to continue.");
       return;
     }
-
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    if (mode === "signup" && fullName.trim().length < 2) {
+      Alert.alert("Name required", "Enter the account holder’s full name.");
+      return;
+    }
+    if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsLoading(true);
-
     try {
-      const res = await apiClient.loginWithEmail(email.trim(), password.trim());
-      if (res && res.access_token) {
-        apiClient.setAuthToken(res.access_token);
+      if (mode === "forgot") {
+        await apiClient.requestPasswordReset(email.trim());
+        Alert.alert("Check your inbox", "If an account exists, a secure reset link has been sent.");
+        setMode("login");
+        return;
       }
+      const result = mode === "signup"
+        ? await apiClient.signUpWithEmail(email.trim(), password, fullName.trim())
+        : await apiClient.loginWithEmail(email.trim(), password);
+      await apiClient.setSession(result);
       setAuthModalVisible(false);
-      Alert.alert(
-        isHindi ? "सफल लॉगिन" : "Welcome Back",
-        isHindi ? `पैरेंटपल्स में आपका स्वागत है, ${email.split("@")[0]}!` : `Successfully signed in as ${email}.`
-      );
-    } catch (err) {
-      // Offline fallback demo
-      apiClient.setAuthToken(`dev-token-${Date.now()}`);
-      setAuthModalVisible(false);
-      Alert.alert(
-        isHindi ? "सफल लॉगिन" : "Signed In",
-        isHindi ? `पैरेंटपल्स में आपका स्वागत है!` : `Signed in with family account: ${email}`
-      );
+      Alert.alert(mode === "signup" ? "Account created" : "Welcome back", `Securely signed in as ${email.trim()}.`);
+    } catch (error) {
+      Alert.alert("Couldn’t continue", error instanceof Error ? error.message : "Check your connection and try again.");
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleGoogleSignIn = async () => {
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    setIsLoading(true);
-
-    try {
-      await apiClient.loginWithGoogle("mock-google-id-token");
-      setAuthModalVisible(false);
-      Alert.alert(
-        "Google Sign-In",
-        isHindi ? "गूगल खाते से सफलतापूर्वक प्रमाणित हुआ।" : "Authenticated with verified Google Identity."
-      );
-    } catch {
-      setAuthModalVisible(false);
-      Alert.alert(
-        "Google Sign-In",
-        isHindi ? "गूगल खाते से सफलतापूर्वक प्रमाणित हुआ।" : "Connected via Google Sign-In."
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickDemoSwitch = (role: any, emailAddr: string, name: string) => {
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
-    setCurrentUserRole(role);
-    setEmail(emailAddr);
-    apiClient.setAuthToken(`dev-token-${role}`);
-    setAuthModalVisible(false);
-    Alert.alert(
-      isHindi ? "भूमिका बदली गई" : "Account Switched",
-      isHindi ? `${name} (${role}) के रूप में सक्रिय।` : `Now logged in as ${name} (${role}).`
-    );
   };
 
   return (
-    <SwipeableBottomSheet
-      visible={authModalVisible}
-      onClose={() => setAuthModalVisible(false)}
-      maxHeight="88%"
-    >
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>
-                {mode === "login"
-                  ? isHindi ? "पैरेंटपल्स लॉगिन" : "ParentPulse Sign In"
-                  : mode === "signup"
-                  ? isHindi ? "नया खाता बनाएं" : "Create Family Account"
-                  : isHindi ? "पासवर्ड रीसेट" : "Reset Password"}
-              </Text>
-              <Text style={styles.modalSub}>
-                {isHindi
-                  ? "सुरक्षित पारिवारिक स्वास्थ्य समन्वय"
-                  : "Secure family eldercare access & synchronization"}
-              </Text>
-            </View>
+    <SwipeableBottomSheet visible={authModalVisible} onClose={() => setAuthModalVisible(false)} maxHeight="86%">
+      <View style={styles.header}>
+        {mode === "forgot" ? (
+          <TouchableOpacity style={styles.iconButton} onPress={() => setMode("login")} accessibilityLabel="Back to sign in">
+            <ArrowLeft size={20} color={Colors.textPrimary} />
+          </TouchableOpacity>
+        ) : <View style={styles.brandIcon}><ShieldCheck size={22} color="#FFFFFF" /></View>}
+        <TouchableOpacity style={styles.iconButton} onPress={() => setAuthModalVisible(false)} accessibilityLabel="Close">
+          <X size={20} color={Colors.textMuted} />
+        </TouchableOpacity>
+      </View>
 
-            <TouchableOpacity
-              onPress={() => setAuthModalVisible(false)}
-              style={styles.closeBtn}
-            >
-              <X size={20} color={Colors.textMuted} />
-            </TouchableOpacity>
-          </View>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <Text style={styles.eyebrow}>PRIVATE FAMILY CARE</Text>
+        <Text style={styles.title}>{mode === "login" ? "Welcome back" : mode === "signup" ? "Create your care circle" : "Reset your password"}</Text>
+        <Text style={styles.subtitle}>{mode === "forgot" ? "We’ll send a secure recovery link to your verified email." : "Encrypted access to shared medicines, records, appointments, and alerts."}</Text>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollView}>
-            {/* Quick Demo Switcher Bar */}
-            <View style={styles.demoBar}>
-              <Text style={styles.demoBarTitle}>
-                {isHindi ? "⚡ त्वरित टेस्ट खाते:" : "⚡ Fast Test Personas:"}
-              </Text>
-              <View style={styles.demoButtonsRow}>
-                <TouchableOpacity
-                  style={styles.demoBtn}
-                  onPress={() => handleQuickDemoSwitch("family_member", "priya.sharma@example.com", "Priya (Daughter)")}
-                >
-                  <Text style={styles.demoBtnText}>Priya (Daughter)</Text>
-                </TouchableOpacity>
+        {mode === "signup" && <Field icon={<User size={18} color={Colors.textMuted} />} label="Full name"><TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="Your full name" placeholderTextColor={Colors.textMuted} autoComplete="name" /></Field>}
+        <Field icon={<Mail size={18} color={Colors.textMuted} />} label="Email address"><TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="name@example.com" placeholderTextColor={Colors.textMuted} keyboardType="email-address" autoCapitalize="none" autoComplete="email" /></Field>
+        {mode !== "forgot" && <Field icon={<Lock size={18} color={Colors.textMuted} />} label="Password"><TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="At least 6 characters" placeholderTextColor={Colors.textMuted} secureTextEntry autoComplete={mode === "signup" ? "new-password" : "current-password"} /></Field>}
 
-                <TouchableOpacity
-                  style={styles.demoBtn}
-                  onPress={() => handleQuickDemoSwitch("parent", "ramesh.sharma@example.com", "Ramesh (Father)")}
-                >
-                  <Text style={styles.demoBtnText}>Ramesh (Father)</Text>
-                </TouchableOpacity>
+        {mode === "login" && <TouchableOpacity style={styles.forgotButton} onPress={() => setMode("forgot")}><Text style={styles.forgotText}>Forgot password?</Text></TouchableOpacity>}
+        <TouchableOpacity style={styles.primaryButton} onPress={submit} disabled={isLoading} activeOpacity={0.85}>
+          <LinearGradient colors={Gradients.primary} style={styles.primaryGradient}>
+            {isLoading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.primaryText}>{mode === "login" ? "Sign in securely" : mode === "signup" ? "Create account" : "Send reset link"}</Text><ArrowRight size={18} color="#FFFFFF" /></>}
+          </LinearGradient>
+        </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.demoBtn}
-                  onPress={() => handleQuickDemoSwitch("caregiver", "manoj.care@example.com", "Manoj (Caregiver)")}
-                >
-                  <Text style={styles.demoBtnText}>Manoj (Caregiver)</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.demoBtn}
-                  onPress={() => handleQuickDemoSwitch("doctor", "dr.verma@fortiscare.com", "Dr. Arun (Doctor)")}
-                >
-                  <Text style={styles.demoBtnText}>Dr. Verma (Doctor)</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Input Form */}
-            {mode === "signup" && (
-              <>
-                <Text style={styles.inputLabel}>{isHindi ? "पूरा नाम" : "Full Name"}</Text>
-                <View style={styles.inputBox}>
-                  <User size={16} color={Colors.textMuted} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. Priya Sharma"
-                    value={fullName}
-                    onChangeText={setFullName}
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-              </>
-            )}
-
-            <Text style={styles.inputLabel}>{isHindi ? "ईमेल आईडी" : "Email Address"}</Text>
-            <View style={styles.inputBox}>
-              <Mail size={16} color={Colors.textMuted} />
-              <TextInput
-                style={styles.input}
-                placeholder="name@family.com"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                placeholderTextColor={Colors.textMuted}
-              />
-            </View>
-
-            {mode !== "forgot" && (
-              <>
-                <Text style={styles.inputLabel}>{isHindi ? "पासवर्ड" : "Password"}</Text>
-                <View style={styles.inputBox}>
-                  <Lock size={16} color={Colors.textMuted} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="••••••••••••"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    placeholderTextColor={Colors.textMuted}
-                  />
-                </View>
-              </>
-            )}
-
-            {mode === "login" && (
-              <TouchableOpacity
-                onPress={() => setMode("forgot")}
-                style={styles.forgotLink}
-              >
-                <Text style={styles.forgotLinkText}>
-                  {isHindi ? "पासवर्ड भूल गए?" : "Forgot password?"}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Primary Action Button */}
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={handleEmailAuth}
-              disabled={isLoading}
-              activeOpacity={0.8}
-            >
-              <LinearGradient colors={Gradients.primary} style={styles.btnGradient}>
-                {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.btnGradientText}>
-                      {mode === "login"
-                        ? isHindi ? "लॉगिन करें" : "Sign In"
-                        : mode === "signup"
-                        ? isHindi ? "खाता बनाएं" : "Create Account"
-                        : isHindi ? "रीसेट लिंक भेजें" : "Send Reset Link"}
-                    </Text>
-                    <ArrowRight size={16} color="#FFFFFF" />
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Google Sign-In Button */}
-            <TouchableOpacity
-              style={styles.googleBtn}
-              onPress={handleGoogleSignIn}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.googleBtnText}>
-                {isHindi ? "गूगल के साथ जारी रखें" : "Continue with Google"}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Toggle Mode */}
-            <View style={styles.toggleRow}>
-              <Text style={styles.togglePrompt}>
-                {mode === "login"
-                  ? isHindi ? "खाता नहीं है?" : "Don't have an account?"
-                  : isHindi ? "पहले से खाता है?" : "Already registered?"}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setMode(mode === "login" ? "signup" : "login")}
-              >
-                <Text style={styles.toggleLink}>
-                  {mode === "login"
-                    ? isHindi ? "साइन अप" : "Sign Up"
-                    : isHindi ? "लॉगिन करें" : "Sign In"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+        {mode !== "forgot" && <View style={styles.switchRow}><Text style={styles.switchPrompt}>{mode === "login" ? "New to ParentPulse?" : "Already have an account?"}</Text><TouchableOpacity onPress={() => setMode(mode === "login" ? "signup" : "login")}><Text style={styles.switchAction}>{mode === "login" ? "Create account" : "Sign in"}</Text></TouchableOpacity></View>}
+        <View style={styles.securityNote}><ShieldCheck size={16} color={Colors.primaryDark} /><Text style={styles.securityText}>Session keys stay in your device’s secure hardware-backed storage.</Text></View>
+      </ScrollView>
     </SwipeableBottomSheet>
   );
 };
 
+const Field: React.FC<{ icon: React.ReactNode; label: string; children: React.ReactNode }> = ({ icon, label, children }) => <View style={styles.fieldGroup}><Text style={styles.label}>{label}</Text><View style={styles.field}>{icon}{children}</View></View>;
+
 const styles = StyleSheet.create({
-  scrollView: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    justifyContent: "flex-end",
-  },
-  dismissArea: {
-    flex: 1,
-  },
-  modalCard: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 10,
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
-    maxHeight: "88%",
-    overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  dragHandle: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#CBD5E1",
-    alignSelf: "center",
-    marginBottom: 12,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: 4,
-  },
-  modalTitle: {
-    fontSize: Typography.sizes.lg,
-    fontWeight: Typography.weights.extraBold,
-    color: Colors.textPrimary,
-  },
-  modalSub: {
-    fontSize: Typography.sizes.xxs,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  closeBtn: {
-    padding: 4,
-  },
-  demoBar: {
-    backgroundColor: Colors.primaryFaint,
-    borderRadius: BorderRadius.md,
-    padding: 10,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.primaryLight,
-  },
-  demoBarTitle: {
-    fontSize: 11,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primaryDeep,
-    marginBottom: 6,
-  },
-  demoButtonsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  demoBtn: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.primaryLight,
-  },
-  demoBtnText: {
-    fontSize: 10,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.primaryDark,
-  },
-  inputLabel: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textSecondary,
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  inputBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    height: 44,
-  },
-  input: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: Typography.sizes.sm,
-    color: Colors.textPrimary,
-  },
-  forgotLink: {
-    alignSelf: "flex-end",
-    marginTop: 6,
-    marginBottom: 4,
-  },
-  forgotLinkText: {
-    fontSize: 11,
-    color: Colors.primaryDark,
-    fontWeight: Typography.weights.semibold,
-  },
-  actionBtn: {
-    marginTop: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    overflow: "hidden",
-  },
-  btnGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-  },
-  btnGradientText: {
-    fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  googleBtn: {
-    marginTop: 8,
-    paddingVertical: 11,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.borderStrong,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  googleBtnText: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textPrimary,
-  },
-  toggleRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 16,
-    marginBottom: 20,
-  },
-  togglePrompt: {
-    fontSize: Typography.sizes.xs,
-    color: Colors.textMuted,
-  },
-  toggleLink: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primaryDark,
-  },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: Spacing.lg, paddingTop: 2 },
+  brandIcon: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryDark },
+  iconButton: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.72)", borderWidth: 1, borderColor: Colors.border },
+  content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Platform.OS === "ios" ? 38 : 24 },
+  eyebrow: { fontSize: 10, letterSpacing: 1.5, fontWeight: Typography.weights.extraBold, color: Colors.primaryDark, marginBottom: 6 },
+  title: { fontSize: 29, lineHeight: 34, fontWeight: Typography.weights.extraBold, color: Colors.textPrimary },
+  subtitle: { fontSize: Typography.sizes.sm, lineHeight: 21, color: Colors.textMuted, marginTop: 8, marginBottom: 18 },
+  fieldGroup: { marginTop: 12 },
+  label: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.textSecondary, marginBottom: 7 },
+  field: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: "rgba(255,255,255,0.78)" },
+  input: { flex: 1, fontSize: Typography.sizes.sm, color: Colors.textPrimary, paddingVertical: 13 },
+  forgotButton: { alignSelf: "flex-end", paddingVertical: 10 },
+  forgotText: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.primaryDark },
+  primaryButton: { borderRadius: BorderRadius.lg, overflow: "hidden", marginTop: 14 },
+  primaryGradient: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  primaryText: { color: "#FFFFFF", fontSize: Typography.sizes.sm, fontWeight: Typography.weights.extraBold },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 18 },
+  switchPrompt: { fontSize: Typography.sizes.xs, color: Colors.textMuted },
+  switchAction: { fontSize: Typography.sizes.xs, color: Colors.primaryDark, fontWeight: Typography.weights.extraBold },
+  securityNote: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 24, padding: 13, borderRadius: BorderRadius.md, backgroundColor: Colors.primaryFaint, borderWidth: 1, borderColor: Colors.primaryLight },
+  securityText: { flex: 1, fontSize: 11, lineHeight: 16, color: Colors.textSecondary },
 });

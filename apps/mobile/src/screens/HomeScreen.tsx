@@ -55,52 +55,35 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
   const takenMedsCount = Object.keys(dosesTakenToday).filter((k) =>
     medicines.some((m) => m.id === k)
   ).length;
-  const adherenceRate = totalMeds > 0 ? Math.round((takenMedsCount / totalMeds) * 100) : 100;
+  const adherenceRate = totalMeds > 0 ? Math.round((takenMedsCount / totalMeds) * 100) : 0;
   const isAllMedsTaken = totalMeds > 0 && takenMedsCount >= totalMeds;
 
-  const SPARKLINE_DATA = {
-    bp: {
-      title: language === "hi" ? "ब्लड प्रेशर ट्रेंड (7-दिन)" : "Blood Pressure (7-Day Trend)",
-      unit: "mmHg",
-      target: "120/80 mmHg",
-      days: [
-        { day: "Mon", val: "122/80", height: 55, status: "Optimal" },
-        { day: "Tue", val: "125/82", height: 68, status: "Optimal" },
-        { day: "Wed", val: "128/84", height: 78, status: "Normal" },
-        { day: "Thu", val: "124/80", height: 62, status: "Optimal" },
-        { day: "Fri", val: "126/82", height: 70, status: "Optimal" },
-        { day: "Sat", val: "123/79", height: 58, status: "Optimal" },
-        { day: "Sun", val: "126/80", height: 70, status: "Optimal" },
-      ],
-    },
-    sugar: {
-      title: language === "hi" ? "फास्टिंग ब्लड शुगर (7-दिन)" : "Fasting Glucose (7-Day Trend)",
-      unit: "mg/dL",
-      target: "70-120 mg/dL",
-      days: [
-        { day: "Mon", val: "110", height: 52, status: "Normal" },
-        { day: "Tue", val: "112", height: 56, status: "Normal" },
-        { day: "Wed", val: "119", height: 75, status: "Borderline" },
-        { day: "Thu", val: "115", height: 64, status: "Normal" },
-        { day: "Fri", val: "111", height: 54, status: "Normal" },
-        { day: "Sat", val: "116", height: 66, status: "Normal" },
-        { day: "Sun", val: "114", height: 60, status: "Normal" },
-      ],
-    },
-    pulse: {
-      title: language === "hi" ? "हार्ट रेट / पल्स (7-दिन)" : "Heart Rate (7-Day Trend)",
-      unit: "bpm",
-      target: "60-100 bpm",
-      days: [
-        { day: "Mon", val: "72", height: 60, status: "Optimal" },
-        { day: "Tue", val: "74", height: 68, status: "Optimal" },
-        { day: "Wed", val: "71", height: 58, status: "Optimal" },
-        { day: "Thu", val: "73", height: 65, status: "Optimal" },
-        { day: "Fri", val: "75", height: 72, status: "Optimal" },
-        { day: "Sat", val: "70", height: 54, status: "Optimal" },
-        { day: "Sun", val: "72", height: 60, status: "Optimal" },
-      ],
-    },
+  const vitalDefinitions = {
+    bp: { type: "blood_pressure", title: "Blood Pressure", unit: "mmHg" },
+    sugar: { type: "blood_sugar", title: "Blood Glucose", unit: "mg/dL" },
+    pulse: { type: "heart_rate", title: "Heart Rate", unit: "bpm" },
+  } as const;
+  const SPARKLINE_DATA = Object.fromEntries(Object.entries(vitalDefinitions).map(([key, definition]) => {
+    const records = measurements
+      .filter((item) => item.vital_type === definition.type)
+      .sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at))
+      .slice(-7);
+    const maximum = Math.max(...records.map((item) => item.value_numeric), 1);
+    return [key, {
+      title: `${definition.title} · Recent records`,
+      unit: definition.unit,
+      days: records.map((item) => ({
+        day: new Date(item.recorded_at).toLocaleDateString(undefined, { weekday: "short" }),
+        val: `${item.value_numeric}${item.value_secondary != null ? `/${item.value_secondary}` : ""}`,
+        height: Math.max(12, Math.round((item.value_numeric / maximum) * 100)),
+      })),
+    }];
+  })) as Record<"bp" | "sugar" | "pulse", { title: string; unit: string; days: Array<{ day: string; val: string; height: number }> }>;
+  const selectedSeries = SPARKLINE_DATA[selectedVitalTab];
+  const selectedRecord = selectedSeries.days[Math.min(selectedDayIndex, Math.max(0, selectedSeries.days.length - 1))];
+  const latestVital = (type: string, unit: string) => {
+    const record = [...measurements].reverse().find((item) => item.vital_type === type);
+    return record ? `${record.value_numeric}${record.value_secondary != null ? `/${record.value_secondary}` : ""} ${record.unit}` : `No ${unit} data`;
   };
 
   return (
@@ -124,7 +107,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               <View style={styles.scoreTopRow}>
                 <View>
                   <Text style={styles.scoreBadgeText}>
-                    {language === "hi" ? "दैनिक स्वास्थ्य स्कोर" : "Daily Wellness Index"}
+                    {language === "hi" ? "à¤¦à¥ˆà¤¨à¤¿à¤• à¤¸à¥à¤µà¤¾à¤¸à¥à¤¥à¥à¤¯ à¤¸à¥à¤•à¥‹à¤°" : "Daily Wellness Index"}
                   </Text>
                   <Text style={styles.scoreValue}>
                     {adherenceRate}<Text style={styles.scorePercent}>%</Text>
@@ -135,7 +118,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   <View style={styles.scoreStatusPill}>
                     <Ionicons name="checkmark-circle" size={14} color="#D1FAE5" />
                     <Text style={styles.scoreStatusPillText}>
-                      {language === "hi" ? "सभी वाइटल स्थिर" : "Vitals Stable"}
+                      {language === "hi" ? "à¤²à¤¾à¤‡à¤µ à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡" : "Live records"}
                     </Text>
                   </View>
                   <View style={styles.expandChevron}>
@@ -150,8 +133,8 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
 
               <Text style={styles.scoreDescription}>
                 {language === "hi"
-                  ? `आज की ${takenMedsCount}/${totalMeds} निर्धारित दवाइयां समय पर ली गई हैं। ब्लड प्रेशर सामान्य सीमा (126/80) में है।`
-                  : `${takenMedsCount} of ${totalMeds} medications confirmed on schedule. Blood pressure resting optimal at 126/80.`}
+                  ? (totalMeds > 0 ? `आज ${takenMedsCount}/${totalMeds} दवाइयां ली गई दर्ज हैं।` : "कोई सक्रिय दवा शेड्यूल दर्ज नहीं है।")
+                  : totalMeds > 0 ? `${takenMedsCount} of ${totalMeds} medicines marked taken today.` : "No active medicine schedule has been recorded."}
               </Text>
 
               {/* Interactive Expanded Health Metrics Drawer */}
@@ -167,14 +150,14 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
 
                     <View style={styles.expandedMetricItem}>
                       <Ionicons name="pulse" size={16} color="#93C5FD" />
-                      <Text style={styles.expandedMetricVal}>126/80</Text>
+                      <Text style={styles.expandedMetricVal}>{latestVital("blood_pressure", "blood pressure")}</Text>
                       <Text style={styles.expandedMetricLbl}>Resting BP</Text>
                     </View>
 
                     <View style={styles.expandedMetricItem}>
                       <Ionicons name="flame" size={16} color="#FDE047" />
-                      <Text style={styles.expandedMetricVal}>114</Text>
-                      <Text style={styles.expandedMetricLbl}>Sugar (mg/dL)</Text>
+                      <Text style={styles.expandedMetricVal}>{latestVital("blood_sugar", "glucose")}</Text>
+                      <Text style={styles.expandedMetricLbl}>Blood glucose</Text>
                     </View>
 
                     <View style={styles.expandedMetricItem}>
@@ -200,7 +183,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <LinearGradient colors={Gradients.sos} style={[styles.actionBtnGradient, Shadows.glowRed]}>
               <Ionicons name="shield" size={20} color="#FFFFFF" />
               <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "आपातकाल" : "SOS"}
+                {language === "hi" ? "à¤†à¤ªà¤¾à¤¤à¤•à¤¾à¤²" : "SOS"}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -214,7 +197,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <LinearGradient colors={Gradients.primary} style={[styles.actionBtnGradient, Shadows.card]}>
               <Ionicons name="add-circle" size={20} color="#FFFFFF" />
               <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "वाइटल" : "Vitals"}
+                {language === "hi" ? "à¤µà¤¾à¤‡à¤Ÿà¤²" : "Vitals"}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -231,7 +214,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <LinearGradient colors={Gradients.teal} style={[styles.actionBtnGradient, Shadows.card]}>
               <Ionicons name="camera" size={20} color="#FFFFFF" />
               <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "स्कैनर" : "Scan Rx"}
+                {language === "hi" ? "à¤¸à¥à¤•à¥ˆà¤¨à¤°" : "Scan Rx"}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -245,7 +228,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <LinearGradient colors={Gradients.ai} style={[styles.actionBtnGradient, Shadows.card]}>
               <Ionicons name="sparkles" size={20} color="#FFFFFF" />
               <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "AI चैट" : "Ask AI"}
+                {language === "hi" ? "AI à¤šà¥ˆà¤Ÿ" : "Ask AI"}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -259,7 +242,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <LinearGradient colors={Gradients.doctor} style={[styles.actionBtnGradient, Shadows.card]}>
               <Ionicons name="qr-code" size={20} color="#FFFFFF" />
               <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "डॉक्टर QR" : "Doc QR"}
+                {language === "hi" ? "à¤¡à¥‰à¤•à¥à¤Ÿà¤° QR" : "Doc QR"}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -271,7 +254,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <View style={styles.sectionHeaderTitleRow}>
               <Ionicons name="analytics" size={18} color={Colors.primaryDark} />
               <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                {language === "hi" ? "वाइटल ट्रेंड विश्लेषण" : "7-Day Vitals Analytics"}
+                {language === "hi" ? "à¤µà¤¾à¤‡à¤Ÿà¤² à¤Ÿà¥à¤°à¥‡à¤‚à¤¡ à¤µà¤¿à¤¶à¥à¤²à¥‡à¤·à¤£" : "7-Day Vitals Analytics"}
               </Text>
             </View>
             <TouchableOpacity
@@ -280,7 +263,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             >
               <Ionicons name="add" size={14} color={Colors.primaryDark} />
               <Text style={styles.addVitalChipText}>
-                {language === "hi" ? "रीडिंग दर्ज करें" : "Log"}
+                {language === "hi" ? "à¤°à¥€à¤¡à¤¿à¤‚à¤— à¤¦à¤°à¥à¤œ à¤•à¤°à¥‡à¤‚" : "Log"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -288,9 +271,9 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
           {/* Metric Selector Tabs */}
           <View style={styles.vitalTabsRow}>
             {[
-              { id: "bp" as const, label: "Blood Pressure", val: "126/80" },
-              { id: "sugar" as const, label: "Glucose", val: "114 mg/dL" },
-              { id: "pulse" as const, label: "Heart Rate", val: "72 bpm" },
+              { id: "bp" as const, label: "Blood Pressure", val: latestVital("blood_pressure", "blood pressure") },
+              { id: "sugar" as const, label: "Glucose", val: latestVital("blood_sugar", "glucose") },
+              { id: "pulse" as const, label: "Heart Rate", val: latestVital("heart_rate", "heart rate") },
             ].map((tab) => {
               const isSelected = selectedVitalTab === tab.id;
               return (
@@ -316,22 +299,22 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <View style={styles.sparklineHeader}>
               <View>
                 <Text style={styles.sparklineTitle}>
-                  {SPARKLINE_DATA[selectedVitalTab].title}
+                  {selectedSeries.title}
                 </Text>
                 <Text style={styles.sparklineTarget}>
-                  Target: {SPARKLINE_DATA[selectedVitalTab].target}
+                  Recorded values · {selectedSeries.unit}
                 </Text>
               </View>
-              <View style={styles.activeDayPill}>
+              {selectedRecord && <View style={styles.activeDayPill}>
                 <Text style={styles.activeDayPillText}>
-                  {SPARKLINE_DATA[selectedVitalTab].days[selectedDayIndex].day}: {SPARKLINE_DATA[selectedVitalTab].days[selectedDayIndex].val}
+                  {selectedRecord.day}: {selectedRecord.val}
                 </Text>
-              </View>
+              </View>}
             </View>
 
             {/* Bar Chart Bars */}
             <View style={styles.sparklineBarsRow}>
-              {SPARKLINE_DATA[selectedVitalTab].days.map((d, idx) => {
+              {selectedSeries.days.map((d, idx) => {
                 const isSelected = selectedDayIndex === idx;
                 return (
                   <TouchableOpacity
@@ -355,6 +338,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   </TouchableOpacity>
                 );
               })}
+              {selectedSeries.days.length === 0 && <Text style={styles.scoreDescription}>No measurements recorded for this vital.</Text>}
             </View>
           </View>
         </View>
@@ -364,7 +348,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
           <View style={styles.sectionHeaderTitleRow}>
             <Ionicons name="pulse" size={18} color={Colors.primaryDark} />
             <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-              {language === "hi" ? "ताज़ा वाइटल रीडिंग" : "Latest Vitals"}
+              {language === "hi" ? "à¤¤à¤¾à¤œà¤¼à¤¾ à¤µà¤¾à¤‡à¤Ÿà¤² à¤°à¥€à¤¡à¤¿à¤‚à¤—" : "Latest Vitals"}
             </Text>
           </View>
         </View>
@@ -382,7 +366,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               <View style={styles.sectionHeaderTitleRow}>
                 <Ionicons name="calendar" size={18} color={Colors.secondary} />
                 <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                  {language === "hi" ? "आगामी परामर्श" : "Consultation"}
+                  {language === "hi" ? "à¤†à¤—à¤¾à¤®à¥€ à¤ªà¤°à¤¾à¤®à¤°à¥à¤¶" : "Consultation"}
                 </Text>
               </View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -393,12 +377,12 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 >
                   <Ionicons name="add" size={13} color="#FFFFFF" />
                   <Text style={styles.addApptSmallBtnText}>
-                    {language === "hi" ? "जोड़ें" : "Add"}
+                    {language === "hi" ? "à¤œà¥‹à¤¡à¤¼à¥‡à¤‚" : "Add"}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => onNavigateTab("timeline")}>
                   <Text style={styles.sectionLink}>
-                    {language === "hi" ? "सभी देखें" : "View All"}
+                    {language === "hi" ? "à¤¸à¤­à¥€ à¤¦à¥‡à¤–à¥‡à¤‚" : "View All"}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -433,7 +417,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               <View style={styles.apptScheduleBar}>
                 <View style={styles.scheduleItem}>
                   <Ionicons name="calendar-outline" size={14} color={Colors.primaryDeep} />
-                  <Text style={styles.scheduleItemText}>Mon, Oct 5 • 10:30 AM</Text>
+                  <Text style={styles.scheduleItemText}>Mon, Oct 5 â€¢ 10:30 AM</Text>
                 </View>
                 <View style={styles.scheduleItem}>
                   <Ionicons name="location-outline" size={14} color={Colors.secondaryDark} />
@@ -457,7 +441,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 >
                   <Ionicons name="call" size={15} color={Colors.primaryDeep} />
                   <Text style={styles.callDoctorText}>
-                    {language === "hi" ? "कॉल करें" : "Call Clinic"}
+                    {language === "hi" ? "à¤•à¥‰à¤² à¤•à¤°à¥‡à¤‚" : "Call Clinic"}
                   </Text>
                 </TouchableOpacity>
 
@@ -468,7 +452,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 >
                   <Ionicons name="navigate" size={15} color="#FFFFFF" />
                   <Text style={styles.mapBtnText}>
-                    {language === "hi" ? "दिशा-निर्देश" : "Directions"}
+                    {language === "hi" ? "à¤¦à¤¿à¤¶à¤¾-à¤¨à¤¿à¤°à¥à¤¦à¥‡à¤¶" : "Directions"}
                   </Text>
                 </TouchableOpacity>
 
@@ -492,12 +476,12 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               <View style={styles.sectionHeaderTitleRow}>
                 <Ionicons name="checkbox" size={18} color={Colors.primaryDark} />
                 <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                  {language === "hi" ? "पारिवारिक देखभाल कार्य" : "Today's Family Tasks"}
+                  {language === "hi" ? "à¤ªà¤¾à¤°à¤¿à¤µà¤¾à¤°à¤¿à¤• à¤¦à¥‡à¤–à¤­à¤¾à¤² à¤•à¤¾à¤°à¥à¤¯" : "Today's Family Tasks"}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setActiveScreen("family")}>
                 <Text style={styles.sectionLink}>
-                  {language === "hi" ? `केयर हब (${parentTasks.length})` : `Care Circle (${parentTasks.length})`}
+                  {language === "hi" ? `à¤•à¥‡à¤¯à¤° à¤¹à¤¬ (${parentTasks.length})` : `Care Circle (${parentTasks.length})`}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -529,7 +513,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                       {task.title}
                     </Text>
                     <Text style={styles.taskItemSub} numberOfLines={1}>
-                      {task.assigned_to_name} • Due: {task.due_date}
+                      {task.assigned_to_name} â€¢ Due: {task.due_date}
                     </Text>
                   </View>
                   <View
@@ -559,12 +543,12 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <View style={styles.sectionHeaderTitleRow}>
               <Ionicons name="medkit" size={18} color={Colors.primaryDark} />
               <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                {language === "hi" ? "आज का दवा शेड्यूल" : "Today's Medicine Schedule"}
+                {language === "hi" ? "à¤†à¤œ à¤•à¤¾ à¤¦à¤µà¤¾ à¤¶à¥‡à¤¡à¥à¤¯à¥‚à¤²" : "Today's Medicine Schedule"}
               </Text>
             </View>
             <TouchableOpacity onPress={() => onNavigateTab("medicines")}>
               <Text style={styles.sectionLink}>
-                {language === "hi" ? `प्रबंधन (${medicines.length})` : `Manage (${medicines.length})`}
+                {language === "hi" ? `à¤ªà¥à¤°à¤¬à¤‚à¤§à¤¨ (${medicines.length})` : `Manage (${medicines.length})`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -581,11 +565,11 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 <Ionicons name="sparkles" size={20} color="#FFFFFF" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.celebrationTitle}>
-                    {language === "hi" ? "दैनिक दवाइयां 100% पूर्ण!" : "100% Medication Adherence Today"}
+                    {language === "hi" ? "à¤¦à¥ˆà¤¨à¤¿à¤• à¤¦à¤µà¤¾à¤‡à¤¯à¤¾à¤‚ 100% à¤ªà¥‚à¤°à¥à¤£!" : "100% Medication Adherence Today"}
                   </Text>
                   <Text style={styles.celebrationSub}>
                     {language === "hi"
-                      ? `आज की सभी ${totalMeds} दवाइयां समय पर ली गई हैं। फैमिली केयर सर्कल सुरक्षित है।`
+                      ? `à¤†à¤œ à¤•à¥€ à¤¸à¤­à¥€ ${totalMeds} à¤¦à¤µà¤¾à¤‡à¤¯à¤¾à¤‚ à¤¸à¤®à¤¯ à¤ªà¤° à¤²à¥€ à¤—à¤ˆ à¤¹à¥ˆà¤‚à¥¤ à¤«à¥ˆà¤®à¤¿à¤²à¥€ à¤•à¥‡à¤¯à¤° à¤¸à¤°à¥à¤•à¤² à¤¸à¥à¤°à¤•à¥à¤·à¤¿à¤¤ à¤¹à¥ˆà¥¤`
                       : `All ${totalMeds} scheduled doses marked taken. Family circle synchronized.`}
                   </Text>
                 </View>
@@ -604,12 +588,12 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             <View style={styles.sectionHeaderTitleRow}>
               <Ionicons name="folder-open" size={18} color="#6366F1" />
               <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                {language === "hi" ? "हालिया मेडिकल रिकॉर्ड्स" : "Recent Health Records"}
+                {language === "hi" ? "à¤¹à¤¾à¤²à¤¿à¤¯à¤¾ à¤®à¥‡à¤¡à¤¿à¤•à¤² à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡à¥à¤¸" : "Recent Health Records"}
               </Text>
             </View>
             <TouchableOpacity onPress={() => onNavigateTab("documents")}>
               <Text style={styles.sectionLink}>
-                {language === "hi" ? `वॉल्ट (${documents.length})` : `Vault (${documents.length})`}
+                {language === "hi" ? `à¤µà¥‰à¤²à¥à¤Ÿ (${documents.length})` : `Vault (${documents.length})`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -639,7 +623,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 </View>
 
                 <Text style={styles.docDate}>
-                  {doc.document_date} • {doc.doctor_name || "Diagnostic Lab"}
+                  {doc.document_date} â€¢ {doc.doctor_name || "Diagnostic Lab"}
                 </Text>
                 {doc.summary && (
                   <Text numberOfLines={2} style={styles.docSummaryText}>
@@ -661,14 +645,14 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
       {/* Confirmation Modal for Cancelling Appointment */}
       <ConfirmationModal
         visible={!!apptToDelete}
-        title={language === "hi" ? "परामर्श रद्द करें?" : "Cancel Consultation?"}
+        title={language === "hi" ? "à¤ªà¤°à¤¾à¤®à¤°à¥à¤¶ à¤°à¤¦à¥à¤¦ à¤•à¤°à¥‡à¤‚?" : "Cancel Consultation?"}
         message={
           language === "hi"
-            ? `क्या आप निश्चित हैं कि आप ${apptToDelete?.doctor_name} (${apptToDelete?.specialty}) के साथ परामर्श रद्द करना चाहते हैं?`
+            ? `à¤•à¥à¤¯à¤¾ à¤†à¤ª à¤¨à¤¿à¤¶à¥à¤šà¤¿à¤¤ à¤¹à¥ˆà¤‚ à¤•à¤¿ à¤†à¤ª ${apptToDelete?.doctor_name} (${apptToDelete?.specialty}) à¤•à¥‡ à¤¸à¤¾à¤¥ à¤ªà¤°à¤¾à¤®à¤°à¥à¤¶ à¤°à¤¦à¥à¤¦ à¤•à¤°à¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚?`
             : `Are you sure you want to cancel the scheduled visit with ${apptToDelete?.doctor_name} (${apptToDelete?.specialty})? Caregivers will be notified.`
         }
-        confirmText={language === "hi" ? "रद्द करें" : "Cancel Visit"}
-        cancelText={language === "hi" ? "रखें" : "Keep Visit"}
+        confirmText={language === "hi" ? "à¤°à¤¦à¥à¤¦ à¤•à¤°à¥‡à¤‚" : "Cancel Visit"}
+        cancelText={language === "hi" ? "à¤°à¤–à¥‡à¤‚" : "Keep Visit"}
         isDestructive={true}
         iconType="warning"
         onConfirm={() => {

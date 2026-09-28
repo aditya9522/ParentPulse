@@ -1,15 +1,22 @@
 # backend/app/api/v1/endpoints/families.py
-from uuid import UUID
 from typing import List
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.dependencies import get_current_user, get_db
-from app.models.user import User
-from app.schemas.family import FamilyCreate, FamilyResponse, FamilyMemberInvite, FamilyMemberResponse
-from app.schemas.common import ApiResponse
+from app.core.permissions import verify_family_membership, verify_family_owner
 from app.helpers.response_builder import build_response
+from app.models.user import User
+from app.schemas.common import ApiResponse
+from app.schemas.family import (
+    FamilyCreate,
+    FamilyMemberInvite,
+    FamilyMemberResponse,
+    FamilyResponse,
+)
 from app.services.family_service import FamilyService
-from app.core.permissions import verify_family_membership
 
 router = APIRouter(prefix="/families", tags=["Families"])
 
@@ -54,7 +61,7 @@ async def invite_family_member(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    await verify_family_membership(session, current_user.id, family_id)
+    await verify_family_owner(session, current_user.id, family_id)
     service = FamilyService(session)
     member = await service.invite_member(family_id, invite)
     return build_response(FamilyMemberResponse.model_validate(member))

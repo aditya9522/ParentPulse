@@ -1,18 +1,16 @@
 # backend/app/services/document_service.py
-import json
 from uuid import UUID
-from datetime import date
-from typing import List, Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.clients.gemini import gemini_client
+from app.clients.pinecone import pinecone_client
+from app.core.exceptions import ResourceNotFoundError
+from app.core.logging import logger
 from app.crud.documents import DocumentRepository
 from app.crud.timeline import TimelineRepository
 from app.models.document import Document
 from app.schemas.document import DocumentCreate, DocumentUpdate
-from app.clients.gemini import gemini_client
-from app.clients.pinecone import pinecone_client
-from app.helpers.prompt_builder import build_document_extraction_prompt
-from app.core.exceptions import ResourceNotFoundError
-from app.core.logging import logger
 
 
 class DocumentService:
@@ -24,8 +22,8 @@ class DocumentService:
     async def list_documents(
         self,
         parent_id: UUID,
-        document_type: Optional[str] = None,
-    ) -> List[Document]:
+        document_type: str | None = None,
+    ) -> list[Document]:
         return await self.doc_repo.list_by_parent(parent_id, document_type)
 
     async def get_document(self, document_id: UUID) -> Document:
@@ -38,7 +36,7 @@ class DocumentService:
         self,
         uploaded_by: UUID,
         data: DocumentCreate,
-        file_bytes: Optional[bytes] = None,
+        file_bytes: bytes | None = None,
     ) -> Document:
         doc = await self.doc_repo.create(
             parent_id=data.parent_id,
@@ -53,27 +51,24 @@ class DocumentService:
             document_date=data.document_date,
             doctor_name=data.doctor_name,
             hospital_name=data.hospital_name,
-            status="processing",
+            status="pending",
         )
 
-        # Asynchronously process extraction
-        await self.process_extraction(doc.id, file_bytes)
         return doc
 
-    async def process_extraction(self, document_id: UUID, file_bytes: Optional[bytes] = None) -> None:
+    async def process_extraction(self, document_id: UUID, file_bytes: bytes | None = None) -> None:
         doc = await self.doc_repo.get_by_id(document_id)
         if not doc:
             return
 
         try:
-            sample_ocr = (
-                f"Medical Record for Parent Pulse. Title: {doc.title}. "
-                f"Doctor: {doc.doctor_name or 'Dr. Arun Verma'}. Date: {doc.document_date}. "
-                "Diagnosis: Blood Pressure check. Prescribed Telmisartan 40mg. Follow-up in 1 month."
-            )
-            prompt = build_document_extraction_prompt(sample_ocr, doc.title)
-            response_text = await gemini_client.generate_content(prompt)
-            data = json.loads(response_text)
+            if not file_bytes:
+                raise ValueError("Document content is unavailable for extraction")
+            await self.doc_repo.update(doc.id, status="processing")
+            data = await gemini_client.extract_medical_document(file_bytes, doc.mime_type, doc.title)
+            raw_text = data.get("raw_text", "")
+            if not raw_text:
+                raise ValueError("No readable text was extracted from the document")
 
             # Update document with AI extracted results
             await self.doc_repo.update(
@@ -81,24 +76,28 @@ class DocumentService:
                 status="extracted",
                 summary=data.get("summary"),
                 extracted_fields=data.get("extracted_fields", {}),
-                extracted_tags=[doc.document_type, "verified"],
-                raw_ocr_text=sample_ocr,
+                extracted_tags=list(dict.fromkeys([doc.document_type, *data.get("tags", [])])),
+                raw_ocr_text=raw_text,
             )
 
-            # Create embedding and save to Pinecone with authorization metadata
-            embedding = await gemini_client.create_embedding(sample_ocr)
-            await pinecone_client.upsert_vector(
-                vector_id=f"doc_{doc.id}",
-                embedding=embedding,
-                metadata={
-                    "family_id": str(doc.family_id),
-                    "parent_id": str(doc.parent_id),
-                    "document_id": str(doc.id),
-                    "title": doc.title,
-                    "date": str(doc.document_date),
-                    "content": sample_ocr,
-                },
-            )
+            # Search indexing is independent of successful extraction. A provider
+            # outage must not discard factual OCR that is already persisted.
+            try:
+                embedding = await gemini_client.create_embedding(raw_text)
+                await pinecone_client.upsert_vector(
+                    vector_id=f"doc_{doc.id}",
+                    embedding=embedding,
+                    metadata={
+                        "family_id": str(doc.family_id),
+                        "parent_id": str(doc.parent_id),
+                        "document_id": str(doc.id),
+                        "title": doc.title,
+                        "date": str(doc.document_date),
+                        "content": raw_text,
+                    },
+                )
+            except Exception as exc:
+                logger.error(f"Document search indexing failed for {document_id}: {exc}")
 
             # Auto-suggest timeline event if found
             for event in data.get("suggested_timeline_events", []):
@@ -119,7 +118,7 @@ class DocumentService:
 
     async def update_document(self, document_id: UUID, data: DocumentUpdate) -> Document:
         update_dict = data.model_dump(exclude_unset=True)
-        if "document_type" in update_dict and update_dict["document_type"]:
+        if update_dict.get("document_type"):
             update_dict["document_type"] = update_dict["document_type"].value
         doc = await self.doc_repo.update(document_id, **update_dict)
         if not doc:

@@ -1,8 +1,10 @@
 # backend/tests/api/test_health_and_auth.py
 import uuid
+
 import pytest
-from app.main import app
+
 from app.api.dependencies import get_current_user
+from app.main import app
 from app.models.user import User
 
 
@@ -26,7 +28,7 @@ async def test_admin_health_endpoint(client):
 
 
 @pytest.mark.asyncio
-async def test_maps_nearby_mock(client):
+async def test_maps_nearby_provider_response(client, monkeypatch):
     mock_user = User(
         id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
         email="test@example.com",
@@ -34,6 +36,14 @@ async def test_maps_nearby_mock(client):
         preferred_language="en",
     )
     app.dependency_overrides[get_current_user] = lambda: mock_user
+    from app.clients.google_maps import google_maps_client
+    from app.core.constants import PlaceCategory
+    from app.schemas.map import PlaceSummary
+
+    async def provider_places(**kwargs):
+        return [PlaceSummary(place_id="provider-place", name="Provider Hospital", category=PlaceCategory.HOSPITAL, address="Provider address", latitude=kwargs["latitude"], longitude=kwargs["longitude"])]
+
+    monkeypatch.setattr(google_maps_client, "search_nearby", provider_places)
     try:
         response = await client.get(
             "/api/v1/maps/nearby",

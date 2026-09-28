@@ -1,13 +1,16 @@
 # backend/app/services/family_service.py
+import asyncio
 from uuid import UUID
-from typing import List, Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.clients.supabase import get_supabase_client
+from app.core.exceptions import ResourceNotFoundError
 from app.crud.families import FamilyRepository
 from app.crud.users import UserRepository
 from app.models.family import Family
 from app.models.family_member import FamilyMember
 from app.schemas.family import FamilyCreate, FamilyMemberInvite
-from app.core.exceptions import ResourceNotFoundError
 
 
 class FamilyService:
@@ -41,15 +44,31 @@ class FamilyService:
             raise ResourceNotFoundError("Family", family_id)
         return family
 
-    async def list_user_families(self, user_id: UUID) -> List[Family]:
+    async def list_user_families(self, user_id: UUID) -> list[Family]:
         return await self.family_repo.get_user_families(user_id)
 
     async def invite_member(self, family_id: UUID, invite: FamilyMemberInvite) -> FamilyMember:
         user = await self.user_repo.get_by_email(invite.email)
         if not user:
+            metadata = {
+                key: value
+                for key, value in {
+                    "full_name": invite.full_name,
+                    "phone_number": invite.phone_number,
+                }.items()
+                if value
+            }
+            options = {"data": metadata} if metadata else None
+            auth_response = await asyncio.to_thread(
+                get_supabase_client().auth.admin.invite_user_by_email, invite.email, options
+            )
+            if not auth_response.user:
+                raise RuntimeError("Supabase did not create the invited identity")
             user = await self.user_repo.create(
+                id=UUID(str(auth_response.user.id)),
                 email=invite.email,
-                full_name=invite.email.split("@")[0].capitalize(),
+                full_name=invite.full_name or invite.email.split("@")[0].capitalize(),
+                phone_number=invite.phone_number,
             )
 
         return await self.family_repo.add_member(

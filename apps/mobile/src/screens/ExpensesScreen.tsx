@@ -13,24 +13,20 @@ import {
   Linking,
 } from "react-native";
 import {
-  CreditCard,
   Receipt,
   Shield,
   Plus,
-  Calendar,
-  Building2,
   CheckCircle2,
-  Clock,
   Pill,
   Stethoscope,
   FlaskConical,
   X,
   Phone,
-  FileCheck,
   TrendingUp,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import * as Crypto from "expo-crypto";
 import { useApp } from "../context/AppContext";
 import { HealthcareExpense, InsurancePolicy } from "../types";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass } from "../theme";
@@ -108,7 +104,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     const newExp: HealthcareExpense = {
-      id: `exp_${Date.now()}`,
+      id: Crypto.randomUUID(),
       parent_id: activeParent.id,
       family_id: activeParent.family_id,
       title: expTitle.trim(),
@@ -138,7 +134,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     const newPolicy: InsurancePolicy = {
-      id: `ins_${Date.now()}`,
+      id: Crypto.randomUUID(),
       parent_id: activeParent.id,
       family_id: activeParent.family_id,
       provider: insProvider.trim(),
@@ -452,7 +448,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               <Text style={styles.inputLabel}>{isHindi ? "अस्पताल / दुकान का नाम" : "Provider / Pharmacy Name"}</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="e.g. Fortis Memorial / Apollo Pharmacy"
+                placeholder="Provider or pharmacy name"
                 value={expProvider}
                 onChangeText={setExpProvider}
               />

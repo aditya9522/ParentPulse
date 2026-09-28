@@ -1,5 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from "react";
 import * as Location from "expo-location";
+import * as Crypto from "expo-crypto";
+import * as Notifications from "expo-notifications";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
 import {
   ParentProfile,
   MedicalDocument,
@@ -14,9 +18,10 @@ import {
   InsurancePolicy,
   FamilyMemberItem,
   UserProfile,
-  UserRole,
 } from "../types";
 import { apiClient } from "../api/client";
+import { syncCareReminders } from "../services/reminders";
+import { drainMutationQueue, enqueueMutation } from "../services/mutationQueue";
 
 export type SupportedLanguage =
   | "en"
@@ -39,7 +44,7 @@ export type ActiveScreen =
   | "report"
   | "onboarding";
 
-export interface MockParentData {
+export interface ParentData {
   profile: ParentProfile;
   medicines: MedicineSchedule[];
   appointments: Appointment[];
@@ -52,665 +57,51 @@ export interface MockParentData {
   insurance: InsurancePolicy[];
 }
 
-// Initial realistic demo data matching FEATURES.md
-const INITIAL_FATHER_DATA: MockParentData = {
-  profile: {
-    id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-    family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    full_name: "Ramesh Sharma",
-    date_of_birth: "1954-08-15",
-    gender: "male",
-    blood_group: "B+",
-    preferred_language: "hi",
-    address: "Flat 402, Shanti Niketan Apartments, Sector 14, Gurugram, Haryana",
-    latitude: 28.4721,
-    longitude: 77.0428,
-    phone_number: "+91 98123 45678",
-    allergies: ["Penicillin", "Sulfa drugs"],
-    chronic_conditions: ["Type 2 Diabetes Mellitus", "Hypertension", "Mild Osteoarthritis"],
-    disabilities: [],
-    surgeries: [
-      { name: "Cataract Surgery (Right Eye)", date: "2023-04-12", notes: "Dr. Daljit Eye Clinic" },
-    ],
-    emergency_contacts: [
-      { name: "Priya Sharma", relationship: "Daughter (Bangalore)", phone_number: "+91 98765 43210", is_primary: true },
-      { name: "Sunita Sharma", relationship: "Wife (Gurugram)", phone_number: "+91 98123 45679", is_primary: false },
-      { name: "Rajesh Sharma", relationship: "Son (Toronto)", phone_number: "+1 416 555 0192", is_primary: false },
-    ],
-    primary_doctors: [
-      {
-        name: "Dr. Arun Verma",
-        specialty: "Cardiology",
-        hospital_or_clinic: "Fortis Memorial Research Institute",
-        phone_number: "+91 98223 34455",
-        address: "Sector 44, Gurugram",
-      },
-      {
-        name: "Dr. Meenakshi Sundaram",
-        specialty: "Endocrinologist",
-        hospital_or_clinic: "Max Super Speciality Hospital",
-        phone_number: "+91 98334 45566",
-      },
-    ],
-  },
-  medicines: [
-    {
-      id: "dddddddd-dddd-dddd-dddd-dddddddddd01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      name: "Telmisartan",
-      dosage: "40mg",
-      form: "tablet",
-      frequency_times_per_day: 1,
-      schedule_times: ["08:00 AM"],
-      instructions: "after_food",
-      prescribing_doctor: "Dr. Arun Verma",
-      reason: "Blood Pressure control",
-      start_date: "2024-01-01",
-      current_inventory: 24,
-      refill_alert_threshold: 7,
-      is_active: true,
-    },
-    {
-      id: "dddddddd-dddd-dddd-dddd-dddddddddd02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      name: "Metformin SR",
-      dosage: "500mg",
-      form: "tablet",
-      frequency_times_per_day: 2,
-      schedule_times: ["08:30 AM", "08:30 PM"],
-      instructions: "with_food",
-      prescribing_doctor: "Dr. Meenakshi Sundaram",
-      reason: "Type 2 Diabetes sugar regulation",
-      start_date: "2023-11-15",
-      current_inventory: 18,
-      refill_alert_threshold: 5,
-      is_active: true,
-    },
-    {
-      id: "med_03",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      name: "Glimepiride",
-      dosage: "1mg",
-      form: "tablet",
-      frequency_times_per_day: 1,
-      schedule_times: ["08:00 AM"],
-      instructions: "before_food",
-      prescribing_doctor: "Dr. Meenakshi Sundaram",
-      reason: "Diabetes fasting glucose control",
-      start_date: "2024-03-10",
-      current_inventory: 4, // Triggers refill alert!
-      refill_alert_threshold: 7,
-      is_active: true,
-    },
-  ],
-  appointments: [
-    {
-      id: "app_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      doctor_name: "Dr. Arun Verma",
-      specialty: "Cardiologist",
-      hospital_clinic_name: "Fortis Memorial Research Institute",
-      appointment_date: "2026-10-05T10:30:00Z",
-      status: "upcoming",
-      reason: "Quarterly Blood Pressure & ECG Review",
-      address: "Sector 44, Gurugram, Haryana",
-      latitude: 28.4595,
-      longitude: 77.0725,
-      notes: "Carry latest lipid profile and fasting glucose reports.",
-    },
-    {
-      id: "app_02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      doctor_name: "Dr. Meenakshi Sundaram",
-      specialty: "Endocrinologist",
-      hospital_clinic_name: "Max Super Speciality Hospital",
-      appointment_date: "2026-10-18T16:00:00Z",
-      status: "upcoming",
-      reason: "HbA1c quarterly diabetes review",
-      address: "B-Block, Sushant Lok 1, Gurugram",
-      latitude: 28.4682,
-      longitude: 77.0812,
-    },
-  ],
-  documents: [
-    {
-      id: "doc_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      title: "Prescription - Hypertension & Diabetes",
-      document_type: "prescription",
-      file_url: "https://example.com/prescription_verma.pdf",
-      document_date: "2026-09-15",
-      status: "extracted",
-      doctor_name: "Dr. Arun Verma",
-      hospital_name: "Fortis Memorial",
-      summary: "Prescribed Telmisartan 40mg once daily in morning. Blood pressure target < 130/80 mmHg. Review in 1 month.",
-      extracted_tags: ["Prescription", "Cardiology", "Telmisartan", "Verified"],
-      extracted_fields: { bp_target: "<130/80", next_visit: "2026-10-05" },
-    },
-    {
-      id: "doc_02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      title: "HbA1c & Lipid Panel Blood Test",
-      document_type: "lab_report",
-      file_url: "https://example.com/blood_test_sep2026.pdf",
-      document_date: "2026-09-12",
-      status: "extracted",
-      doctor_name: "Dr. Lal PathLabs",
-      hospital_name: "Diagnostic Center Sector 14",
-      summary: "HbA1c: 6.8% (Good control for age 72). Fasting Glucose: 118 mg/dL. Total Cholesterol: 182 mg/dL. LDL: 95 mg/dL.",
-      extracted_tags: ["Lab Report", "HbA1c", "Blood Sugar", "Lipid Profile"],
-      extracted_fields: { hba1c: "6.8%", fasting_sugar: "118 mg/dL", ldl: "95 mg/dL" },
-    },
-    {
-      id: "doc_03",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      title: "Chest X-Ray & ECG Report",
-      document_type: "radiology",
-      file_url: "https://example.com/ecg_aug2026.pdf",
-      document_date: "2026-08-20",
-      status: "extracted",
-      doctor_name: "Dr. P.K. Gupta",
-      hospital_name: "Fortis Memorial",
-      summary: "Sinus rhythm at 72 bpm. Normal axis, no acute ischemic ST-T changes. Lungs clear.",
-      extracted_tags: ["Radiology", "ECG", "Chest X-Ray", "Normal"],
-    },
-  ],
-  timeline: [
-    {
-      id: "time_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      title: "Quarterly Consultation with Dr. Arun Verma",
-      description: "Blood pressure recorded at 128/82 mmHg. Maintained Telmisartan 40mg. Advised 30 min morning walking.",
-      event_type: "doctor_visit",
-      event_date: "2026-09-15T11:00:00Z",
-      doctor_name: "Dr. Arun Verma",
-      facility_name: "Fortis Memorial",
-      document_id: "doc_01",
-    },
-    {
-      id: "time_02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      title: "Quarterly Comprehensive Blood Work",
-      description: "HbA1c stable at 6.8%. Fasting glucose 118 mg/dL. Kidney function (eGFR & Creatinine) normal.",
-      event_type: "lab_test",
-      event_date: "2026-09-12T08:30:00Z",
-      facility_name: "Dr. Lal PathLabs",
-      document_id: "doc_02",
-    },
-    {
-      id: "time_03",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      title: "Medicine Adjustment: Glimepiride Refill",
-      description: "Added 1mg Glimepiride before breakfast to control fasting morning spikes.",
-      event_type: "medicine_started",
-      event_date: "2026-03-10T09:00:00Z",
-      doctor_name: "Dr. Meenakshi Sundaram",
-    },
-    {
-      id: "time_04",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      title: "Cataract Surgery Follow-Up",
-      description: "Right eye lens implant healing perfectly. 20/25 vision achieved.",
-      event_type: "surgery",
-      event_date: "2023-04-20T10:00:00Z",
-      doctor_name: "Dr. Daljit Singh",
-      facility_name: "Dr. Daljit Eye Clinic",
-    },
-  ],
-  measurements: [
-    {
-      id: "vital_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      vital_type: "blood_pressure",
-      value_numeric: 126,
-      value_secondary: 80,
-      unit: "mmHg",
-      recorded_at: "Today, 08:15 AM",
-      notes: "Resting, after morning walk",
-    },
-    {
-      id: "vital_02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      vital_type: "blood_sugar",
-      value_numeric: 114,
-      unit: "mg/dL",
-      recorded_at: "Today, 07:30 AM",
-      notes: "Fasting",
-    },
-    {
-      id: "vital_03",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      vital_type: "heart_rate",
-      value_numeric: 74,
-      unit: "bpm",
-      recorded_at: "Today, 08:15 AM",
-    },
-    {
-      id: "vital_04",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      vital_type: "oxygen_saturation",
-      value_numeric: 98,
-      unit: "%",
-      recorded_at: "Yesterday, 08:00 PM",
-    },
-  ],
-  visits: [
-    {
-      id: "vis_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      place_name: "Fortis Memorial Research Institute",
-      category: "hospital",
-      address: "Sector 44, Gurugram",
-      latitude: 28.4595,
-      longitude: 77.0725,
-      visited_at: "2026-09-15 10:45 AM",
-      notes: "Consultation with Dr. Arun Verma",
-    },
-    {
-      id: "vis_02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      place_name: "Apollo Pharmacy 24/7",
-      category: "pharmacy",
-      address: "Sector 14 Market, Gurugram",
-      latitude: 28.4731,
-      longitude: 77.0435,
-      visited_at: "2026-09-15 12:30 PM",
-      notes: "Purchased monthly Telmisartan & Metformin",
-    },
-  ],
-  tasks: [
-    {
-      id: "task_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Order Glimepiride & Metformin refills",
-      description: "Inventory low (4 days left). Pick up from Apollo Pharmacy Sector 14.",
-      priority: "urgent",
-      status: "pending",
-      due_date: "Today, 5:00 PM",
-      assigned_to_name: "Manoj Kumar (Caregiver)",
-      created_at: "2026-09-27T08:00:00Z",
-    },
-    {
-      id: "task_02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Confirm Dr. Arun Verma cardiology follow-up",
-      description: "Consultation scheduled for Oct 5. Ensure recent ECG & Lipid panel are printed.",
-      priority: "high",
-      status: "pending",
-      due_date: "Oct 3, 2026",
-      assigned_to_name: "Priya Sharma (Daughter)",
-      created_at: "2026-09-26T10:00:00Z",
-    },
-    {
-      id: "task_03",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Morning Fasting Glucose check",
-      description: "Record reading in ParentPulse before breakfast.",
-      priority: "medium",
-      status: "completed",
-      due_date: "Today, 8:00 AM",
-      assigned_to_name: "Ramesh Sharma (Father)",
-      created_at: "2026-09-27T07:30:00Z",
-    },
-    {
-      id: "task_04",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Renew Star Health senior citizen policy",
-      description: "Review policy coverage and submit renewal before March 2027.",
-      priority: "low",
-      status: "pending",
-      due_date: "Mar 15, 2027",
-      assigned_to_name: "Rajesh Sharma (Son)",
-      created_at: "2026-09-20T12:00:00Z",
-    },
-  ],
-  expenses: [
-    {
-      id: "exp_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Dr. Arun Verma Consultation Fee",
-      category: "doctor",
-      amount: 1500,
-      currency: "INR",
-      expense_date: "2026-09-15",
-      provider_name: "Fortis Memorial Research Institute",
-      notes: "Quarterly review of blood pressure and Telmisartan dosage",
-      is_reimbursed: true,
-      created_at: "2026-09-15T11:30:00Z",
-    },
-    {
-      id: "exp_02",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Monthly Prescription Medicines",
-      category: "medicine",
-      amount: 3450,
-      currency: "INR",
-      expense_date: "2026-09-15",
-      provider_name: "Apollo Pharmacy Sector 14",
-      notes: "Telmisartan 40mg (60 tabs) & Metformin SR 500mg (60 tabs)",
-      is_reimbursed: false,
-      created_at: "2026-09-15T12:45:00Z",
-    },
-    {
-      id: "exp_03",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Comprehensive Lipid Profile & HbA1c",
-      category: "lab",
-      amount: 2200,
-      currency: "INR",
-      expense_date: "2026-09-12",
-      provider_name: "Dr. Lal PathLabs",
-      notes: "Home blood sample collection",
-      is_reimbursed: true,
-      created_at: "2026-09-12T09:00:00Z",
-    },
-  ],
-  insurance: [
-    {
-      id: "ins_01",
-      parent_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      provider: "Star Health Senior Citizens Red Carpet",
-      policy_number: "SH-SENIOR-98214-GUR",
-      plan_name: "Comprehensive Senior Health Guard",
-      coverage_amount: 1500000,
-      currency: "INR",
-      expiry_date: "2027-03-31",
-      tpa_cashless_helpline: "1800-425-2255",
-      notes: "Cashless pre-authorization available at Fortis and Max Hospitals",
-      created_at: "2026-01-01T10:00:00Z",
-    },
-  ],
+const EMPTY_PARENT_PROFILE: ParentProfile = {
+  id: "",
+  family_id: "",
+  full_name: "",
+  date_of_birth: "",
+  gender: "other",
+  blood_group: "",
+  preferred_language: "en",
+  address: "",
+  phone_number: "",
+  allergies: [],
+  chronic_conditions: [],
+  disabilities: [],
+  surgeries: [],
+  emergency_contacts: [],
+  primary_doctors: [],
 };
 
-const INITIAL_MOTHER_DATA: MockParentData = {
-  profile: {
-    id: "33333333-3333-3333-3333-333333333333",
-    family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    full_name: "Sunita Sharma",
-    date_of_birth: "1958-11-22",
-    gender: "female",
-    blood_group: "O+",
-    preferred_language: "hi",
-    address: "Flat 402, Shanti Niketan Apartments, Sector 14, Gurugram, Haryana",
-    latitude: 28.4721,
-    longitude: 77.0428,
-    phone_number: "+91 98123 45679",
-    allergies: ["Aspirin"],
-    chronic_conditions: ["Hypothyroidism", "Osteopenia"],
-    disabilities: [],
-    surgeries: [],
-    emergency_contacts: [
-      { name: "Priya Sharma", relationship: "Daughter", phone_number: "+91 98765 43210", is_primary: true },
-      { name: "Ramesh Sharma", relationship: "Husband", phone_number: "+91 98123 45678", is_primary: false },
-    ],
-    primary_doctors: [
-      {
-        name: "Dr. Ananya Ray",
-        specialty: "Endocrinologist",
-        hospital_or_clinic: "Artemis Hospital",
-        phone_number: "+91 98445 56677",
-      },
-    ],
-  },
-  medicines: [
-    {
-      id: "med_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      name: "Thyronorm",
-      dosage: "50mcg",
-      form: "tablet",
-      frequency_times_per_day: 1,
-      schedule_times: ["06:30 AM"],
-      instructions: "empty_stomach",
-      prescribing_doctor: "Dr. Ananya Ray",
-      reason: "Thyroid hormone supplement",
-      start_date: "2022-05-10",
-      current_inventory: 45,
-      refill_alert_threshold: 10,
-      is_active: true,
-    },
-    {
-      id: "med_m_02",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      name: "Shelcal 500",
-      dosage: "500mg",
-      form: "tablet",
-      frequency_times_per_day: 1,
-      schedule_times: ["01:30 PM"],
-      instructions: "after_food",
-      prescribing_doctor: "Dr. Ananya Ray",
-      reason: "Calcium & Vitamin D3 for bone density",
-      start_date: "2023-01-15",
-      current_inventory: 20,
-      refill_alert_threshold: 7,
-      is_active: true,
-    },
-  ],
-  appointments: [
-    {
-      id: "app_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      doctor_name: "Dr. Ananya Ray",
-      specialty: "Endocrinologist",
-      hospital_clinic_name: "Artemis Hospital",
-      appointment_date: "2026-10-22T11:00:00Z",
-      status: "upcoming",
-      reason: "Thyroid profile & DEXA scan review",
-      address: "Sector 51, Gurugram",
-    },
-  ],
-  documents: [
-    {
-      id: "doc_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      title: "Thyroid Profile (T3, T4, TSH)",
-      document_type: "lab_report",
-      file_url: "https://example.com/thyroid_aug2026.pdf",
-      document_date: "2026-08-15",
-      status: "extracted",
-      doctor_name: "Dr. Lal PathLabs",
-      hospital_name: "Sector 14 Lab",
-      summary: "TSH: 2.4 uIU/mL (Optimal range 0.4 - 4.0). Free T4 normal. Continue Thyronorm 50mcg daily.",
-      extracted_tags: ["Thyroid", "TSH Normal", "Endocrinology"],
-    },
-  ],
-  timeline: [
-    {
-      id: "time_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      title: "Thyroid Follow-Up with Dr. Ananya Ray",
-      description: "TSH test normal at 2.4. Continue current 50mcg dosage.",
-      event_type: "doctor_visit",
-      event_date: "2026-08-18T11:30:00Z",
-      doctor_name: "Dr. Ananya Ray",
-      facility_name: "Artemis Hospital",
-    },
-  ],
-  measurements: [
-    {
-      id: "vital_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      vital_type: "blood_pressure",
-      value_numeric: 118,
-      value_secondary: 76,
-      unit: "mmHg",
-      recorded_at: "Today, 09:00 AM",
-    },
-  ],
-  visits: [
-    {
-      id: "vis_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      place_name: "Artemis Hospital",
-      category: "hospital",
-      address: "Sector 51, Gurugram",
-      latitude: 28.4328,
-      longitude: 77.0697,
-      visited_at: "2026-08-18 11:15 AM",
-      notes: "Thyroid consultation",
-    },
-  ],
-  tasks: [
-    {
-      id: "task_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Collect Thyronorm 50mcg bottle",
-      description: "Pick up 3-month pack from pharmacy",
-      priority: "medium",
-      status: "completed",
-      due_date: "Yesterday",
-      assigned_to_name: "Priya Sharma",
-      created_at: "2026-09-25T10:00:00Z",
-    },
-    {
-      id: "task_m_02",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Schedule DEXA Bone Density Scan",
-      description: "Advised by Dr. Ananya Ray for osteopenia monitoring",
-      priority: "high",
-      status: "pending",
-      due_date: "Oct 15, 2026",
-      assigned_to_name: "Rajesh Sharma",
-      created_at: "2026-09-26T14:00:00Z",
-    },
-  ],
-  expenses: [
-    {
-      id: "exp_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      title: "Thyroid Consultation & Lab Work",
-      category: "doctor",
-      amount: 1800,
-      currency: "INR",
-      expense_date: "2026-08-18",
-      provider_name: "Artemis Hospital",
-      notes: "Dr. Ananya Ray follow up + TSH report",
-      is_reimbursed: true,
-      created_at: "2026-08-18T12:00:00Z",
-    },
-  ],
-  insurance: [
-    {
-      id: "ins_m_01",
-      parent_id: "33333333-3333-3333-3333-333333333333",
-      family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      provider: "Star Health Senior Citizens Red Carpet",
-      policy_number: "SH-SENIOR-98215-GUR",
-      plan_name: "Comprehensive Senior Health Guard",
-      coverage_amount: 1500000,
-      currency: "INR",
-      expiry_date: "2027-03-31",
-      tpa_cashless_helpline: "1800-425-2255",
-      notes: "Covers pre-existing thyroid & osteopenia after 12 months",
-      created_at: "2026-01-01T10:00:00Z",
-    },
-  ],
-};
+const emptyParentData = (profile: ParentProfile = EMPTY_PARENT_PROFILE): ParentData => ({
+  profile,
+  medicines: [],
+  appointments: [],
+  documents: [],
+  timeline: [],
+  measurements: [],
+  visits: [],
+  tasks: [],
+  expenses: [],
+  insurance: [],
+});
 
-const INITIAL_FAMILY_MEMBERS: FamilyMemberItem[] = [
-  {
-    id: "mem_01",
-    family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    user_id: "11111111-1111-1111-1111-111111111111",
-    name: "Priya Sharma",
-    relationship: "Daughter (Primary Remote Caregiver)",
-    role: "family_member",
-    email: "priya.sharma@example.com",
-    phone: "+91 98765 43210",
-    avatar_initials: "PS",
-    can_manage_medicines: true,
-    can_manage_appointments: true,
-    can_upload_documents: true,
-    can_share_doctor_brief: true,
-    can_view_location_history: true,
-  },
-  {
-    id: "mem_02",
-    family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    user_id: "22222222-2222-2222-2222-222222222222",
-    name: "Rajesh Sharma",
-    relationship: "Son (Remote - Toronto, Canada)",
-    role: "family_member",
-    email: "rajesh.sharma@example.com",
-    phone: "+1 416 555 0192",
-    avatar_initials: "RS",
-    can_manage_medicines: true,
-    can_manage_appointments: true,
-    can_upload_documents: true,
-    can_share_doctor_brief: true,
-    can_view_location_history: true,
-  },
-  {
-    id: "mem_03",
-    family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    user_id: "33333333-3333-3333-3333-333333333333",
-    name: "Sunita Sharma",
-    relationship: "Wife / Resident Caregiver",
-    role: "parent",
-    email: "sunita.sharma@example.com",
-    phone: "+91 98123 45679",
-    avatar_initials: "SS",
-    can_manage_medicines: true,
-    can_manage_appointments: true,
-    can_upload_documents: true,
-    can_share_doctor_brief: true,
-    can_view_location_history: true,
-  },
-  {
-    id: "mem_04",
-    family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    user_id: "44444444-4444-4444-4444-444444444444",
-    name: "Manoj Kumar",
-    relationship: "Local Family Caregiver (Sector 14)",
-    role: "caregiver",
-    email: "manoj.care@example.com",
-    phone: "+91 98111 22334",
-    avatar_initials: "MK",
-    can_manage_medicines: true,
-    can_manage_appointments: true,
-    can_upload_documents: false,
-    can_share_doctor_brief: false,
-    can_view_location_history: true,
-  },
-  {
-    id: "mem_05",
-    family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-    user_id: "55555555-5555-5555-5555-555555555555",
-    name: "Dr. Arun Verma",
-    relationship: "Consulting Cardiologist (Fortis)",
-    role: "doctor",
-    email: "dr.arun.verma@fortiscare.com",
-    phone: "+91 98223 34455",
-    avatar_initials: "AV",
-    can_manage_medicines: false,
-    can_manage_appointments: false,
-    can_upload_documents: true,
-    can_share_doctor_brief: true,
-    can_view_location_history: false,
-  },
-];
-
-const INITIAL_CURRENT_USER: UserProfile = {
-  id: "11111111-1111-1111-1111-111111111111",
-  email: "priya.sharma@example.com",
-  full_name: "Priya Sharma",
+const EMPTY_CURRENT_USER: UserProfile = {
+  id: "",
+  email: "",
+  full_name: "",
   role: "family_member",
-  phone_number: "+91 98765 43210",
   preferred_language: "en",
 };
 
 interface AppContextType {
+  runtimeReady: boolean;
+  isAuthenticated: boolean;
+  dataLoading: boolean;
+  dataError: string | null;
+  refreshData: () => Promise<void>;
   activeParent: ParentProfile;
   parentList: ParentProfile[];
   setActiveParentId: (id: string) => void;
@@ -762,12 +153,9 @@ interface AppContextType {
 
   // Family Coordination & Caregivers
   familyMembers: FamilyMemberItem[];
-  inviteFamilyMember: (member: FamilyMemberItem) => void;
-  updateFamilyMemberPermissions: (memberId: string, perms: Partial<FamilyMemberItem>) => void;
 
   // User Profile & Authentication
   currentUser: UserProfile;
-  setCurrentUserRole: (role: UserRole) => void;
 
   // Real-time Device Location & Geolocation
   userLocation: { latitude: number; longitude: number } | null;
@@ -797,31 +185,30 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const APP_STATE_KEY = "parentpulse.app-state.v2";
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeParentId, setActiveParentId] = useState<string>(INITIAL_FATHER_DATA.profile.id);
+  const [runtimeReady, setRuntimeReady] = useState(false);
+  const [authVersion, setAuthVersion] = useState(0);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [activeParentId, setActiveParentId] = useState<string>("");
   const [seniorMode, setSeniorMode] = useState<boolean>(false);
   const [language, setLanguage] = useState<SupportedLanguage>("en");
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("tabs");
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(true);
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(false);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   // Per-parent data cache
-  const [dataStore, setDataStore] = useState<Record<string, MockParentData>>({
-    [INITIAL_FATHER_DATA.profile.id]: INITIAL_FATHER_DATA,
-    [INITIAL_MOTHER_DATA.profile.id]: INITIAL_MOTHER_DATA,
-  });
+  const [dataStore, setDataStore] = useState<Record<string, ParentData>>({});
 
-  const [familyMembers, setFamilyMembers] = useState<FamilyMemberItem[]>(INITIAL_FAMILY_MEMBERS);
-  const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_CURRENT_USER);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberItem[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(EMPTY_CURRENT_USER);
 
-  const [dosesTakenToday, setDosesTakenToday] = useState<Record<string, boolean>>({
-    "dddddddd-dddd-dddd-dddd-dddddddddd01": true, // Telmisartan taken this morning
-  });
+  const [dosesTakenToday, setDosesTakenToday] = useState<Record<string, boolean>>({});
 
   // Real GPS Device Location
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>({
-    latitude: 28.4595,
-    longitude: 77.0725,
-  });
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
   // Modals state
   const [sosModalVisible, setSosModalVisible] = useState(false);
@@ -833,7 +220,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
-  const currentData = dataStore[activeParentId] || INITIAL_FATHER_DATA;
+  useEffect(() => {
+    const handleResponse = (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data;
+      if (data?.type !== "sos" || typeof data.sosEventId !== "string") return;
+      const acknowledgement = response.actionIdentifier === "responding" ? "responding" : "acknowledged";
+      void apiClient.acknowledgeSosEvent(data.sosEventId, acknowledgement);
+      if (acknowledgement === "responding") setSosModalVisible(true);
+    };
+    const initial = Notifications.getLastNotificationResponse();
+    if (initial) handleResponse(initial);
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    return () => subscription.remove();
+  }, []);
+
+  const currentData = dataStore[activeParentId] || emptyParentData();
+  const isAuthenticated = apiClient.isAuthenticated();
+
+  const flushPendingMutations = async () => {
+    if (!apiClient.isAuthenticated()) return;
+    await drainMutationQueue((operation) => apiClient.executeQueuedMutation(operation));
+  };
+
+  const syncMutation = async (
+    endpoint: string,
+    method: "POST" | "PATCH" | "DELETE",
+    body?: unknown,
+  ) => {
+    try {
+      await enqueueMutation({ endpoint, method, body });
+      await flushPendingMutations();
+    } catch {
+      // The durable queue is retried on the next connectivity or authentication change.
+    }
+  };
+
+  useEffect(() => NetInfo.addEventListener((state) => {
+    if (state.isConnected && state.isInternetReachable !== false) void flushPendingMutations();
+  }), [authVersion]);
+
+  useEffect(() => {
+    if (!runtimeReady) return;
+    void syncCareReminders(currentData.medicines, currentData.appointments);
+  }, [runtimeReady, activeParentId, currentData.medicines, currentData.appointments]);
+
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = apiClient.onAuthStateChange(() => setAuthVersion((value) => value + 1));
+    void (async () => {
+      const [storedState] = await Promise.all([
+        AsyncStorage.getItem(APP_STATE_KEY),
+        apiClient.restoreSession(),
+      ]);
+      if (!mounted) return;
+      if (storedState) {
+        try {
+          const parsed = JSON.parse(storedState);
+          if (parsed.activeParentId) setActiveParentId(parsed.activeParentId);
+          if (parsed.language) setLanguage(parsed.language);
+          if (typeof parsed.seniorMode === "boolean") setSeniorMode(parsed.seniorMode);
+        } catch {
+          await AsyncStorage.removeItem(APP_STATE_KEY);
+        }
+      }
+      setRuntimeReady(true);
+    })();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!runtimeReady) return;
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      void AsyncStorage.setItem(APP_STATE_KEY, JSON.stringify({
+        activeParentId,
+        language,
+        seniorMode,
+      }));
+    }, 250);
+    return () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+    };
+  }, [runtimeReady, activeParentId, language, seniorMode]);
 
   const refreshLocation = async () => {
     try {
@@ -870,55 +341,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Background fetch to hydrate from live backend API if server is running
-  useEffect(() => {
-    let isMounted = true;
-    refreshLocation();
-
-    async function hydrateRemoteData() {
-      try {
-        const [remoteMeds, remoteVitals, remoteTasks, remoteExpenses] = await Promise.allSettled([
-          apiClient.listMedicines(activeParentId),
-          apiClient.listMeasurements(activeParentId),
-          apiClient.listTasks(activeParentId),
-          apiClient.listExpenses(activeParentId),
-        ]);
-
-        if (!isMounted) return;
-
-        setDataStore((prev) => {
-          const current = prev[activeParentId];
-          if (!current) return prev;
-          const updated = { ...current };
-
-          if (remoteMeds.status === "fulfilled" && Array.isArray(remoteMeds.value) && remoteMeds.value.length > 0) {
-            updated.medicines = remoteMeds.value;
-          }
-          if (remoteVitals.status === "fulfilled" && Array.isArray(remoteVitals.value) && remoteVitals.value.length > 0) {
-            updated.measurements = remoteVitals.value;
-          }
-          if (remoteTasks.status === "fulfilled" && Array.isArray(remoteTasks.value) && remoteTasks.value.length > 0) {
-            updated.tasks = remoteTasks.value;
-          }
-          if (remoteExpenses.status === "fulfilled" && Array.isArray(remoteExpenses.value) && remoteExpenses.value.length > 0) {
-            updated.expenses = remoteExpenses.value;
-          }
-          return {
-            ...prev,
-            [activeParentId]: updated,
-          };
-        });
-      } catch (err) {
-        // Gracefully keep initial seeded demo state if offline
-        console.log("Using cached offline state:", err);
-      }
+  const refreshData = useCallback(async () => {
+    if (!apiClient.isAuthenticated()) {
+      setDataStore({});
+      setFamilyMembers([]);
+      setCurrentUser(EMPTY_CURRENT_USER);
+      setHasCompletedOnboarding(false);
+      setDataError(null);
+      return;
     }
+    setDataLoading(true);
+    setDataError(null);
+    try {
+      const [profile, families] = await Promise.all([apiClient.getCurrentUser(), apiClient.listFamilies()]);
+      const parents = (await Promise.all(families.map((family) => apiClient.listFamilyParents(family.id)))).flat();
+      const entries = await Promise.all(parents.map(async (parent) => {
+        const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance] = await Promise.all([
+          apiClient.listMedicines(parent.id),
+          apiClient.listAppointments(parent.id),
+          apiClient.listDocuments(parent.id),
+          apiClient.listTimeline(parent.id),
+          apiClient.listMeasurements(parent.id),
+          apiClient.listLocationVisits(parent.id),
+          apiClient.listTasks(parent.id),
+          apiClient.listExpenses(parent.id),
+          apiClient.listInsurance(parent.id),
+        ]);
+        return [parent.id, { profile: parent, medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance }] as const;
+      }));
+      const nextStore = Object.fromEntries(entries) as Record<string, ParentData>;
+      const members: FamilyMemberItem[] = families.flatMap((family) => (family.members || []).map((member: any) => ({
+        id: member.id,
+        family_id: member.family_id,
+        user_id: member.user_id,
+        name: member.user?.full_name || member.user?.email || "Family member",
+        relationship: member.relationship_name,
+        role: member.role,
+        email: member.user?.email || "",
+        phone: member.user?.phone_number,
+        avatar_initials: (member.user?.full_name || member.user?.email || "FM").split(/\s+/).map((part: string) => part[0]).join("").slice(0, 2).toUpperCase(),
+        can_manage_medicines: member.can_manage_medicines,
+        can_manage_appointments: member.can_manage_appointments,
+        can_upload_documents: member.can_upload_documents,
+        can_share_doctor_brief: member.can_share_doctor_brief,
+        can_view_location_history: member.can_view_location_history,
+      })));
+      setCurrentUser({ ...profile, role: members.find((member) => member.user_id === profile.id)?.role || "family_member" });
+      setFamilyMembers(members);
+      setDataStore(nextStore);
+      setActiveParentId((current) => nextStore[current] ? current : parents[0]?.id || "");
+      setHasCompletedOnboarding(parents.length > 0);
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : "Could not load your live care data.");
+    } finally {
+      setDataLoading(false);
+    }
+  }, []);
 
-    hydrateRemoteData();
-    return () => {
-      isMounted = false;
-    };
-  }, [activeParentId]);
+  useEffect(() => {
+    if (!runtimeReady) return;
+    const locationTimer = setTimeout(() => void refreshLocation(), 0);
+    const dataTimer = setTimeout(() => void refreshData(), 0);
+    return () => { clearTimeout(locationTimer); clearTimeout(dataTimer); };
+  }, [runtimeReady, authVersion, refreshData]);
 
   const toggleSeniorMode = () => setSeniorMode((prev) => !prev);
 
@@ -938,17 +423,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    apiClient.updateParentProfile(activeParentId, updated).catch((err) => {
-      console.warn("Could not sync parent profile update to server:", err);
-    });
+    void syncMutation(`/parents/${activeParentId}`, "PATCH", updated);
   };
 
   const markDoseTaken = (medicineId: string) => {
     setDosesTakenToday((prev) => {
       const willBeTaken = !prev[medicineId];
-      apiClient.recordDose(medicineId, willBeTaken ? "taken" : "missed").catch((err) => {
-        console.warn("Could not sync dose record to server:", err);
-      });
+      void syncMutation(`/medicines/${medicineId}/doses`, "POST", { status: willBeTaken ? "taken" : "missed" });
       return {
         ...prev,
         [medicineId]: willBeTaken,
@@ -957,13 +438,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addDocument = (doc: MedicalDocument) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        documents: [doc, ...prev[activeParentId].documents],
-      },
-    }));
+    setDataStore((prev) => {
+      const existing = prev[activeParentId].documents;
+      const documents = existing.some((item) => item.id === doc.id)
+        ? existing.map((item) => item.id === doc.id ? doc : item)
+        : [doc, ...existing];
+      return { ...prev, [activeParentId]: { ...prev[activeParentId], documents } };
+    });
   };
 
   const deleteDocument = (docId: string) => {
@@ -974,6 +455,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         documents: prev[activeParentId].documents.filter((d) => d.id !== docId),
       },
     }));
+    void syncMutation(`/documents/${docId}`, "DELETE");
   };
 
   const addAppointment = (app: Appointment) => {
@@ -984,6 +466,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         appointments: [app, ...prev[activeParentId].appointments],
       },
     }));
+    void syncMutation("/appointments", "POST", { ...app, family_id: currentData.profile.family_id });
   };
 
   const deleteAppointment = (appId: string) => {
@@ -994,6 +477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         appointments: prev[activeParentId].appointments.filter((a) => a.id !== appId),
       },
     }));
+    void syncMutation(`/appointments/${appId}`, "PATCH", { status: "cancelled" });
   };
 
   const addMedicine = (med: MedicineSchedule) => {
@@ -1004,6 +488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         medicines: [med, ...prev[activeParentId].medicines],
       },
     }));
+    void syncMutation("/medicines", "POST", { ...med, family_id: currentData.profile.family_id });
   };
 
   const deleteMedicine = (medId: string) => {
@@ -1014,6 +499,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         medicines: prev[activeParentId].medicines.filter((m) => m.id !== medId),
       },
     }));
+    void syncMutation(`/medicines/${medId}`, "PATCH", { is_active: false });
   };
 
   // Care Tasks Management
@@ -1026,9 +512,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    apiClient.createTask(task).catch((err) => {
-      console.warn("Could not sync task to server:", err);
-    });
+    void syncMutation("/tasks", "POST", task);
   };
 
   const toggleTaskCompleted = (taskId: string) => {
@@ -1037,9 +521,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedTasks = currentTasks.map((t) => {
         if (t.id === taskId) {
           const nextStatus = t.status === "completed" ? "pending" : "completed";
-          apiClient.updateTask(taskId, { status: nextStatus }).catch((err) => {
-            console.warn("Could not sync task status to server:", err);
-          });
+          void syncMutation(`/tasks/${taskId}`, "PATCH", { status: nextStatus });
           return { ...t, status: nextStatus as any };
         }
         return t;
@@ -1063,9 +545,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    apiClient.deleteTask(taskId).catch((err) => {
-      console.warn("Could not delete task on server:", err);
-    });
+    void syncMutation(`/tasks/${taskId}`, "DELETE");
   };
 
   // Expenses & Insurance Management
@@ -1078,9 +558,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    apiClient.createExpense(expense).catch((err) => {
-      console.warn("Could not sync expense to server:", err);
-    });
+    void syncMutation("/expenses", "POST", expense);
   };
 
   const addInsurance = (policy: InsurancePolicy) => {
@@ -1092,29 +570,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    apiClient.createInsurance(policy).catch((err) => {
-      console.warn("Could not sync insurance to server:", err);
-    });
+    void syncMutation("/expenses/insurance", "POST", policy);
   };
 
   // Family Members & Caregiver Management
-  const inviteFamilyMember = (member: FamilyMemberItem) => {
-    setFamilyMembers((prev) => [member, ...prev]);
-  };
-
-  const updateFamilyMemberPermissions = (memberId: string, perms: Partial<FamilyMemberItem>) => {
-    setFamilyMembers((prev) =>
-      prev.map((m) => (m.id === memberId ? { ...m, ...perms } : m))
-    );
-  };
-
-  const setCurrentUserRole = (role: UserRole) => {
-    setCurrentUser((prev) => ({ ...prev, role }));
-  };
-
   const logNewMeasurement = (vitalType: any, val: number, valSec?: number, notes?: string) => {
     const newMeasurement: HealthMeasurement = {
-      id: `vital_${Date.now()}`,
+      id: Crypto.randomUUID(),
       parent_id: activeParentId,
       vital_type: vitalType,
       value_numeric: val,
@@ -1131,29 +593,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    apiClient
-      .logMeasurement({
-        parent_id: activeParentId,
-        vital_type: vitalType,
-        value_numeric: val,
-        value_secondary: valSec,
-        unit: newMeasurement.unit,
-        notes,
-      })
-      .catch((err) => {
-        console.warn("Could not sync measurement to server:", err);
-      });
+    void syncMutation("/measurements", "POST", {
+      parent_id: activeParentId,
+      vital_type: vitalType,
+      value_numeric: val,
+      value_secondary: valSec,
+      unit: newMeasurement.unit,
+      notes,
+    });
   };
 
   const recordNewVisit = (placeName: string, category: any, address: string) => {
+    const coordinates = userLocation || (
+      currentData.profile.latitude != null && currentData.profile.longitude != null
+        ? { latitude: currentData.profile.latitude, longitude: currentData.profile.longitude }
+        : null
+    );
+    if (!coordinates) return;
     const newVisit: LocationVisit = {
-      id: `vis_${Date.now()}`,
+      id: Crypto.randomUUID(),
       parent_id: activeParentId,
       place_name: placeName,
       category,
       address,
-      latitude: userLocation?.latitude || 28.4595,
-      longitude: userLocation?.longitude || 77.0725,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
       visited_at: "Today, confirmed",
       notes: "Checked in via ParentPulse",
     };
@@ -1165,140 +629,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    apiClient
-      .recordLocationVisit(activeParentId, {
-        place_name: placeName,
-        category,
-        address,
-        latitude: userLocation?.latitude || 28.4595,
-        longitude: userLocation?.longitude || 77.0725,
-        notes: "Checked in via ParentPulse",
-      })
-      .catch((err) => {
-        console.warn("Could not sync location visit to server:", err);
-      });
+    void syncMutation(`/parents/${activeParentId}/locations/visits`, "POST", {
+      place_name: placeName,
+      category,
+      address,
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      notes: "Checked in via ParentPulse",
+    });
   };
 
   const registerNewParentAndFamily = async (
     familyName: string,
     parentData: any
   ): Promise<ParentProfile> => {
-    let createdFamilyId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
-    let newProfile: ParentProfile;
-
-    try {
-      // 1. Call Backend API to create Family
-      const familyRes = await apiClient.createFamily(familyName);
-      if (familyRes && familyRes.id) {
-        createdFamilyId = familyRes.id;
-      }
-    } catch (e) {
-      console.warn("Backend family creation fallback:", e);
-    }
-
-    try {
-      // 2. Call Backend API to create Parent Profile
-      const parentPayload = {
-        ...parentData,
-        family_id: createdFamilyId,
-      };
-      const parentRes = await apiClient.createParentProfile(parentPayload);
-      if (parentRes && parentRes.id) {
-        newProfile = parentRes;
-      } else {
-        throw new Error("No parent returned from API");
-      }
-    } catch (e) {
-      console.warn("Backend parent profile creation fallback:", e);
-      newProfile = {
-        id: `parent_${Date.now()}`,
-        family_id: createdFamilyId,
-        full_name: parentData.full_name,
-        date_of_birth: parentData.date_of_birth,
-        gender: parentData.gender,
-        blood_group: parentData.blood_group,
-        preferred_language: parentData.preferred_language || "en",
-        address: parentData.address,
-        phone_number: parentData.phone_number,
-        allergies: parentData.allergies || [],
-        chronic_conditions: parentData.chronic_conditions || [],
-        disabilities: parentData.disabilities || [],
-        surgeries: parentData.surgeries || [],
-        emergency_contacts: parentData.emergency_contacts || [],
-        primary_doctors: parentData.primary_doctors || [],
-        notes: parentData.notes,
-      };
-    }
-
-    const newEntry: MockParentData = {
-      profile: newProfile,
-      medicines: [
-        {
-          id: `med_${Date.now()}_1`,
-          parent_id: newProfile.id,
-          name: "Daily Multivitamin & Omega-3",
-          dosage: "1 capsule",
-          form: "capsule",
-          frequency_times_per_day: 1,
-          schedule_times: ["09:00 AM"],
-          instructions: "after_food",
-          prescribing_doctor: parentData.primary_doctors?.[0]?.name || "Family Physician",
-          reason: "Daily wellness & vitality",
-          start_date: new Date().toISOString().split("T")[0],
-          current_inventory: 30,
-          refill_alert_threshold: 7,
-          is_active: true,
-        },
-      ],
-      appointments: [],
-      documents: [],
-      timeline: [
-        {
-          id: `time_${Date.now()}`,
-          parent_id: newProfile.id,
-          title: "Care Circle Initialized",
-          description: `Family care coordinated for ${newProfile.full_name} (${familyName})`,
-          event_type: "diagnosis",
-          event_date: new Date().toISOString(),
-        },
-      ],
-      measurements: [
-        {
-          id: `meas_${Date.now()}`,
-          parent_id: newProfile.id,
-          vital_type: "blood_pressure",
-          value_numeric: 120,
-          value_secondary: 80,
-          unit: "mmHg",
-          recorded_at: "Just now",
-        },
-        {
-          id: `meas_${Date.now() + 1}`,
-          parent_id: newProfile.id,
-          vital_type: "blood_sugar",
-          value_numeric: 105,
-          unit: "mg/dL",
-          recorded_at: "Fasting",
-        },
-      ],
-      visits: [],
-      tasks: [
-        {
-          id: `task_${Date.now()}`,
-          parent_id: newProfile.id,
-          family_id: newProfile.family_id,
-          title: "Upload initial doctor prescription or test reports",
-          description: "Use camera scanner to digitize recent records",
-          priority: "high",
-          status: "pending",
-          due_date: "Tomorrow",
-          assigned_to_name: currentUser.full_name,
-          created_at: new Date().toISOString(),
-        },
-      ],
-      expenses: [],
-      insurance: [],
-    };
+    if (!apiClient.isAuthenticated()) throw new Error("Sign in before creating a care circle.");
+    const family = await apiClient.createFamily(familyName);
+    if (!family?.id) throw new Error("The server did not create the family.");
+    const newProfile = await apiClient.createParentProfile({ ...parentData, family_id: family.id });
+    const newEntry = emptyParentData(newProfile);
 
     setDataStore((prev) => ({
       ...prev,
@@ -1308,6 +657,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveParentId(newProfile.id);
     setHasCompletedOnboarding(true);
     setActiveScreen("tabs");
+    await refreshData();
 
     return newProfile;
   };
@@ -1315,6 +665,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        runtimeReady,
+        isAuthenticated,
+        dataLoading,
+        dataError,
+        refreshData,
         activeParent: currentData.profile,
         parentList: Object.values(dataStore).map((d) => d.profile),
         setActiveParentId,
@@ -1353,10 +708,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         insurance: currentData.insurance,
         addInsurance,
         familyMembers,
-        inviteFamilyMember,
-        updateFamilyMemberPermissions,
         currentUser,
-        setCurrentUserRole,
         logNewMeasurement,
         recordNewVisit,
         sosModalVisible,

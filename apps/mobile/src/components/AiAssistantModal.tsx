@@ -15,24 +15,22 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import * as Crypto from "expo-crypto";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import {
   Sparkles,
   Send,
   Bot,
-  User,
   FileCheck2,
   ShieldCheck,
   X,
   Lightbulb,
-  CornerDownLeft,
   Mic,
-  MicOff,
   Radio,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, Gradients } from "../theme";
+import { Colors, Spacing, Shadows } from "../theme";
 import { apiClient } from "../api/client";
 
 interface Message {
@@ -61,7 +59,7 @@ export const AiAssistantModal: React.FC = () => {
       id: "m_0",
       sender: "ai",
       text: isHindi
-        ? `नमस्ते! मैं पैरेंटपल्स AI सहायक हूँ। मैं ${activeParent.full_name} के मेडिकल रिकॉर्ड, दवाओं और जांच रिपोर्टों पर आधारित प्रश्नों के उत्तर दे सकता हूँ।`
+        ? `à¤¨à¤®à¤¸à¥à¤¤à¥‡! à¤®à¥ˆà¤‚ à¤ªà¥ˆà¤°à¥‡à¤‚à¤Ÿà¤ªà¤²à¥à¤¸ AI à¤¸à¤¹à¤¾à¤¯à¤• à¤¹à¥‚à¤à¥¤ à¤®à¥ˆà¤‚ ${activeParent.full_name} à¤•à¥‡ à¤®à¥‡à¤¡à¤¿à¤•à¤² à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡, à¤¦à¤µà¤¾à¤“à¤‚ à¤”à¤° à¤œà¤¾à¤‚à¤š à¤°à¤¿à¤ªà¥‹à¤°à¥à¤Ÿà¥‹à¤‚ à¤ªà¤° à¤†à¤§à¤¾à¤°à¤¿à¤¤ à¤ªà¥à¤°à¤¶à¥à¤¨à¥‹à¤‚ à¤•à¥‡ à¤‰à¤¤à¥à¤¤à¤° à¤¦à¥‡ à¤¸à¤•à¤¤à¤¾ à¤¹à¥‚à¤à¥¤`
         : `Hello! I am ParentPulse AI. I can answer questions grounded in ${activeParent.full_name}'s medical records, medicines, and consultation history.`,
     },
   ]);
@@ -86,16 +84,16 @@ export const AiAssistantModal: React.FC = () => {
     setIsRecording(false);
 
     const spokenQuery = isHindi
-      ? `${activeParent.full_name.split(" ")[0]} की सुबह की दवाएं कौन सी हैं?`
+      ? `${activeParent.full_name.split(" ")[0]} à¤•à¥€ à¤¸à¥à¤¬à¤¹ à¤•à¥€ à¤¦à¤µà¤¾à¤à¤‚ à¤•à¥Œà¤¨ à¤¸à¥€ à¤¹à¥ˆà¤‚?`
       : `What medicines does ${activeParent.full_name.split(" ")[0]} take in morning?`;
     handleSend(spokenQuery);
   };
 
   const quickQuestions = isHindi
     ? [
-        `${activeParent.full_name.split(" ")[0]} सुबह कौन सी दवाएं लेते हैं?`,
-        `नवीनतम ब्लड शुगर टेस्ट परिणाम दिखाएं।`,
-        `अगला डॉक्टर परामर्श कब है?`,
+        `${activeParent.full_name.split(" ")[0]} à¤¸à¥à¤¬à¤¹ à¤•à¥Œà¤¨ à¤¸à¥€ à¤¦à¤µà¤¾à¤à¤‚ à¤²à¥‡à¤¤à¥‡ à¤¹à¥ˆà¤‚?`,
+        `à¤¨à¤µà¥€à¤¨à¤¤à¤® à¤¬à¥à¤²à¤¡ à¤¶à¥à¤—à¤° à¤Ÿà¥‡à¤¸à¥à¤Ÿ à¤ªà¤°à¤¿à¤£à¤¾à¤® à¤¦à¤¿à¤–à¤¾à¤à¤‚à¥¤`,
+        `à¤…à¤—à¤²à¤¾ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤ªà¤°à¤¾à¤®à¤°à¥à¤¶ à¤•à¤¬ à¤¹à¥ˆ?`,
       ]
     : [
         `What medicines does ${activeParent.full_name.split(" ")[0]} take in morning?`,
@@ -108,7 +106,7 @@ export const AiAssistantModal: React.FC = () => {
     if (!q.trim()) return;
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const userMsg: Message = { id: `msg_${Date.now()}`, sender: "user", text: q };
+    const userMsg: Message = { id: Crypto.randomUUID(), sender: "user", text: q };
     setMessages((prev) => [...prev, userMsg]);
     setInputQuery("");
     setLoading(true);
@@ -116,52 +114,21 @@ export const AiAssistantModal: React.FC = () => {
     try {
       const res = await apiClient.askAiAssistant(activeParent.id, q);
       const aiMsg: Message = {
-        id: `ai_${Date.now()}`,
+        id: Crypto.randomUUID(),
         sender: "ai",
         text: res.answer,
         citations: res.citations?.map((c) => c.title),
       };
       setMessages((prev) => [...prev, aiMsg]);
-    } catch {
-      // Deterministic realistic demo answer grounded in current parent records
-      let answer = "";
-      if (q.toLowerCase().includes("medicine") || q.includes("दवा")) {
-        answer = isHindi
-          ? `${activeParent.full_name.split(" ")[0]} रक्तचाप के लिए नाश्ते के बाद टेल्मिसार्टन 40mg और भोजन के साथ मेटफ़ॉर्मिन SR 500mg लेते हैं।`
-          : `${activeParent.full_name.split(" ")[0]} takes Telmisartan 40mg after breakfast for blood pressure, and Metformin SR 500mg with meals for diabetes control.`;
-      } else if (
-        q.toLowerCase().includes("blood") ||
-        q.toLowerCase().includes("sugar") ||
-        q.includes("शुगर") ||
-        q.includes("ब्लड")
-      ) {
-        answer = isHindi
-          ? `डॉ. लाल पैथलैब्स की 12 सितंबर 2026 की नवीनतम रिपोर्ट के अनुसार, HbA1c 6.8% (नियंत्रित) और फास्टिंग ब्लड ग्लूकोज 118 mg/dL था।`
-          : `According to the latest lab report on Sep 12, 2026 from Dr. Lal PathLabs, HbA1c is 6.8% (well controlled) and fasting blood glucose was 118 mg/dL.`;
-      } else if (
-        q.toLowerCase().includes("appointment") ||
-        q.toLowerCase().includes("doctor") ||
-        q.includes("परामर्श")
-      ) {
-        answer = isHindi
-          ? `अगला परामर्श डॉ. अरुण वर्मा (कार्डियोलॉजी) के साथ 05 अक्टूबर 2026 को सुबह 10:30 बजे फोर्टिस अस्पताल में निर्धारित है।`
-          : `Next upcoming appointment is with Dr. Arun Verma (Cardiology) on Oct 05, 2026 at 10:30 AM at Fortis Memorial Research Institute for blood pressure review.`;
-      } else {
-        answer = isHindi
-          ? `${activeParent.full_name} के सभी मेडिकल रिकॉर्ड व्यवस्थित हैं। पुरानी बीमारियां: ${activeParent.chronic_conditions.join(", ")}।`
-          : `Based on stored health records for ${activeParent.full_name}, everything is documented up to date. Verified conditions: ${activeParent.chronic_conditions.join(", ")}.`;
-      }
-
+    } catch (error) {
       setMessages((prev) => [
         ...prev,
         {
-          id: `ai_${Date.now()}`,
+          id: Crypto.randomUUID(),
           sender: "ai",
-          text: answer,
-          citations: [
-            isHindi ? "ब्लड टेस्ट रिपोर्ट - सितंबर 2026" : "Blood Test Report - Sep 2026",
-            isHindi ? "फोर्टिस प्रिस्क्रिप्शन" : "Fortis Prescription",
-          ],
+          text: error instanceof Error
+            ? `I could not access the live health service: ${error.message}`
+            : "I could not access the live health service. Please try again.",
         },
       ]);
     } finally {
@@ -214,11 +181,11 @@ export const AiAssistantModal: React.FC = () => {
             </View>
             <View>
               <Text style={styles.headerTitle}>
-                {isHindi ? "पैरेंटपल्स AI सहायक" : "ParentPulse AI Assistant"}
+                {isHindi ? "à¤ªà¥ˆà¤°à¥‡à¤‚à¤Ÿà¤ªà¤²à¥à¤¸ AI à¤¸à¤¹à¤¾à¤¯à¤•" : "ParentPulse AI Assistant"}
               </Text>
               <Text style={styles.headerSub}>
                 {isHindi
-                  ? `${activeParent.full_name} के रिकॉर्ड्स पर आधारित`
+                  ? `${activeParent.full_name} à¤•à¥‡ à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡à¥à¤¸ à¤ªà¤° à¤†à¤§à¤¾à¤°à¤¿à¤¤`
                   : `Grounded in ${activeParent.full_name}'s Records`}
               </Text>
             </View>
@@ -241,7 +208,7 @@ export const AiAssistantModal: React.FC = () => {
           <ShieldCheck size={14} color="#1E40AF" style={{ marginTop: 1 }} />
           <Text style={styles.disclaimerText}>
             {isHindi
-              ? "पैरेंटपल्स AI केवल पारिवारिक स्वास्थ्य रिकॉर्ड का सारांश प्रस्तुत करता है। यह चिकित्सीय सलाह या दवा का विकल्प नहीं है।"
+              ? "à¤ªà¥ˆà¤°à¥‡à¤‚à¤Ÿà¤ªà¤²à¥à¤¸ AI à¤•à¥‡à¤µà¤² à¤ªà¤¾à¤°à¤¿à¤µà¤¾à¤°à¤¿à¤• à¤¸à¥à¤µà¤¾à¤¸à¥à¤¥à¥à¤¯ à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡ à¤•à¤¾ à¤¸à¤¾à¤°à¤¾à¤‚à¤¶ à¤ªà¥à¤°à¤¸à¥à¤¤à¥à¤¤ à¤•à¤°à¤¤à¤¾ à¤¹à¥ˆà¥¤ à¤¯à¤¹ à¤šà¤¿à¤•à¤¿à¤¤à¥à¤¸à¥€à¤¯ à¤¸à¤²à¤¾à¤¹ à¤¯à¤¾ à¤¦à¤µà¤¾ à¤•à¤¾ à¤µà¤¿à¤•à¤²à¥à¤ª à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤"
               : "ParentPulse AI summarizes verified family medical records. It does not replace professional clinical diagnosis or prescribe treatment."}
           </Text>
         </View>
@@ -286,7 +253,7 @@ export const AiAssistantModal: React.FC = () => {
                 {m.citations && m.citations.length > 0 && (
                   <View style={styles.citationBox}>
                     <Text style={styles.citationLabel}>
-                      {isHindi ? "सत्यापित स्रोत:" : "Grounded Medical Sources:"}
+                      {isHindi ? "à¤¸à¤¤à¥à¤¯à¤¾à¤ªà¤¿à¤¤ à¤¸à¥à¤°à¥‹à¤¤:" : "Grounded Medical Sources:"}
                     </Text>
                     <View style={styles.citationList}>
                       {m.citations.map((c, idx) => (
@@ -306,7 +273,7 @@ export const AiAssistantModal: React.FC = () => {
               <ActivityIndicator color="#7C3AED" size="small" />
               <Text style={styles.loadingText}>
                 {isHindi
-                  ? "सत्यापित मेडिकल रिकॉर्ड्स का विश्लेषण किया जा रहा है..."
+                  ? "à¤¸à¤¤à¥à¤¯à¤¾à¤ªà¤¿à¤¤ à¤®à¥‡à¤¡à¤¿à¤•à¤² à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡à¥à¤¸ à¤•à¤¾ à¤µà¤¿à¤¶à¥à¤²à¥‡à¤·à¤£ à¤•à¤¿à¤¯à¤¾ à¤œà¤¾ à¤°à¤¹à¤¾ à¤¹à¥ˆ..."
                   : "Retrieving verified records via Gemini..."}
               </Text>
             </View>
@@ -318,7 +285,7 @@ export const AiAssistantModal: React.FC = () => {
           <View style={styles.quickPromptHeader}>
             <Lightbulb size={13} color="#7C3AED" />
             <Text style={styles.quickPromptTitle}>
-              {isHindi ? "सुझाए गए प्रश्न" : "Suggested Prompts"}
+              {isHindi ? "à¤¸à¥à¤à¤¾à¤ à¤—à¤ à¤ªà¥à¤°à¤¶à¥à¤¨" : "Suggested Prompts"}
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -329,7 +296,7 @@ export const AiAssistantModal: React.FC = () => {
                 onPress={() => handleSend(q)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.promptText}>"{q}"</Text>
+                <Text style={styles.promptText}>â€œ{q}â€</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -340,7 +307,7 @@ export const AiAssistantModal: React.FC = () => {
           <View style={styles.listeningBanner}>
             <View style={styles.recordingPulseDot} />
             <Text style={styles.listeningText}>
-              {isHindi ? "सुन रहा हूँ... बोलने के बाद माइक दोबारा दबाएं" : "Listening to question... Tap mic when finished"}
+              {isHindi ? "à¤¸à¥à¤¨ à¤°à¤¹à¤¾ à¤¹à¥‚à¤... à¤¬à¥‹à¤²à¤¨à¥‡ à¤•à¥‡ à¤¬à¤¾à¤¦ à¤®à¤¾à¤‡à¤• à¤¦à¥‹à¤¬à¤¾à¤°à¤¾ à¤¦à¤¬à¤¾à¤à¤‚" : "Listening to question... Tap mic when finished"}
             </Text>
           </View>
         )}
@@ -348,6 +315,7 @@ export const AiAssistantModal: React.FC = () => {
         {/* Input Bar with Mic and Send Buttons */}
         <View style={styles.inputBar}>
           {/* Real Microphone Voice Button */}
+          {false && (
           <TouchableOpacity
             style={[styles.micBtn, isRecording && styles.micBtnActive]}
             onPress={isRecording ? stopVoiceRecording : startVoiceRecording}
@@ -359,15 +327,16 @@ export const AiAssistantModal: React.FC = () => {
               <Mic size={18} color={Colors.primaryDark} />
             )}
           </TouchableOpacity>
+          )}
 
           <TextInput
             style={[styles.input, seniorMode && styles.seniorInput]}
             placeholder={
               isRecording
-                ? (isHindi ? "बोलिए..." : "Listening...")
+                ? (isHindi ? "à¤¬à¥‹à¤²à¤¿à¤..." : "Listening...")
                 : (isHindi
-                    ? `${activeParent.full_name.split(" ")[0]} के बारे में पूछें या बोलें...`
-                    : `Ask about ${activeParent.full_name.split(" ")[0]} or tap mic...`)
+                    ? `${activeParent.full_name.split(" ")[0]} à¤•à¥‡ à¤¬à¤¾à¤°à¥‡ à¤®à¥‡à¤‚ à¤ªà¥‚à¤›à¥‡à¤‚ à¤¯à¤¾ à¤¬à¥‹à¤²à¥‡à¤‚...`
+                    : `Ask about ${activeParent.full_name.split(" ")[0]}'s records...`)
             }
             placeholderTextColor={isRecording ? "#EF4444" : Colors.textMuted}
             value={inputQuery}

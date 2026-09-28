@@ -12,21 +12,20 @@ import {
 } from "react-native";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 import * as Haptics from "expo-haptics";
+import * as Crypto from "expo-crypto";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   Calendar,
   Clock,
-  MapPin,
   Building2,
   User,
   CheckCircle2,
   X,
-  Stethoscope,
   BellRing,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
 import { Appointment } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
 
 interface AddAppointmentModalProps {
   visible: boolean;
@@ -39,10 +38,10 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
   const isHindi = language === "hi";
 
   const [doctorName, setDoctorName] = useState("");
-  const [specialty, setSpecialty] = useState("Cardiologist");
+  const [specialty, setSpecialty] = useState("");
   const [hospitalName, setHospitalName] = useState("");
-  const [dateStr, setDateStr] = useState("2026-10-15");
-  const [timeStr, setTimeStr] = useState("11:30 AM");
+  const [dateStr, setDateStr] = useState("");
+  const [timeStr, setTimeStr] = useState("");
   const [reason, setReason] = useState("");
   const [address, setAddress] = useState("");
 
@@ -55,31 +54,53 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
   };
 
   const handleSave = () => {
-    if (!doctorName.trim() || !hospitalName.trim()) {
+    const timeMatch = timeStr.trim().match(/^(0?[1-9]|1[0-2]):([0-5]\d)\s*(AM|PM)$/i);
+    const dateParts = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!doctorName.trim() || !specialty.trim() || !hospitalName.trim() || !dateParts || !timeMatch) {
       Alert.alert(
         isHindi ? "जानकारी भरें" : "Missing Information",
         isHindi
           ? "कृपया डॉक्टर का नाम और अस्पताल/क्लिनिक का नाम दर्ज करें।"
-          : "Please enter the doctor's name and hospital/clinic name."
+          : "Enter the doctor, specialty, clinic, date (YYYY-MM-DD), and time (HH:MM AM/PM)."
       );
+      return;
+    }
+
+    const [, yearText, monthText, dayText] = dateParts;
+    const [, hourText, minuteText, meridiem] = timeMatch;
+    let hour = Number(hourText) % 12;
+    if (meridiem.toUpperCase() === "PM") hour += 12;
+    const appointmentAt = new Date(
+      Number(yearText),
+      Number(monthText) - 1,
+      Number(dayText),
+      hour,
+      Number(minuteText),
+    );
+    if (
+      appointmentAt.getFullYear() !== Number(yearText) ||
+      appointmentAt.getMonth() !== Number(monthText) - 1 ||
+      appointmentAt.getDate() !== Number(dayText) ||
+      appointmentAt <= new Date()
+    ) {
+      Alert.alert("Invalid appointment", "Choose a valid future date and time.");
       return;
     }
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
 
     const newAppt: Appointment = {
-      id: `app_${Date.now()}`,
+      id: Crypto.randomUUID(),
       parent_id: activeParent.id,
       doctor_name: doctorName.startsWith("Dr.") ? doctorName : `Dr. ${doctorName}`,
-      specialty: specialty || "Consultant Physician",
-      hospital_clinic_name: hospitalName,
-      appointment_date: `${dateStr}T10:00:00Z`,
+      specialty: specialty.trim(),
+      hospital_clinic_name: hospitalName.trim(),
+      appointment_date: appointmentAt.toISOString(),
       status: "upcoming",
-      reason: reason || (isHindi ? "नियमित जांच" : "Routine Consultation"),
-      address: address || "Hospital OPD Wing",
-      latitude: activeParent.latitude || 28.4595,
-      longitude: activeParent.longitude || 77.0725,
-      notes: `Scheduled at ${timeStr}. Caregiver alert configured.`,
+      reason: reason || undefined,
+      address: address || undefined,
+      latitude: activeParent.latitude,
+      longitude: activeParent.longitude,
     };
 
     addAppointment(newAppt);
@@ -94,7 +115,10 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
 
     // Reset fields
     setDoctorName("");
+    setSpecialty("");
     setHospitalName("");
+    setDateStr("");
+    setTimeStr("");
     setReason("");
     setAddress("");
   };
@@ -145,7 +169,7 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
                 <User size={16} color={Colors.textMuted} />
                 <TextInput
                   style={[styles.textInput, seniorMode && styles.seniorTextInput]}
-                  placeholder={isHindi ? "उदा. डॉ. अरुण वर्मा" : "e.g. Dr. Arun Verma"}
+                  placeholder={isHindi ? "डॉक्टर का नाम" : "Doctor's full name"}
                   placeholderTextColor={Colors.textMuted}
                   value={doctorName}
                   onChangeText={setDoctorName}
@@ -199,7 +223,7 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
                     style={styles.textInput}
                     value={dateStr}
                     onChangeText={setDateStr}
-                    placeholder="2026-10-15"
+                    placeholder="YYYY-MM-DD"
                     placeholderTextColor={Colors.textMuted}
                   />
                 </View>

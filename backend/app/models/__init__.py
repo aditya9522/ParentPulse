@@ -16,6 +16,9 @@ from app.models.share import Share
 from app.models.notification import Notification
 from app.models.task import Task
 from app.models.audit_log import AuditLog
+from app.models.push_device import PushDevice
+from app.models.sos_event import SosAcknowledgement, SosEvent
+from app.models.expense import HealthcareExpense, InsurancePolicy
 
 __all__ = [
     "User",
@@ -36,4 +39,9 @@ __all__ = [
     "Notification",
     "Task",
     "AuditLog",
+    "PushDevice",
+    "SosEvent",
+    "SosAcknowledgement",
+    "HealthcareExpense",
+    "InsurancePolicy",
 ]

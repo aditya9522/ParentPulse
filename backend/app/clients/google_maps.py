@@ -1,9 +1,12 @@
 # backend/app/clients/google_maps.py
-from typing import Any, List, Optional
+from typing import Any
+
 import httpx
+
 from app.core.config import get_settings
+from app.core.exceptions import ProviderError
 from app.core.logging import logger
-from app.schemas.map import PlaceSummary, PlaceCategory
+from app.schemas.map import PlaceCategory, PlaceSummary
 
 
 class GoogleMapsClient:
@@ -16,10 +19,9 @@ class GoogleMapsClient:
         longitude: float,
         category: PlaceCategory,
         radius_meters: int = 5000,
-    ) -> List[PlaceSummary]:
+    ) -> list[PlaceSummary]:
         api_key = self.settings.google_maps_api_key.get_secret_value()
 
-        # If a valid Google Maps API Key is provided, call Google Places API
         if api_key and not api_key.startswith("mock") and not api_key.startswith("your-"):
             try:
                 url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
@@ -50,15 +52,13 @@ class GoogleMapsClient:
                                     is_open_now=item.get("opening_hours", {}).get("open_now"),
                                 )
                             )
-                        if results:
-                            return results
+                        return results
                     else:
                         logger.warning(f"Google Maps Places status: {status}, error: {data.get('error_message')}")
-            except Exception as e:
-                logger.error(f"Error querying Google Maps API: {e}")
-
-        # Fallback to verified healthcare services
-        return self._mock_places(latitude, longitude, category)
+            except Exception as exc:
+                logger.error(f"Error querying Google Maps API: {exc}")
+                raise ProviderError("Google Maps", "Nearby healthcare search is temporarily unavailable.") from exc
+        raise ProviderError("Google Maps", "Nearby healthcare search is not configured.")
 
     async def calculate_distance(
         self,
@@ -92,23 +92,30 @@ class GoogleMapsClient:
                                     "duration_seconds": elem.get("duration", {}).get("value", 0),
                                     "duration_text": elem.get("duration", {}).get("text", "Unknown"),
                                 }
-            except Exception as e:
-                logger.error(f"Google Maps Distance Matrix error: {e}")
+            except Exception as exc:
+                logger.error(f"Google Maps Distance Matrix error: {exc}")
+                raise ProviderError("Google Maps", "Route calculation is temporarily unavailable.") from exc
+        raise ProviderError("Google Maps", "Route calculation is not configured.")
 
-        # Calculated realistic fallback
-        import math
-        dlat = math.radians(dest_lat - origin_lat)
-        dlng = math.radians(dest_lng - origin_lng)
-        a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(origin_lat)) * math.cos(math.radians(dest_lat)) * math.sin(dlng / 2) ** 2
-        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-        dist_km = round(max(0.2, 6371 * c), 1)
-        mins = max(2, int(dist_km * 3.5))
-        return {
-            "distance_meters": int(dist_km * 1000),
-            "distance_text": f"{dist_km} km",
-            "duration_seconds": mins * 60,
-            "duration_text": f"{mins} mins",
-        }
+    async def geocode(self, address: str) -> dict[str, Any]:
+        api_key = self.settings.google_maps_api_key.get_secret_value()
+        if not api_key or api_key.startswith(("mock", "your-")):
+            raise ProviderError("Google Maps", "Address search is not configured.")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get("https://maps.googleapis.com/maps/api/geocode/json", params={"address": address, "key": api_key})
+                response.raise_for_status()
+                data = response.json()
+            if data.get("status") != "OK" or not data.get("results"):
+                raise ProviderError("Google Maps", "No matching address was found.")
+            result = data["results"][0]
+            location = result["geometry"]["location"]
+            return {"formatted_address": result["formatted_address"], "latitude": location["lat"], "longitude": location["lng"], "place_id": result["place_id"]}
+        except ProviderError:
+            raise
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            logger.error(f"Google Maps geocoding error: {exc}")
+            raise ProviderError("Google Maps", "Address search is temporarily unavailable.") from exc
 
     def _map_category_to_google_type(self, category: PlaceCategory) -> str:
         mapping = {
@@ -121,68 +128,6 @@ class GoogleMapsClient:
         }
         return mapping.get(category, "health")
 
-    def _mock_places(self, lat: float, lng: float, category: PlaceCategory) -> List[PlaceSummary]:
-        if category == PlaceCategory.HOSPITAL:
-            return [
-                PlaceSummary(
-                    place_id="place_hosp_01",
-                    name="Fortis Memorial Research Institute",
-                    category=category,
-                    address="Sector 44, Gurugram, Haryana",
-                    latitude=lat + 0.005,
-                    longitude=lng + 0.003,
-                    rating=4.5,
-                    user_ratings_total=3200,
-                    is_open_now=True,
-                    distance_meters=1800,
-                    duration_minutes=7,
-                ),
-                PlaceSummary(
-                    place_id="place_hosp_02",
-                    name="Max Super Speciality Hospital",
-                    category=category,
-                    address="B-Block, Sushant Lok 1, Gurugram",
-                    latitude=lat - 0.008,
-                    longitude=lng + 0.006,
-                    rating=4.3,
-                    user_ratings_total=2150,
-                    is_open_now=True,
-                    distance_meters=3200,
-                    duration_minutes=12,
-                ),
-            ]
-        elif category == PlaceCategory.PHARMACY:
-            return [
-                PlaceSummary(
-                    place_id="place_pharm_01",
-                    name="Apollo Pharmacy 24/7",
-                    category=category,
-                    address="Main Market, Sector 14, Gurugram",
-                    latitude=lat + 0.001,
-                    longitude=lng - 0.002,
-                    rating=4.6,
-                    user_ratings_total=430,
-                    is_open_now=True,
-                    distance_meters=450,
-                    duration_minutes=2,
-                )
-            ]
-        else:
-            return [
-                PlaceSummary(
-                    place_id="place_diag_01",
-                    name="Dr. Lal PathLabs & Diagnostics",
-                    category=category,
-                    address="Commercial Complex, Sector 14, Gurugram",
-                    latitude=lat + 0.002,
-                    longitude=lng + 0.001,
-                    rating=4.4,
-                    user_ratings_total=580,
-                    is_open_now=True,
-                    distance_meters=700,
-                    duration_minutes=4,
-                )
-            ]
 
 
 google_maps_client = GoogleMapsClient()

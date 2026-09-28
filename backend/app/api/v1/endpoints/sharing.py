@@ -1,15 +1,16 @@
 # backend/app/api/v1/endpoints/sharing.py
-from uuid import UUID
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.dependencies import get_current_user, get_db, get_parent_access_context
-from app.models.user import User
-from app.schemas.sharing import DoctorShareCreate, DoctorShareResponse, DoctorBriefResponse
-from app.schemas.common import ApiResponse
-from app.helpers.response_builder import build_response
-from app.services.sharing_service import SharingService
+
+from app.api.dependencies import get_current_user, get_db
+from app.core.exceptions import AuthorizationError, ResourceNotFoundError
+from app.core.permissions import verify_parent_access
 from app.crud.sharing import ShareRepository
-from app.core.exceptions import ResourceNotFoundError
+from app.helpers.response_builder import build_response
+from app.models.user import User
+from app.schemas.common import ApiResponse
+from app.schemas.sharing import DoctorBriefResponse, DoctorShareCreate, DoctorShareResponse
+from app.services.sharing_service import SharingService
 
 router = APIRouter(prefix="/sharing", tags=["Doctor Sharing & Briefs"])
 
@@ -20,6 +21,9 @@ async def create_doctor_share_token(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    _, member = await verify_parent_access(session, current_user.id, data.parent_id)
+    if not member.can_share_doctor_brief:
+        raise AuthorizationError("Doctor brief sharing permission is required.")
     service = SharingService(session)
     share = await service.create_doctor_share(
         parent_id=data.parent_id,
@@ -50,5 +54,8 @@ async def revoke_doctor_share_token(
     share = await repo.get_by_token(token)
     if not share:
         raise ResourceNotFoundError("ShareToken", token)
+    _, member = await verify_parent_access(session, current_user.id, share.parent_id)
+    if share.created_by != current_user.id and not member.can_share_doctor_brief:
+        raise AuthorizationError("You cannot revoke this doctor share.")
     await repo.update(share.id, is_revoked=True)
     return build_response({"status": "revoked", "token": token})

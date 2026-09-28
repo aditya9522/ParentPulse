@@ -1,5 +1,7 @@
 # ParentPulse
 
+> Implementation note: this file is the complete product specification and includes roadmap capabilities. It is not a claim that every feature is production-complete. See [`FEATURE_STATUS.md`](FEATURE_STATUS.md) for the audited implementation matrix and remaining production work.
+
 ParentPulse is a family healthcare platform that connects parents, adult children, caregivers, and doctors in one secure place. It brings together medical profiles, health records, medicines, appointments, reminders, emergency information, family-care tasks, and nearby healthcare services.
 
 The application is designed especially for families caring for parents from another city or country. It helps family members stay informed, coordinate day-to-day care, find nearby medical support, and share only the relevant health information with a doctor.
@@ -513,79 +515,3 @@ ParentPulse is defined by seven connected capabilities:
 7. Google Maps discovery, directions, and consent-based healthcare visit history
 
 Together, these features give families one secure place to understand a parent's health history, coordinate day-to-day care, and find the right healthcare service nearby.
-gency        Sharing        Follow-up
-        │              │              │
-        └──────────────┼──────────────┘
-                       │
-                  AI HEALTH LAYER
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-      OCR          Extraction        RAG
-        │              │              │
-        └──────────────┼──────────────┘
-                       │
-               Structured Health Data
-```
-
-## The 6 features that define your product
-
-If I had to reduce the entire product to **six core capabilities**, they would be:
-
-**1. Family Health Profile**
-One structured profile for each parent.
-
-**2. Medical Document Intelligence**
-Upload → OCR → extract → organize.
-
-**3. Health Timeline**
-Turn scattered medical history into one chronological view.
-
-**4. Remote Family Care**
-Children can manage appointments, medicines, tasks and information from anywhere.
-
-**5. Doctor Brief & Secure Sharing**
-Give doctors the relevant information without handing over the entire family account.
-
-**6. AI Health Information Assistant**
-Ask questions about the parent's stored health information and retrieve the relevant documents/facts.
-
-That combination gives you a much stronger business proposition than simply **"React Native medical document app."**
-gency        Sharing        Follow-up
-        │              │              │
-        └──────────────┼──────────────┘
-                       │
-                  AI HEALTH LAYER
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-      OCR          Extraction        RAG
-        │              │              │
-        └──────────────┼──────────────┘
-                       │
-               Structured Health Data
-```
-
-## The 6 features that define your product
-
-If I had to reduce the entire product to **six core capabilities**, they would be:
-
-**1. Family Health Profile**
-One structured profile for each parent.
-
-**2. Medical Document Intelligence**
-Upload → OCR → extract → organize.
-
-**3. Health Timeline**
-Turn scattered medical history into one chronological view.
-
-**4. Remote Family Care**
-Children can manage appointments, medicines, tasks and information from anywhere.
-
-**5. Doctor Brief & Secure Sharing**
-Give doctors the relevant information without handing over the entire family account.
-
-**6. AI Health Information Assistant**
-Ask questions about the parent's stored health information and retrieve the relevant documents/facts.
-
-That combination gives you a much stronger business proposition than simply **"React Native medical document app."**

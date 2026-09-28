@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Easing,
   PanResponder,
   StyleProp,
   ViewStyle,
@@ -34,19 +35,35 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   grabHandleColor = "#94A3B8",
   testID,
 }) => {
-  const translateY = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(900)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const isDismissing = useRef(false);
   const blurTarget = useGlassBlurTarget();
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(0);
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }).start();
+      isDismissing.current = false;
+      translateY.stopAnimation();
+      backdropOpacity.stopAnimation();
+      translateY.setValue(900);
+      backdropOpacity.setValue(0);
+      requestAnimationFrame(() => {
+        Animated.parallel([
+          Animated.timing(translateY, {
+            toValue: 0,
+            duration: 280,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(backdropOpacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
     } else {
+      translateY.setValue(900);
       backdropOpacity.setValue(0);
     }
   }, [backdropOpacity, translateY, visible]);
@@ -60,11 +77,14 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   }, []);
 
   const dismiss = useCallback(() => {
+    if (isDismissing.current) return;
+    isDismissing.current = true;
     triggerHaptic();
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: 900,
-        duration: 220,
+        duration: 240,
+        easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(backdropOpacity, {
@@ -74,7 +94,8 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
       }),
     ]).start(() => {
       onClose();
-      translateY.setValue(0);
+      translateY.setValue(900);
+      isDismissing.current = false;
     });
   }, [backdropOpacity, onClose, translateY, triggerHaptic]);
 
@@ -112,9 +133,9 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={dismiss}
       testID={testID}
     >
       <View style={styles.modalBackdrop}>
@@ -188,9 +209,9 @@ const styles = StyleSheet.create({
   },
   swipeDragZone: {
     width: "100%",
-    minHeight: 44,
-    paddingTop: 14,
-    paddingBottom: 12,
+    minHeight: 30,
+    paddingTop: 8,
+    paddingBottom: 7,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(241, 245, 249, 0.6)",

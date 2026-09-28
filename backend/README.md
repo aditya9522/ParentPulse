@@ -1,44 +1,88 @@
 # ParentPulse Backend Service
 
-Production-ready asynchronous FastAPI backend powering **ParentPulse** — the remote-care family health coordination platform connecting aging parents, adult children living remotely, and attending physicians.
+Asynchronous FastAPI backend for ParentPulse family health coordination.
 
-## Features
+## Implemented foundations
 
-- **Asynchronous Architecture**: Built on FastAPI, SQLAlchemy 2.0 async, and asyncpg.
-- **Supabase PostgreSQL & Storage**: Direct schema migrations under `supabase/migrations/` with Row Level Security (RLS) policies and private medical storage buckets.
-- **Google Maps Platform Integration**: Healthcare discovery (nearby doctors, clinics, hospitals, pharmacies, diagnostic labs), distance & route estimates, and consent-based parent visit history.
-- **AI Health Intelligence**: Gemini 1.5 Pro medical document extraction, summarization, and grounded RAG question answering with strict clinical safety disclaimers.
-- **Semantic Search**: Pinecone vector embeddings filtered by authorized parent/family scopes.
-- **Upstash Redis**: Response caching, rate limiting, and temporary state management.
-- **Doctor Brief & QR Sharing**: Time-limited expiring access tokens with selective sharing scopes.
+- SQLAlchemy 2 async and asyncpg
+- Supabase authentication, PostgreSQL, RLS, and private Storage
+- Strict JWT audience/algorithm verification
+- Family membership and capability authorization
+- Validated multipart medical-document uploads
+- Gemini multimodal extraction from actual PDF/image bytes
+- Pinecone retrieval filtered by family and parent identifiers
+- Scoped, expiring, revocable doctor-share tokens
+- Durable SOS events, registered mobile push devices, actionable acknowledgements, and explicit resolution
+- PostgreSQL-backed healthcare expenses and insurance policies
+- Supabase Auth-backed family invitations rather than locally fabricated members
+- Provider failures that fail explicitly instead of returning invented AI, map, OCR, or vector data
+- Google Maps healthcare discovery and visit history
+- Upstash Redis integration
+- Production configuration validation that rejects mock credentials
 
-## Local Setup & Quickstart
+## Local setup
 
-### 1. Requirements
-- Python 3.11+
-- PostgreSQL & Redis (or run via Docker Compose)
-
-### 2. Environment Configuration
-Copy `.env.example` to `.env` and fill in credentials:
-```bash
-cp .env.example .env
+```powershell
+Copy-Item .env.example .env
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
 ```
 
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+API documentation:
 
-### 4. Run Development Server
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-Interactive API documentation will be available at:
-- Swagger UI: `http://localhost:8000/docs`
+- Swagger: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
-### 5. Running Tests
-```bash
-pytest
+Run tests:
+
+```powershell
+.venv\Scripts\python -m pytest -q
 ```
+
+## Medical-document lifecycle
+
+`POST /api/v1/documents/upload` accepts a PDF/image and multipart metadata. The API verifies:
+
+- authenticated family membership;
+- document-upload capability;
+- parent/family ownership;
+- supported MIME type;
+- the configured application size limit.
+
+The original is stored privately under `<family>/<parent>/<random>-<safe-name>`. Extraction records `pending`, `processing`, `extracted`, or `failed`; it never substitutes sample clinical content.
+
+Lifecycle endpoints:
+
+- `POST /api/v1/documents/upload`
+- `GET /api/v1/documents/parent/{parent_id}`
+- `GET /api/v1/documents/{document_id}`
+- `POST /api/v1/documents/{document_id}/retry`
+- `GET /api/v1/documents/{document_id}/download-url`
+- `DELETE /api/v1/documents/{document_id}`
+
+## SOS and remote notification lifecycle
+
+The native app registers an Expo Push token with `POST /api/v1/push-devices`. Creating an SOS event verifies parent access, prevents a second active event for the same parent, records in-app notifications for family members, and submits high-priority pushes to their active devices.
+
+Recipients can acknowledge an event as `acknowledged` or `responding`. The unique event/user constraint makes repeated notification actions idempotent. An authorized family member must explicitly resolve the active event.
+
+- `POST /api/v1/push-devices`
+- `DELETE /api/v1/push-devices`
+- `POST /api/v1/sos`
+- `POST /api/v1/sos/{event_id}/acknowledge`
+- `POST /api/v1/sos/{event_id}/resolve`
+
+`pushes_accepted` counts successful Expo push tickets only. It must not be presented as device delivery or human acknowledgement.
+
+## Database and storage
+
+Apply every migration in `supabase/migrations/`. `202609270004_harden_medical_storage.sql` hardens private medical storage; `202609270005_push_and_sos.sql` adds push and SOS state; `202609270006_persistent_expenses.sql` adds durable expenses and insurance; and `202609270007_remove_development_seed.sql` removes only the former fixed development identities. The migration runner no longer executes a seed file.
+
+The backend service role performs private uploads and creates short-lived signed URLs. Never expose the service key to the mobile app.
+
+## Production configuration
+
+Set `ENVIRONMENT=production` and provide real Supabase URL, publishable key, service key, JWKS URL, async database URL, Gemini key, Pinecone key, and Google Maps key. Startup fails closed if a required provider value is mocked or missing.
+
+Gemini credentials are required for document extraction. Failed extraction leaves the original intact and exposes a retry workflow instead of inventing results.
