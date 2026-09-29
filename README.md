@@ -130,9 +130,32 @@ Validate SOS with two different users in the same care circle on two installed A
 4. Tap **I've seen this** and repeat with **I'm responding**. Confirm `POST /api/v1/sos/{event_id}/acknowledge` succeeds and the acknowledgement count increments only once per user.
 5. Resolve the event and verify a second active SOS can then be created.
 
+Also validate ordinary notification behavior: deny and re-enable notification permission, verify medicine and appointment reminders, sign out and back in, restart the device, and confirm the installed app still registers and receives remote notifications. Record actual device receipt and human acknowledgement separately from `pushes_accepted`.
+
 FCM and the Expo Push Service are no-cost, subject to Expo's service rate limits, and the current EAS free plan includes a limited monthly build allowance. iPhone delivery is optional and separately requires Apple Developer membership, an APNs key, an iOS build, and `eas credentials`; it still does not require Sign in with Apple.
 
 Do not operate emergency delivery on a sleeping free backend. If the Render API uses a Free instance, it can spin down when idle and delay the SOS request while restarting; move the API to always-on production compute before relying on it for real users. ParentPulse remains a coordination aid, not a replacement for calling emergency services.
+
+### Firebase configuration and GitHub alerts
+
+`apps/mobile/google-services.json` is the public Android Firebase app configuration required inside the compiled application. Its `current_key` identifies the Firebase project; it is not the private Firebase Admin service-account key. Before dismissing a GitHub exposure alert for this file, verify in Google Cloud **APIs & Services > Credentials** that the key is restricted to Firebase-related APIs and, where supported, Android package `com.parentpulse.app` plus the production signing SHA-1. Keep Maps and Gemini on separate restricted keys. The private `firebase-adminsdk` JSON is stored only in EAS credentials, must never be committed, and can be removed from local Downloads after secure storage.
+
+## Android release candidate 2
+
+- Source commit: `575c8ec`
+- EAS build ID: `2d7b9219-6730-4963-a583-a760f8d4f147`
+- Android version code: `2`
+- Profile: `production`
+- Build page: `https://expo.dev/accounts/aditya010p/projects/parentpulse/builds/2d7b9219-6730-4963-a583-a760f8d4f147`
+
+The production build was submitted with FCM v1 credentials, the matching public Firebase configuration, corrected transparent adaptive/notification assets, and remote version auto-increment. Check its current state with:
+
+```powershell
+cd apps/mobile
+npx eas-cli@latest build:view 2d7b9219-6730-4963-a583-a760f8d4f147
+```
+
+Do not promote this candidate to real patient use until the two-device notification/SOS test and the independent security/privacy review are complete.
 
 Voice input uses the native platform recognizer through `expo-speech-recognition`. Enabling it records a distinct `voice_input` consent event; during a rolling backend deployment, older API instances receive the same voice-specific policy version through the existing consent endpoint instead of granting microphone access from a generic AI consent. The microphone activates only after OS permission, raw audio is not persisted, and recognized text remains editable until the user explicitly sends it. Google sign-in and voice recognition both require a development, preview, or store build and do not run in Expo Go.
 

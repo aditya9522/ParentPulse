@@ -78,6 +78,8 @@ Recipients can acknowledge an event as `acknowledged` or `responding`. The uniqu
 
 Android FCM v1 credentials are assigned to the EAS application `com.parentpulse.app`, and the Expo mobile configuration includes its matching `google-services.json`. A newly built artifact and two registered physical devices are still required to validate provider delivery and notification-action acknowledgements end to end.
 
+Android release-candidate build `2d7b9219-6730-4963-a583-a760f8d4f147` was submitted with version code `2` from source commit `575c8ec`. Treat `pushes_accepted` as provider-ticket acceptance only; release validation must separately record device receipt and the durable acknowledgement count produced by notification actions.
+
 ## Family access lifecycle
 
 Owners manage each membership independently through `POST`, `PATCH`, and `DELETE /api/v1/families/{family_id}/members[/{member_id}]`. Updates validate supported roles and granular capabilities, forbid owner downgrade/removal, scope the member identifier to the requested family, and write audit events. Removing a membership does not delete the Supabase identity or memberships in other care circles.
