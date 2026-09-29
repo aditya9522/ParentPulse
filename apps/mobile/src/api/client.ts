@@ -187,6 +187,8 @@ class ApiClient {
       throw error;
     }
 
+    if (response.status === 204) return undefined as T;
+
     const json = await response.json();
     return json.data;
   }
@@ -205,6 +207,17 @@ class ApiClient {
 
   async inviteFamilyMember(familyId: string, data: Record<string, unknown>) {
     return this.request(`/families/${familyId}/members`, { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async updateFamilyMember(familyId: string, memberId: string, data: Record<string, unknown>) {
+    return this.request(`/families/${familyId}/members/${memberId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeFamilyMember(familyId: string, memberId: string): Promise<void> {
+    await this.request<void>(`/families/${familyId}/members/${memberId}`, { method: "DELETE" });
   }
 
   async getCurrentUser(): Promise<UserProfile> {

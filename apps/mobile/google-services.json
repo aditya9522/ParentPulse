@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "132665067535",
+    "project_id": "parent-pulse-d215b",
+    "storage_bucket": "parent-pulse-d215b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:132665067535:android:ca04be0b56a1d84b4cbb7a",
+        "android_client_info": {
+          "package_name": "com.parentpulse.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCs9R2Iv3xX2ufFWcnazl6jAme9DWed9Yg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

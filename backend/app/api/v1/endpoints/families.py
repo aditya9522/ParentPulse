@@ -1,8 +1,7 @@
 # backend/app/api/v1/endpoints/families.py
-from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db
@@ -14,6 +13,7 @@ from app.schemas.family import (
     FamilyCreate,
     FamilyMemberInvite,
     FamilyMemberResponse,
+    FamilyMemberUpdate,
     FamilyResponse,
 )
 from app.services.family_service import FamilyService
@@ -32,7 +32,7 @@ async def create_family(
     return build_response(FamilyResponse.model_validate(family))
 
 
-@router.get("", response_model=ApiResponse[List[FamilyResponse]])
+@router.get("", response_model=ApiResponse[list[FamilyResponse]])
 async def list_my_families(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -63,5 +63,34 @@ async def invite_family_member(
 ):
     await verify_family_owner(session, current_user.id, family_id)
     service = FamilyService(session)
-    member = await service.invite_member(family_id, invite)
+    member = await service.invite_member(family_id, invite, current_user.id)
     return build_response(FamilyMemberResponse.model_validate(member))
+
+
+@router.patch("/{family_id}/members/{member_id}", response_model=ApiResponse[FamilyMemberResponse])
+async def update_family_member(
+    family_id: UUID,
+    member_id: UUID,
+    data: FamilyMemberUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    family = await verify_family_owner(session, current_user.id, family_id)
+    member = await FamilyService(session).update_member(family, member_id, data, current_user.id)
+    return build_response(FamilyMemberResponse.model_validate(member))
+
+
+@router.delete(
+    "/{family_id}/members/{member_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def remove_family_member(
+    family_id: UUID,
+    member_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    family = await verify_family_owner(session, current_user.id, family_id)
+    await FamilyService(session).remove_member(family, member_id, current_user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

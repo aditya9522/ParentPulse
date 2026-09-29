@@ -52,6 +52,8 @@ wheels/
 *.pem
 *.key
 credentials.json
+*firebase-admin*.json
+*service-account*.json
 
 # IDE & Editor
 .vscode/

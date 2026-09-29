@@ -46,7 +46,7 @@ if (googleIosClientId && !isGoogleClientId(googleIosClientId)) {
 }
 
 const expo = {
-  name: "ParentPulse",
+  name: "Parent Pulse",
   slug: "parentpulse",
   scheme: "parentpulse",
   version: "1.0.0",
@@ -61,11 +61,11 @@ const expo = {
     },
   },
   android: {
+    googleServicesFile: "./google-services.json",
     adaptiveIcon: {
       backgroundColor: "#E6F4FE",
-      foregroundImage: "./assets/android-icon-foreground.png",
-      backgroundImage: "./assets/android-icon-background.png",
-      monochromeImage: "./assets/android-icon-monochrome.png",
+      foregroundImage: "./assets/android-icon-foreground-native.png",
+      monochromeImage: "./assets/android-icon-monochrome-native.png",
     },
     predictiveBackGestureEnabled: false,
     package: "com.parentpulse.app",
@@ -73,7 +73,7 @@ const expo = {
   web: { favicon: "./assets/favicon.png" },
   plugins: [
     "expo-secure-store",
-    ["expo-notifications", { color: "#0D9488", defaultChannel: "care-reminders" }],
+    ["expo-notifications", { icon: "./assets/notification-icon-android.png", color: "#0D9488", defaultChannel: "care-reminders" }],
     "expo-sharing",
     [
       "expo-speech-recognition",

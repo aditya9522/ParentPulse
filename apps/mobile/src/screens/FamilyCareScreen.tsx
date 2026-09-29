@@ -10,6 +10,7 @@ import {
   TextInput,
   Platform,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import { AppAlert as Alert } from "../services/appAlert";
 import {
@@ -25,12 +26,15 @@ import {
   Check,
   X,
   UserPlus,
+  Settings2,
+  ShieldCheck,
+  UserMinus,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";
 import { useApp } from "../context/AppContext";
-import { CareTask, TaskPriority, UserRole } from "../types";
+import { CareTask, FamilyMemberItem, TaskPriority, UserRole } from "../types";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass } from "../theme";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
@@ -44,6 +48,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
     toggleTaskCompleted,
     deleteTask,
     familyMembers,
+    currentUser,
     refreshData,
     seniorMode,
     language,
@@ -77,6 +82,23 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
 
   // Delete Task Modal State
   const [taskToDelete, setTaskToDelete] = useState<CareTask | null>(null);
+  const [memberEditor, setMemberEditor] = useState<FamilyMemberItem | null>(null);
+  const [memberToRemove, setMemberToRemove] = useState<FamilyMemberItem | null>(null);
+  const [memberSaving, setMemberSaving] = useState(false);
+  const [memberDraft, setMemberDraft] = useState({
+    role: "caregiver" as "family_member" | "caregiver" | "doctor",
+    relationship: "",
+    can_manage_medicines: false,
+    can_manage_appointments: false,
+    can_upload_documents: false,
+    can_share_doctor_brief: false,
+    can_view_location_history: false,
+  });
+
+  const activeFamilyMembers = familyMembers.filter((member) => member.family_id === activeParent.family_id);
+  const canManageCircle = activeFamilyMembers.some(
+    (member) => member.user_id === currentUser.id && member.is_owner,
+  );
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -114,7 +136,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
       status: "pending",
       due_date: taskDueDate || undefined,
       assigned_to_name: taskAssignee,
-      assigned_to_user_id: familyMembers.find((member) => member.name === taskAssignee)?.user_id,
+      assigned_to_user_id: activeFamilyMembers.find((member) => member.name === taskAssignee)?.user_id,
       created_at: new Date().toISOString(),
     };
 
@@ -151,6 +173,57 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
       Alert.alert("Invitation sent", `A secure account invitation was sent to ${memberEmail.trim()}.`);
     } catch (error) {
       Alert.alert("Invitation failed", error instanceof Error ? error.message : "Try again shortly.");
+    }
+  };
+
+  const openMemberEditor = (member: FamilyMemberItem) => {
+    triggerHaptic();
+    setMemberEditor(member);
+    setMemberDraft({
+      role: member.role === "doctor" || member.role === "caregiver" ? member.role : "family_member",
+      relationship: member.relationship,
+      can_manage_medicines: member.can_manage_medicines,
+      can_manage_appointments: member.can_manage_appointments,
+      can_upload_documents: member.can_upload_documents,
+      can_share_doctor_brief: member.can_share_doctor_brief,
+      can_view_location_history: member.can_view_location_history,
+    });
+  };
+
+  const saveMemberAccess = async () => {
+    if (!memberEditor || !memberDraft.relationship.trim()) {
+      Alert.alert("Relationship required", "Add a clear relationship for this care-circle member.");
+      return;
+    }
+    setMemberSaving(true);
+    try {
+      await apiClient.updateFamilyMember(memberEditor.family_id, memberEditor.id, {
+        ...memberDraft,
+        relationship: memberDraft.relationship.trim(),
+      });
+      await refreshData();
+      setMemberEditor(null);
+      Alert.alert("Access updated", `${memberEditor.name}'s care permissions are now active.`);
+    } catch (error) {
+      Alert.alert("Couldn’t update access", error instanceof Error ? error.message : "Try again shortly.");
+    } finally {
+      setMemberSaving(false);
+    }
+  };
+
+  const removeMember = async () => {
+    if (!memberToRemove) return;
+    setMemberSaving(true);
+    try {
+      await apiClient.removeFamilyMember(memberToRemove.family_id, memberToRemove.id);
+      await refreshData();
+      setMemberEditor(null);
+      setMemberToRemove(null);
+      Alert.alert("Member removed", `${memberToRemove.name} no longer has access to this care circle.`);
+    } catch (error) {
+      Alert.alert("Couldn’t remove member", error instanceof Error ? error.message : "Try again shortly.");
+    } finally {
+      setMemberSaving(false);
     }
   };
 
@@ -218,7 +291,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
           >
             <Users size={16} color={activeTab === "members" ? Colors.primaryDark : Colors.textMuted} />
             <Text style={[styles.segmentText, activeTab === "members" && styles.segmentTextActive]}>
-              {isHindi ? `परिवार एवं केयरगिवर (${familyMembers.length})` : `Family & Team (${familyMembers.length})`}
+              {isHindi ? `परिवार एवं केयरगिवर (${activeFamilyMembers.length})` : `Family & Team (${activeFamilyMembers.length})`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -376,20 +449,24 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                 </Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.inviteBtn}
-                onPress={() => {
-                  triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-                  setInviteModalVisible(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <UserPlus size={16} color="#FFFFFF" />
-                <Text style={styles.inviteBtnText}>{isHindi ? "सदस्य जोड़ें" : "Invite"}</Text>
-              </TouchableOpacity>
+              {canManageCircle ? (
+                <TouchableOpacity
+                  style={styles.inviteBtn}
+                  onPress={() => {
+                    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+                    setInviteModalVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <UserPlus size={16} color="#FFFFFF" />
+                  <Text style={styles.inviteBtnText}>{isHindi ? "सदस्य जोड़ें" : "Invite"}</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.viewOnlyBadge}><ShieldCheck size={13} color={Colors.primaryDark} /><Text style={styles.viewOnlyText}>Owner managed</Text></View>
+              )}
             </View>
 
-            {familyMembers.map((member) => (
+            {activeFamilyMembers.map((member) => (
               <View key={member.id} style={[styles.memberCard, Shadows.card]}>
                 <View style={styles.memberTop}>
                   <View style={styles.avatarCircle}>
@@ -407,7 +484,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                           member.role === "doctor" && styles.roleDoctor,
                         ]}
                       >
-                        <Text style={styles.roleText}>{member.role.replace("_", " ").toUpperCase()}</Text>
+                        <Text style={styles.roleText}>{member.is_owner ? "OWNER" : member.role.replace("_", " ").toUpperCase()}</Text>
                       </View>
                     </View>
 
@@ -463,6 +540,12 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                     </View>
                   )}
                 </View>
+                {canManageCircle && !member.is_owner && (
+                  <TouchableOpacity style={styles.manageAccessButton} onPress={() => openMemberEditor(member)} activeOpacity={0.8}>
+                    <Settings2 size={15} color={Colors.primaryDark} />
+                    <Text style={styles.manageAccessText}>Manage access</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ))}
           </>
@@ -536,7 +619,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
 
               <Text style={styles.inputLabel}>{isHindi ? "किसे सौंपा जाए" : "Assign To"}</Text>
               <View style={styles.assigneeList}>
-                {familyMembers.map((m) => (
+                {activeFamilyMembers.map((m) => (
                   <TouchableOpacity
                     key={m.id}
                     style={[styles.assigneeChip, taskAssignee === m.name && styles.assigneeChipActive]}
@@ -564,6 +647,92 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                 </LinearGradient>
               </TouchableOpacity>
             </ScrollView>
+      </SwipeableBottomSheet>
+
+      <SwipeableBottomSheet
+        visible={!!memberEditor}
+        onClose={() => { if (!memberSaving) setMemberEditor(null); }}
+        maxHeight="90%"
+        containerStyle={styles.memberEditorSheet}
+      >
+        {memberEditor && (
+          <ScrollView contentContainerStyle={styles.memberEditorContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.memberEditorHero}>
+              <View style={styles.memberEditorAvatar}><Text style={styles.memberEditorInitials}>{memberEditor.avatar_initials}</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.memberEditorEyebrow}>CARE CIRCLE ACCESS</Text>
+                <Text style={styles.memberEditorTitle}>{memberEditor.name}</Text>
+                <Text style={styles.memberEditorEmail}>{memberEditor.email}</Text>
+              </View>
+              <ShieldCheck size={24} color={Colors.primaryDark} />
+            </View>
+
+            <Text style={styles.inputLabel}>Relationship</Text>
+            <TextInput
+              value={memberDraft.relationship}
+              onChangeText={(relationship) => setMemberDraft((current) => ({ ...current, relationship }))}
+              style={styles.textInput}
+              placeholder="e.g. Daughter, local caregiver, physician"
+              placeholderTextColor={Colors.textMuted}
+              maxLength={100}
+            />
+
+            <Text style={styles.inputLabel}>Care role</Text>
+            <View style={styles.memberRoleRow}>
+              {(["family_member", "caregiver", "doctor"] as const).map((role) => (
+                <TouchableOpacity
+                  key={role}
+                  style={[styles.memberRoleButton, memberDraft.role === role && styles.memberRoleButtonActive]}
+                  onPress={() => setMemberDraft((current) => ({ ...current, role }))}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: memberDraft.role === role }}
+                  accessibilityLabel={`${role.replace("_", " ")} care role`}
+                >
+                  <Text style={[styles.memberRoleText, memberDraft.role === role && styles.memberRoleTextActive]}>{role.replace("_", " ")}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.permissionPanel}>
+              <Text style={styles.permissionPanelTitle}>Authorized capabilities</Text>
+              <Text style={styles.permissionPanelSub}>Changes apply immediately across the API and database policies.</Text>
+              {([
+                ["can_manage_medicines", "Manage medicines", "Schedules, inventory and dose records"],
+                ["can_manage_appointments", "Manage appointments", "Consultations and reminders"],
+                ["can_upload_documents", "Upload documents", "Medical vault records"],
+                ["can_share_doctor_brief", "Share doctor briefs", "Create expiring clinical access"],
+                ["can_view_location_history", "View location visits", "Consent-gated healthcare history"],
+              ] as const).map(([key, title, detail]) => {
+                const enabled = memberDraft[key];
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={styles.permissionToggleRow}
+                    onPress={() => setMemberDraft((current) => ({ ...current, [key]: !current[key] }))}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: enabled }}
+                    accessibilityLabel={title}
+                    accessibilityHint={detail}
+                  >
+                    <View style={[styles.permissionToggleIcon, enabled && styles.permissionToggleIconActive]}>
+                      {enabled && <Check size={13} color="#FFFFFF" />}
+                    </View>
+                    <View style={{ flex: 1 }}><Text style={styles.permissionToggleTitle}>{title}</Text><Text style={styles.permissionToggleDetail}>{detail}</Text></View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity disabled={memberSaving} style={[styles.saveAccessButton, memberSaving && { opacity: 0.65 }]} onPress={() => void saveMemberAccess()}>
+              {memberSaving ? <ActivityIndicator color="#FFFFFF" /> : <ShieldCheck size={18} color="#FFFFFF" />}
+              <Text style={styles.saveAccessText}>{memberSaving ? "Saving secure access…" : "Save access changes"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity disabled={memberSaving} style={styles.removeMemberButton} onPress={() => setMemberToRemove(memberEditor)}>
+              <UserMinus size={17} color={Colors.emergencyDark} />
+              <Text style={styles.removeMemberText}>Remove from care circle</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        )}
       </SwipeableBottomSheet>
 
       {/* Invite Family Member Modal */}
@@ -688,6 +857,16 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
           }
         }}
         onCancel={() => setTaskToDelete(null)}
+      />
+      <ConfirmationModal
+        visible={!!memberToRemove}
+        title="Remove care-circle access?"
+        message={`${memberToRemove?.name || "This member"} will immediately lose access to this family's health records. Their personal account will not be deleted.`}
+        confirmText={memberSaving ? "Removing…" : "Remove access"}
+        cancelText="Keep member"
+        isDestructive
+        onConfirm={() => void removeMember()}
+        onCancel={() => { if (!memberSaving) setMemberToRemove(null); }}
       />
     </View>
   );
@@ -954,6 +1133,22 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: "#FFFFFF",
   },
+  viewOnlyBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primaryFaint,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+  },
+  viewOnlyText: {
+    color: Colors.primaryDark,
+    fontSize: 10,
+    fontWeight: Typography.weights.bold,
+  },
   memberCard: {
     ...Glass.card,
     borderRadius: BorderRadius.lg,
@@ -1065,6 +1260,123 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     fontWeight: Typography.weights.medium,
   },
+  manageAccessButton: {
+    minHeight: 42,
+    marginTop: 12,
+    borderRadius: BorderRadius.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: Colors.primaryFaint,
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+  },
+  manageAccessText: {
+    color: Colors.primaryDark,
+    fontSize: 11,
+    fontWeight: Typography.weights.bold,
+  },
+  memberEditorSheet: {
+    backgroundColor: "#F8FAFC",
+  },
+  memberEditorContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: 36,
+  },
+  memberEditorHero: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 15,
+    marginBottom: 12,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  memberEditorAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primaryDark,
+  },
+  memberEditorInitials: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
+  memberEditorEyebrow: { color: Colors.primaryDark, fontSize: 9, letterSpacing: 1.1, fontWeight: "900" },
+  memberEditorTitle: { marginTop: 2, color: Colors.textPrimary, fontSize: 18, fontWeight: "900" },
+  memberEditorEmail: { marginTop: 2, color: Colors.textMuted, fontSize: 10 },
+  memberRoleRow: { flexDirection: "row", gap: 7 },
+  memberRoleButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: BorderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  memberRoleButtonActive: { backgroundColor: Colors.primaryDark, borderColor: Colors.primaryDark },
+  memberRoleText: { color: Colors.textSecondary, fontSize: 10, fontWeight: "800", textTransform: "capitalize" },
+  memberRoleTextActive: { color: "#FFFFFF" },
+  permissionPanel: {
+    padding: 14,
+    marginTop: 16,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  permissionPanelTitle: { color: Colors.textPrimary, fontSize: 14, fontWeight: "900" },
+  permissionPanelSub: { marginTop: 3, marginBottom: 7, color: Colors.textMuted, fontSize: 10, lineHeight: 15 },
+  permissionToggleRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  permissionToggleIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+  },
+  permissionToggleIconActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  permissionToggleTitle: { color: Colors.textPrimary, fontSize: 11, fontWeight: "800" },
+  permissionToggleDetail: { marginTop: 2, color: Colors.textMuted, fontSize: 9 },
+  saveAccessButton: {
+    minHeight: 52,
+    marginTop: 16,
+    borderRadius: BorderRadius.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryDark,
+    ...Shadows.card,
+  },
+  saveAccessText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
+  removeMemberButton: {
+    minHeight: 48,
+    marginTop: 9,
+    borderRadius: BorderRadius.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.emergencyLight,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  removeMemberText: { color: Colors.emergencyDark, fontSize: 11, fontWeight: "900" },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",

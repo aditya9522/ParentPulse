@@ -246,6 +246,7 @@ export interface FamilyMemberItem {
   email: string;
   phone?: string;
   avatar_initials: string;
+  is_owner: boolean;
   can_manage_medicines: boolean;
   can_manage_appointments: boolean;
   can_upload_documents: boolean;

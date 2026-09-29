@@ -29,7 +29,7 @@ The Expo application uses responsive glass surfaces, safe-area-aware navigation,
 | Area | Implementation |
 | --- | --- |
 | Authentication | Supabase email and native Google sign-in, account recovery, refresh-token rotation, isolated per-request Auth clients, ES256/RS256 JWKS verification, server-verified legacy sessions, and hardware-backed secure session storage |
-| Authorization | Family membership and per-capability checks for document, medicine, appointment, and doctor-share mutations |
+| Authorization | Family membership and per-capability checks for document, medicine, appointment, and doctor-share mutations; owners can auditably invite, edit, and revoke individual care-circle memberships without deleting identities |
 | Production data | Authenticated startup loads the current user, family memberships, parent profiles, and every care domain from the API; new accounts enter onboarding cleanly and optional service failures do not hide healthy live records |
 | Offline writes | AES-GCM-encrypted, account-scoped mutation queue with atomic persistence, backoff, coalescing, visible Sync Center recovery, optimistic conflict resolution, stable client record IDs, and durable API idempotency |
 | Medical vault | Camera, gallery, and file uploads; MIME/size validation; private Supabase Storage; real Gemini multimodal extraction; processing/failure/retry states; signed original downloads |
@@ -85,7 +85,7 @@ ParentPulse/
 
 Remote push notifications require a development/store build and platform notification credentials. Local reminders work through `expo-notifications`; remote Android push is not available in Expo Go on current SDKs.
 
-Run `eas init` for the production Expo project, configure APNs/FCM credentials, and use a development or store build. The app obtains the EAS project ID from the signed build configuration; it does not embed a placeholder project identifier.
+The supported authentication methods are email/password and Google. Sign in with Apple is intentionally not implemented or included as a dependency. Apple Developer signing and APNs are platform requirements only when distributing the existing email/Google app to iPhone users; they do not enable Apple login.
 
 ## Mobile setup
 
@@ -110,6 +110,29 @@ For an Android emulator, use `http://10.0.2.2:8000/api/v1`. A physical device mu
 `EXPO_PUBLIC_` values are embedded into the client. Never put service-role, database, AI, or signing secrets in the mobile environment file.
 
 Google authentication uses Android Credential Manager and the native iOS Google Sign-In SDK through `react-native-nitro-google-signin`. Register `com.parentpulse.app`, the EAS upload SHA-1, and the Google Play signing SHA-1 in Google Cloud; configure the same web client in Supabase Auth. The Google button is intentionally hidden when both public client IDs are not present. Production builds fail closed when either ID or the HTTPS API endpoint is missing.
+
+## Android FCM and SOS setup
+
+ParentPulse uses the Expo Push Service over FCM v1; the mobile app and backend registration/acknowledgement flow are already implemented. To enable Android delivery:
+
+1. Create or open a Firebase project, add an Android app with package `com.parentpulse.app`, and download `google-services.json` into `apps/mobile/`.
+2. The checked-in Expo configuration points Android builds to `./google-services.json`; keep that public Firebase app-registration file with the mobile project.
+3. In Firebase **Project settings > Service accounts**, generate a private service-account JSON key. Never commit this private file.
+4. From `apps/mobile`, run `npx eas-cli@latest credentials`, select **Android > production > Google Service Account > Manage ... FCM V1 > Upload a new service account key**, and upload the private JSON.
+5. Create and install one Android development, preview, or store build. Expo Go cannot test remote push notifications on the current SDK.
+6. In the installed app, sign in and enable notifications from Settings. This registers the device's Expo Push token with `POST /api/v1/push-devices`.
+
+Validate SOS with two different users in the same care circle on two installed Android devices:
+
+1. Allow notifications on both devices and open Settings once so each device is registered.
+2. From device A, activate SOS for a parent. Confirm `recipients_registered` and `pushes_accepted` are non-zero.
+3. With device B backgrounded or closed, confirm the high-priority emergency notification arrives.
+4. Tap **I've seen this** and repeat with **I'm responding**. Confirm `POST /api/v1/sos/{event_id}/acknowledge` succeeds and the acknowledgement count increments only once per user.
+5. Resolve the event and verify a second active SOS can then be created.
+
+FCM and the Expo Push Service are no-cost, subject to Expo's service rate limits, and the current EAS free plan includes a limited monthly build allowance. iPhone delivery is optional and separately requires Apple Developer membership, an APNs key, an iOS build, and `eas credentials`; it still does not require Sign in with Apple.
+
+Do not operate emergency delivery on a sleeping free backend. If the Render API uses a Free instance, it can spin down when idle and delay the SOS request while restarting; move the API to always-on production compute before relying on it for real users. ParentPulse remains a coordination aid, not a replacement for calling emergency services.
 
 Voice input uses the native platform recognizer through `expo-speech-recognition`. Enabling it records a distinct `voice_input` consent event; during a rolling backend deployment, older API instances receive the same voice-specific policy version through the existing consent endpoint instead of granting microphone access from a generic AI consent. The microphone activates only after OS permission, raw audio is not persisted, and recognized text remains editable until the user explicitly sends it. Google sign-in and voice recognition both require a development, preview, or store build and do not run in Expo Go.
 
@@ -230,6 +253,20 @@ Relevant endpoints:
 
 An accepted Expo push ticket means the provider accepted the request. It is not evidence that the device received the message or that a person saw it. ParentPulse reports acknowledgements separately and continues to tell users to call emergency services for immediate help.
 
+## Family access lifecycle
+
+- Only the family owner can invite, edit, or remove care-circle members.
+- The owner's membership and full access cannot be downgraded or removed.
+- Role, relationship, medicine, appointment, document, doctor-share, and location-history capabilities are editable from one mobile access sheet.
+- Removing a membership immediately revokes that family's records while preserving the person's Supabase account and memberships in other families.
+- Permission changes and removals write security audit events without storing clinical content.
+
+Relevant endpoints:
+
+- `POST /api/v1/families/{family_id}/members`
+- `PATCH /api/v1/families/{family_id}/members/{member_id}`
+- `DELETE /api/v1/families/{family_id}/members/{member_id}`
+
 ## Account privacy controls
 
 - Location-history and SOS-coordinate choices are stored as append-only, policy-versioned consent events. Defaults remain off when the server cannot verify a choice.
@@ -259,15 +296,14 @@ npx expo-doctor
 npx expo export --platform web
 ```
 
-The repository currently passes mobile strict TypeScript, mobile lint, five backend tests, Expo Doctor's 21 checks, and a production web export.
+The current production-readiness pass has mobile strict TypeScript and lint green, 36 backend tests passing, and the configured-database rollback-only RLS matrix passing all six checks. Expo Doctor previously passed all 21 checks; rerun it after dependency or native-config changes.
 
-## Remaining production work
+## Remaining release gates
 
-- Visible per-record sync/conflict resolution controls
-- Real speech recognition and voice-consent workflow
-- Persistent location consent plus server-generated export/deletion jobs
-- Authorization/RLS integration tests against a deployed Supabase instance
-- Accessibility, penetration, recovery, observability, privacy, and store-release reviews
+- Independent security/privacy review and penetration testing.
+- Installed Android validation of native Google sign-in, refresh, sign-out, and Google-verified deletion. If an iOS release is planned, repeat this with Apple Developer signing; Sign in with Apple is outside the product scope.
+- Android FCM v1 production credentials and mobile Firebase configuration are complete. A new installed artifact and two-device SOS delivery/acknowledgement validation remain; add APNs validation only when an iOS release is planned.
+- Formal screen-reader, dynamic-type, reduced-motion, recovery, observability, and store-review checks.
 
 The npm audit currently reports moderate findings in Expo CLI build tooling through `xcode`/`uuid`. The automated force fix proposes an unsafe Expo SDK downgrade and is intentionally not applied.
 

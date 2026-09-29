@@ -1,9 +1,10 @@
 # backend/app/crud/families.py
 from uuid import UUID
-from typing import List, Optional
+
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from app.db.repositories import BaseRepository
 from app.models.family import Family
 from app.models.family_member import FamilyMember
@@ -13,7 +14,7 @@ class FamilyRepository(BaseRepository[Family]):
     def __init__(self, session: AsyncSession):
         super().__init__(Family, session)
 
-    async def get_family_with_members(self, family_id: UUID) -> Optional[Family]:
+    async def get_family_with_members(self, family_id: UUID) -> Family | None:
         stmt = (
             select(Family)
             .where(Family.id == family_id)
@@ -22,7 +23,7 @@ class FamilyRepository(BaseRepository[Family]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_user_families(self, user_id: UUID) -> List[Family]:
+    async def get_user_families(self, user_id: UUID) -> list[Family]:
         stmt = (
             select(Family)
             .join(FamilyMember, FamilyMember.family_id == Family.id)
@@ -31,6 +32,27 @@ class FamilyRepository(BaseRepository[Family]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_member_with_user(
+        self,
+        family_id: UUID,
+        member_id: UUID,
+    ) -> FamilyMember | None:
+        stmt = (
+            select(FamilyMember)
+            .where(FamilyMember.id == member_id, FamilyMember.family_id == family_id)
+            .options(selectinload(FamilyMember.user))
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_member_by_user(self, family_id: UUID, user_id: UUID) -> FamilyMember | None:
+        stmt = select(FamilyMember).where(
+            FamilyMember.family_id == family_id,
+            FamilyMember.user_id == user_id,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def add_member(
         self,

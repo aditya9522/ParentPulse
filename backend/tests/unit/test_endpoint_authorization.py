@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.api.v1.endpoints import caregivers, locations, tasks, timeline
+from app.api.v1.endpoints import caregivers, families, locations, tasks, timeline
 from app.core.exceptions import AuthorizationError
 from app.schemas.task import TaskUpdate
 
@@ -80,3 +80,36 @@ async def test_task_update_checks_access_before_mutating(monkeypatch):
         )
 
     assert task.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_member_update_requires_family_owner(monkeypatch):
+    owner_check = AsyncMock(side_effect=AuthorizationError("Only the family owner can manage members."))
+    monkeypatch.setattr(families, "verify_family_owner", owner_check)
+
+    with pytest.raises(AuthorizationError, match="family owner"):
+        await families.update_family_member(
+            family_id=uuid4(),
+            member_id=uuid4(),
+            data=SimpleNamespace(),
+            current_user=SimpleNamespace(id=uuid4()),
+            session=AsyncMock(),
+        )
+
+    owner_check.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_member_removal_requires_family_owner(monkeypatch):
+    owner_check = AsyncMock(side_effect=AuthorizationError("Only the family owner can manage members."))
+    monkeypatch.setattr(families, "verify_family_owner", owner_check)
+
+    with pytest.raises(AuthorizationError, match="family owner"):
+        await families.remove_family_member(
+            family_id=uuid4(),
+            member_id=uuid4(),
+            current_user=SimpleNamespace(id=uuid4()),
+            session=AsyncMock(),
+        )
+
+    owner_check.assert_awaited_once()

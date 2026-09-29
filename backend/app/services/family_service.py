@@ -5,12 +5,13 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.supabase import get_supabase_client
-from app.core.exceptions import ResourceNotFoundError
+from app.core.exceptions import AuthorizationError, ConflictError, ResourceNotFoundError
 from app.crud.families import FamilyRepository
 from app.crud.users import UserRepository
 from app.models.family import Family
 from app.models.family_member import FamilyMember
-from app.schemas.family import FamilyCreate, FamilyMemberInvite
+from app.schemas.family import FamilyCreate, FamilyMemberInvite, FamilyMemberUpdate
+from app.services.audit_service import AuditService
 
 
 class FamilyService:
@@ -47,8 +48,14 @@ class FamilyService:
     async def list_user_families(self, user_id: UUID) -> list[Family]:
         return await self.family_repo.get_user_families(user_id)
 
-    async def invite_member(self, family_id: UUID, invite: FamilyMemberInvite) -> FamilyMember:
-        user = await self.user_repo.get_by_email(invite.email)
+    async def invite_member(
+        self,
+        family_id: UUID,
+        invite: FamilyMemberInvite,
+        actor_id: UUID,
+    ) -> FamilyMember:
+        email = str(invite.email)
+        user = await self.user_repo.get_by_email(email)
         if not user:
             metadata = {
                 key: value
@@ -60,18 +67,21 @@ class FamilyService:
             }
             options = {"data": metadata} if metadata else None
             auth_response = await asyncio.to_thread(
-                get_supabase_client().auth.admin.invite_user_by_email, invite.email, options
+                get_supabase_client().auth.admin.invite_user_by_email, email, options
             )
             if not auth_response.user:
                 raise RuntimeError("Supabase did not create the invited identity")
             user = await self.user_repo.create(
                 id=UUID(str(auth_response.user.id)),
-                email=invite.email,
-                full_name=invite.full_name or invite.email.split("@")[0].capitalize(),
+                email=email,
+                full_name=invite.full_name or email.split("@")[0].capitalize(),
                 phone_number=invite.phone_number,
             )
 
-        return await self.family_repo.add_member(
+        if await self.family_repo.get_member_by_user(family_id, user.id):
+            raise ConflictError("This person is already a member of the care circle.")
+
+        member = await self.family_repo.add_member(
             family_id=family_id,
             user_id=user.id,
             role=invite.role,
@@ -81,4 +91,72 @@ class FamilyService:
             can_upload_documents=invite.can_upload_documents,
             can_share_doctor_brief=invite.can_share_doctor_brief,
             can_view_location_history=invite.can_view_location_history,
+        )
+        await AuditService(self.session).log_event(
+            user_id=actor_id,
+            action="family_member.invited",
+            resource_type="family_member",
+            resource_id=member.id,
+            metadata={"family_id": str(family_id), "invited_user_id": str(user.id)},
+        )
+        await self.session.flush()
+        created_member = await self.family_repo.get_member_with_user(family_id, member.id)
+        if not created_member:
+            raise ResourceNotFoundError("Family member", member.id)
+        return created_member
+
+    async def update_member(
+        self,
+        family: Family,
+        member_id: UUID,
+        data: FamilyMemberUpdate,
+        actor_id: UUID,
+    ) -> FamilyMember:
+        member = await self.family_repo.get_member_with_user(family.id, member_id)
+        if not member:
+            raise ResourceNotFoundError("Family member", member_id)
+        if member.user_id == family.created_by:
+            raise AuthorizationError("The family owner's access cannot be changed.")
+
+        changes = data.model_dump(exclude_unset=True)
+        relationship = changes.pop("relationship", None)
+        if relationship is not None:
+            member.relationship_name = relationship.strip()
+        for field, value in changes.items():
+            setattr(member, field, value)
+        await self.session.flush()
+        await AuditService(self.session).log_event(
+            user_id=actor_id,
+            action="family_member.updated",
+            resource_type="family_member",
+            resource_id=member.id,
+            metadata={"family_id": str(family.id), "changed_fields": sorted(data.model_fields_set)},
+        )
+        await self.session.flush()
+        updated_member = await self.family_repo.get_member_with_user(family.id, member.id)
+        if not updated_member:
+            raise ResourceNotFoundError("Family member", member.id)
+        return updated_member
+
+    async def remove_member(
+        self,
+        family: Family,
+        member_id: UUID,
+        actor_id: UUID,
+    ) -> None:
+        member = await self.family_repo.get_member_with_user(family.id, member_id)
+        if not member:
+            raise ResourceNotFoundError("Family member", member_id)
+        if member.user_id == family.created_by:
+            raise AuthorizationError("The family owner cannot be removed from their care circle.")
+
+        removed_user_id = member.user_id
+        await self.session.delete(member)
+        await self.session.flush()
+        await AuditService(self.session).log_event(
+            user_id=actor_id,
+            action="family_member.removed",
+            resource_type="family_member",
+            resource_id=member_id,
+            metadata={"family_id": str(family.id), "removed_user_id": str(removed_user_id)},
         )

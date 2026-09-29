@@ -481,6 +481,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         email: member.user?.email || "",
         phone: member.user?.phone_number,
         avatar_initials: (member.user?.full_name || member.user?.email || "FM").split(/\s+/).map((part: string) => part[0]).join("").slice(0, 2).toUpperCase(),
+        is_owner: family.created_by === member.user_id,
         can_manage_medicines: member.can_manage_medicines,
         can_manage_appointments: member.can_manage_appointments,
         can_upload_documents: member.can_upload_documents,
