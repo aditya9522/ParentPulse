@@ -20,6 +20,9 @@ export const Header: React.FC = () => {
     setAuthModalVisible,
     activeScreen,
     setActiveScreen,
+    syncQueue,
+    syncBusy,
+    setSyncCenterVisible,
   } = useApp();
 
   const isHindi = language === "hi";
@@ -169,6 +172,23 @@ export const Header: React.FC = () => {
       {/* Quick Navigation Drawer Strip */}
       <View style={styles.moduleStrip}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.moduleScroll}>
+          <TouchableOpacity
+            style={[styles.moduleChip, syncQueue.length > 0 && styles.syncChipActive]}
+            onPress={() => setSyncCenterVisible(true)}
+            activeOpacity={0.7}
+            accessibilityLabel={`${syncQueue.length} care changes waiting to synchronize`}
+          >
+            <Ionicons
+              name={syncBusy ? "sync" : syncQueue.some((item) => item.state === "blocked" || item.state === "conflict") ? "warning-outline" : syncQueue.length > 0 ? "cloud-upload-outline" : "cloud-done-outline"}
+              size={13}
+              color={syncQueue.some((item) => item.state === "blocked" || item.state === "conflict") ? "#B54708" : Colors.primaryDark}
+            />
+            <Text style={[styles.moduleChipText, styles.syncChipText]}>
+              {syncBusy ? "Syncing" : syncQueue.length > 0 ? `${syncQueue.length} pending` : "Synced"}
+            </Text>
+            {syncQueue.length > 0 && <View style={styles.syncCount}><Text style={styles.syncCountText}>{Math.min(syncQueue.length, 99)}</Text></View>}
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.moduleChip, activeScreen === "tabs" && styles.moduleChipActive]}
             onPress={() => setActiveScreen("tabs")}
@@ -465,6 +485,28 @@ const styles = StyleSheet.create({
   moduleChipActive: {
     backgroundColor: Colors.primaryLight,
     borderColor: Colors.primary,
+  },
+  syncChipActive: {
+    backgroundColor: "#F0FDFA",
+    borderColor: "#99F6E4",
+  },
+  syncChipText: {
+    color: Colors.primaryDark,
+    fontWeight: Typography.weights.bold,
+  },
+  syncCount: {
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primaryDark,
+  },
+  syncCountText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: Typography.weights.extraBold,
   },
   moduleChipText: {
     fontSize: 11,

@@ -7,11 +7,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
   Linking,
   Platform,
   Image,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import {
   User,
   ShieldAlert,

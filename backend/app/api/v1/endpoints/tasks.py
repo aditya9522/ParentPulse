@@ -1,15 +1,19 @@
 # backend/app/api/v1/endpoints/tasks.py
 from uuid import UUID
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+
+from fastapi import APIRouter, Depends, Header, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
+from app.core.concurrency import enforce_record_version
+from app.core.exceptions import AuthorizationError, ResourceNotFoundError
+from app.core.permissions import verify_family_membership, verify_parent_access
+from app.helpers.response_builder import build_response
 from app.models.task import Task
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from app.schemas.common import ApiResponse
-from app.helpers.response_builder import build_response
+from app.schemas.task import TaskCreate, TaskResponse, TaskUpdate
 
 router = APIRouter(prefix="/tasks", tags=["Care Tasks"])
 
@@ -20,7 +24,13 @@ async def create_task(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    parent, _ = await verify_parent_access(session, current_user.id, data.parent_id)
+    if parent.family_id != data.family_id:
+        raise AuthorizationError("The task family does not match the selected parent.")
+    if data.assigned_to_user_id:
+        await verify_family_membership(session, data.assigned_to_user_id, parent.family_id)
     task = Task(
+        id=data.id,
         parent_id=data.parent_id,
         family_id=data.family_id,
         title=data.title,
@@ -37,10 +47,10 @@ async def create_task(
     return build_response(TaskResponse.model_validate(task))
 
 
-@router.get("/parent/{parent_id}", response_model=ApiResponse[List[TaskResponse]])
+@router.get("/parent/{parent_id}", response_model=ApiResponse[list[TaskResponse]])
 async def list_parent_tasks(
     parent_id: UUID,
-    status_filter: Optional[str] = Query(None, alias="status"),
+    status_filter: str | None = Query(None, alias="status"),
     context=Depends(get_parent_access_context),
     session: AsyncSession = Depends(get_db),
 ):
@@ -59,12 +69,16 @@ async def update_task(
     data: TaskUpdate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
+    record_version: str | None = Header(None, alias="X-Record-Version"),
+    conflict_resolution: str | None = Header(None, alias="X-Conflict-Resolution"),
 ):
     stmt = select(Task).where(Task.id == task_id)
     res = await session.execute(stmt)
     task = res.scalar_one_or_none()
     if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+        raise ResourceNotFoundError("Task", task_id)
+    await verify_parent_access(session, current_user.id, task.parent_id)
+    enforce_record_version(task.updated_at, record_version, conflict_resolution)
 
     if data.title is not None:
         task.title = data.title
@@ -77,6 +91,7 @@ async def update_task(
     if data.due_date is not None:
         task.due_date = data.due_date
     if data.assigned_to_user_id is not None:
+        await verify_family_membership(session, data.assigned_to_user_id, task.family_id)
         task.assigned_to_user_id = data.assigned_to_user_id
 
     await session.flush()
@@ -89,8 +104,15 @@ async def delete_task(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
+    record_version: str | None = Header(None, alias="X-Record-Version"),
+    conflict_resolution: str | None = Header(None, alias="X-Conflict-Resolution"),
 ):
-    stmt = delete(Task).where(Task.id == task_id)
-    await session.execute(stmt)
+    stmt = select(Task).where(Task.id == task_id)
+    task = (await session.execute(stmt)).scalar_one_or_none()
+    if not task:
+        raise ResourceNotFoundError("Task", task_id)
+    await verify_parent_access(session, current_user.id, task.parent_id)
+    enforce_record_version(task.updated_at, record_version, conflict_resolution)
+    await session.delete(task)
     await session.flush()
     return build_response({"deleted": True, "id": str(task_id)})

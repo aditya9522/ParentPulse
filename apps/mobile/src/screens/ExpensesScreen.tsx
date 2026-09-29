@@ -8,10 +8,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Alert,
   Platform,
   Linking,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import {
   Receipt,
   Shield,

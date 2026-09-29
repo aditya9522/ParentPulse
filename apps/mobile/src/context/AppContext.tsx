@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useCallback, useContext, useState, useEffect, useMemo, useRef } from "react";
 import * as Location from "expo-location";
 import * as Crypto from "expo-crypto";
 import * as Notifications from "expo-notifications";
@@ -11,7 +11,6 @@ import {
   Appointment,
   TimelineEvent,
   HealthMeasurement,
-  HealthcarePlace,
   LocationVisit,
   CareTask,
   HealthcareExpense,
@@ -21,7 +20,16 @@ import {
 } from "../types";
 import { apiClient } from "../api/client";
 import { syncCareReminders } from "../services/reminders";
-import { drainMutationQueue, enqueueMutation } from "../services/mutationQueue";
+import {
+  discardQueuedMutation,
+  drainMutationQueue,
+  enqueueMutation,
+  initializeMutationQueue,
+  MutationDescriptor,
+  QueuedMutation,
+  retryQueuedMutation,
+  subscribeToMutationQueue,
+} from "../services/mutationQueue";
 
 export type SupportedLanguage =
   | "en"
@@ -101,7 +109,15 @@ interface AppContextType {
   isAuthenticated: boolean;
   dataLoading: boolean;
   dataError: string | null;
+  dataWarning: string | null;
   refreshData: () => Promise<void>;
+  syncQueue: QueuedMutation[];
+  syncBusy: boolean;
+  syncCenterVisible: boolean;
+  setSyncCenterVisible: (visible: boolean) => void;
+  retrySyncMutation: (id: string, overwrite?: boolean) => Promise<void>;
+  discardSyncMutation: (id: string) => Promise<void>;
+  syncNow: () => Promise<void>;
   activeParent: ParentProfile;
   parentList: ParentProfile[];
   setActiveParentId: (id: string) => void;
@@ -198,6 +214,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [dataWarning, setDataWarning] = useState<string | null>(null);
+  const [allQueuedMutations, setAllQueuedMutations] = useState<QueuedMutation[]>([]);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncCenterVisible, setSyncCenterVisible] = useState(false);
+  const refreshDataRef = useRef<() => Promise<void>>(async () => undefined);
+  const reconciliationPendingRef = useRef(false);
 
   // Per-parent data cache
   const [dataStore, setDataStore] = useState<Record<string, ParentData>>({});
@@ -236,28 +258,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const currentData = dataStore[activeParentId] || emptyParentData();
   const isAuthenticated = apiClient.isAuthenticated();
+  const authenticatedUserId = apiClient.getAuthenticatedUserId();
+  const syncQueue = useMemo(() => authenticatedUserId
+    ? allQueuedMutations.filter((item) => item.ownerUserId === authenticatedUserId)
+    : [], [allQueuedMutations, authenticatedUserId]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToMutationQueue(setAllQueuedMutations);
+    void initializeMutationQueue().catch((error) => {
+      setDataWarning(error instanceof Error ? error.message : "Secure offline changes are unavailable.");
+    });
+    return unsubscribe;
+  }, []);
 
   const flushPendingMutations = async () => {
-    if (!apiClient.isAuthenticated()) return;
-    await drainMutationQueue((operation) => apiClient.executeQueuedMutation(operation));
+    const ownerUserId = apiClient.getAuthenticatedUserId();
+    if (!ownerUserId) return;
+    setSyncBusy(true);
+    try {
+      const result = await drainMutationQueue(ownerUserId, (operation) => apiClient.executeQueuedMutation(operation));
+      if (result.succeeded > 0) await refreshDataRef.current();
+      if (result.blocked > 0) setSyncCenterVisible(true);
+    } finally {
+      setSyncBusy(false);
+    }
   };
 
   const syncMutation = async (
     endpoint: string,
     method: "POST" | "PATCH" | "DELETE",
     body?: unknown,
+    descriptor?: MutationDescriptor,
   ) => {
+    const ownerUserId = apiClient.getAuthenticatedUserId();
+    if (!ownerUserId) return;
     try {
-      await enqueueMutation({ endpoint, method, body });
+      await enqueueMutation({
+        endpoint,
+        method,
+        body,
+        ownerUserId,
+        label: descriptor?.label || "Care record change",
+        resourceType: descriptor?.resourceType || "record",
+        resourceId: descriptor?.resourceId,
+        parentId: descriptor?.parentId || activeParentId,
+        expectedVersion: descriptor?.expectedVersion,
+      });
       await flushPendingMutations();
-    } catch {
-      // The durable queue is retried on the next connectivity or authentication change.
+    } catch (error) {
+      setDataWarning(error instanceof Error ? error.message : "A change is waiting to synchronize.");
     }
   };
 
+  const retrySyncMutation = async (id: string, overwrite = false) => {
+    await retryQueuedMutation(id, overwrite);
+    await flushPendingMutations();
+  };
+
+  const discardSyncMutation = async (id: string) => {
+    await discardQueuedMutation(id);
+    reconciliationPendingRef.current = true;
+    await refreshDataRef.current();
+  };
+
   useEffect(() => NetInfo.addEventListener((state) => {
-    if (state.isConnected && state.isInternetReachable !== false) void flushPendingMutations();
+    if (state.isConnected && state.isInternetReachable !== false) {
+      void (async () => {
+        await flushPendingMutations();
+        if (reconciliationPendingRef.current) await refreshDataRef.current();
+      })();
+    }
   }), [authVersion]);
+
+  useEffect(() => {
+    const retryable = syncQueue.filter((item) => item.state === "pending");
+    if (retryable.length === 0 || syncBusy) return;
+    const nextAttempt = Math.min(...retryable.map((item) => item.nextAttemptAt ? Date.parse(item.nextAttemptAt) : Date.now()));
+    const timer = setTimeout(() => void flushPendingMutations(), Math.max(250, nextAttempt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [syncQueue, syncBusy]);
 
   useEffect(() => {
     if (!runtimeReady) return;
@@ -343,20 +422,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const refreshData = useCallback(async () => {
     if (!apiClient.isAuthenticated()) {
+      setDataLoading(false);
       setDataStore({});
       setFamilyMembers([]);
       setCurrentUser(EMPTY_CURRENT_USER);
       setHasCompletedOnboarding(false);
       setDataError(null);
+      setDataWarning(null);
+      reconciliationPendingRef.current = false;
       return;
     }
     setDataLoading(true);
-    setDataError(null);
+    setDataWarning(null);
     try {
       const [profile, families] = await Promise.all([apiClient.getCurrentUser(), apiClient.listFamilies()]);
+      if (families.length === 0) {
+        setCurrentUser({ ...profile, role: "family_member" });
+        setFamilyMembers([]);
+        setDataStore({});
+        setActiveParentId("");
+        setHasCompletedOnboarding(false);
+        setDataError(null);
+        reconciliationPendingRef.current = false;
+        return;
+      }
+
       const parents = (await Promise.all(families.map((family) => apiClient.listFamilyParents(family.id)))).flat();
+      const unavailableDomains = new Set<string>();
       const entries = await Promise.all(parents.map(async (parent) => {
-        const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance] = await Promise.all([
+        const domainNames = ["medicines", "appointments", "documents", "timeline", "measurements", "visits", "tasks", "expenses", "insurance"] as const;
+        const results = await Promise.allSettled([
           apiClient.listMedicines(parent.id),
           apiClient.listAppointments(parent.id),
           apiClient.listDocuments(parent.id),
@@ -367,6 +462,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           apiClient.listExpenses(parent.id),
           apiClient.listInsurance(parent.id),
         ]);
+        const domainData = results.map((result, index) => {
+          if (result.status === "fulfilled") return result.value;
+          unavailableDomains.add(domainNames[index]);
+          return [];
+        });
+        const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance] = domainData;
         return [parent.id, { profile: parent, medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance }] as const;
       }));
       const nextStore = Object.fromEntries(entries) as Record<string, ParentData>;
@@ -391,12 +492,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDataStore(nextStore);
       setActiveParentId((current) => nextStore[current] ? current : parents[0]?.id || "");
       setHasCompletedOnboarding(parents.length > 0);
+      setDataError(null);
+      reconciliationPendingRef.current = false;
+      if (unavailableDomains.size > 0) {
+        setDataWarning(`${unavailableDomains.size} care ${unavailableDomains.size === 1 ? "service is" : "services are"} temporarily unavailable. Your available live records are still shown.`);
+      }
     } catch (error) {
-      setDataError(error instanceof Error ? error.message : "Could not load your live care data.");
+      setDataError(error instanceof Error ? error.message : "Could not verify your account and care circle.");
     } finally {
       setDataLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    refreshDataRef.current = refreshData;
+  }, [refreshData]);
 
   useEffect(() => {
     if (!runtimeReady) return;
@@ -423,17 +533,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
 
-    void syncMutation(`/parents/${activeParentId}`, "PATCH", updated);
+    void syncMutation(`/parents/${activeParentId}`, "PATCH", updated, {
+      label: `Update ${currentData.profile.full_name || "parent"} profile`,
+      resourceType: "parent profile",
+      resourceId: activeParentId,
+      expectedVersion: currentData.profile.updated_at,
+    });
   };
 
   const markDoseTaken = (medicineId: string) => {
-    setDosesTakenToday((prev) => {
-      const willBeTaken = !prev[medicineId];
-      void syncMutation(`/medicines/${medicineId}/doses`, "POST", { status: willBeTaken ? "taken" : "missed" });
-      return {
-        ...prev,
-        [medicineId]: willBeTaken,
-      };
+    const willBeTaken = !dosesTakenToday[medicineId];
+    const medicine = currentData.medicines.find((item) => item.id === medicineId);
+    setDosesTakenToday((prev) => ({
+      ...prev,
+      [medicineId]: willBeTaken,
+    }));
+    void syncMutation(`/medicines/${medicineId}/doses`, "POST", { status: willBeTaken ? "taken" : "missed" }, {
+      label: `${willBeTaken ? "Record" : "Undo"} ${medicine?.name || "medicine"} dose`,
+      resourceType: "dose",
+      resourceId: medicineId,
     });
   };
 
@@ -455,7 +573,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         documents: prev[activeParentId].documents.filter((d) => d.id !== docId),
       },
     }));
-    void syncMutation(`/documents/${docId}`, "DELETE");
+    const document = currentData.documents.find((item) => item.id === docId);
+    void syncMutation(`/documents/${docId}`, "DELETE", undefined, {
+      label: `Archive ${document?.title || "medical document"}`,
+      resourceType: "document",
+      resourceId: docId,
+      expectedVersion: document?.updated_at,
+    });
   };
 
   const addAppointment = (app: Appointment) => {
@@ -466,7 +590,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         appointments: [app, ...prev[activeParentId].appointments],
       },
     }));
-    void syncMutation("/appointments", "POST", { ...app, family_id: currentData.profile.family_id });
+    void syncMutation("/appointments", "POST", { ...app, family_id: currentData.profile.family_id }, {
+      label: `Schedule appointment with ${app.doctor_name}`,
+      resourceType: "appointment",
+      resourceId: app.id,
+    });
   };
 
   const deleteAppointment = (appId: string) => {
@@ -477,7 +605,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         appointments: prev[activeParentId].appointments.filter((a) => a.id !== appId),
       },
     }));
-    void syncMutation(`/appointments/${appId}`, "PATCH", { status: "cancelled" });
+    const appointment = currentData.appointments.find((item) => item.id === appId);
+    void syncMutation(`/appointments/${appId}`, "PATCH", { status: "cancelled" }, {
+      label: `Cancel ${appointment?.doctor_name || "doctor"} appointment`,
+      resourceType: "appointment",
+      resourceId: appId,
+      expectedVersion: appointment?.updated_at,
+    });
   };
 
   const addMedicine = (med: MedicineSchedule) => {
@@ -488,7 +622,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         medicines: [med, ...prev[activeParentId].medicines],
       },
     }));
-    void syncMutation("/medicines", "POST", { ...med, family_id: currentData.profile.family_id });
+    void syncMutation("/medicines", "POST", { ...med, family_id: currentData.profile.family_id }, {
+      label: `Add ${med.name}`,
+      resourceType: "medicine",
+      resourceId: med.id,
+    });
   };
 
   const deleteMedicine = (medId: string) => {
@@ -499,7 +637,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         medicines: prev[activeParentId].medicines.filter((m) => m.id !== medId),
       },
     }));
-    void syncMutation(`/medicines/${medId}`, "PATCH", { is_active: false });
+    const medicine = currentData.medicines.find((item) => item.id === medId);
+    void syncMutation(`/medicines/${medId}`, "PATCH", { is_active: false }, {
+      label: `Stop ${medicine?.name || "medicine"}`,
+      resourceType: "medicine",
+      resourceId: medId,
+      expectedVersion: medicine?.updated_at,
+    });
   };
 
   // Care Tasks Management
@@ -512,20 +656,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    void syncMutation("/tasks", "POST", task);
+    void syncMutation("/tasks", "POST", task, {
+      label: `Create task: ${task.title}`,
+      resourceType: "task",
+      resourceId: task.id,
+    });
   };
 
   const toggleTaskCompleted = (taskId: string) => {
+    const task = currentData.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const nextStatus = task.status === "completed" ? "pending" : "completed";
     setDataStore((prev) => {
       const currentTasks = prev[activeParentId].tasks;
-      const updatedTasks = currentTasks.map((t) => {
-        if (t.id === taskId) {
-          const nextStatus = t.status === "completed" ? "pending" : "completed";
-          void syncMutation(`/tasks/${taskId}`, "PATCH", { status: nextStatus });
-          return { ...t, status: nextStatus as any };
-        }
-        return t;
-      });
+      const updatedTasks = currentTasks.map((item) => item.id === taskId
+        ? { ...item, status: nextStatus as CareTask["status"] }
+        : item);
       return {
         ...prev,
         [activeParentId]: {
@@ -533,6 +679,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           tasks: updatedTasks,
         },
       };
+    });
+    void syncMutation(`/tasks/${taskId}`, "PATCH", { status: nextStatus }, {
+      label: `${nextStatus === "completed" ? "Complete" : "Reopen"} task: ${task.title}`,
+      resourceType: "task",
+      resourceId: taskId,
+      expectedVersion: task.updated_at,
     });
   };
 
@@ -545,7 +697,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    void syncMutation(`/tasks/${taskId}`, "DELETE");
+    const task = currentData.tasks.find((item) => item.id === taskId);
+    void syncMutation(`/tasks/${taskId}`, "DELETE", undefined, {
+      label: `Delete task: ${task?.title || "care task"}`,
+      resourceType: "task",
+      resourceId: taskId,
+      expectedVersion: task?.updated_at,
+    });
   };
 
   // Expenses & Insurance Management
@@ -558,7 +716,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    void syncMutation("/expenses", "POST", expense);
+    void syncMutation("/expenses", "POST", expense, {
+      label: `Add expense: ${expense.title}`,
+      resourceType: "expense",
+      resourceId: expense.id,
+    });
   };
 
   const addInsurance = (policy: InsurancePolicy) => {
@@ -570,7 +732,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
     }));
 
-    void syncMutation("/expenses/insurance", "POST", policy);
+    void syncMutation("/expenses/insurance", "POST", policy, {
+      label: `Add ${policy.provider} policy`,
+      resourceType: "insurance",
+      resourceId: policy.id,
+    });
   };
 
   // Family Members & Caregiver Management
@@ -600,6 +766,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value_secondary: valSec,
       unit: newMeasurement.unit,
       notes,
+    }, {
+      label: `Record ${vitalType.replace(/_/g, " ")}`,
+      resourceType: "measurement",
+      resourceId: newMeasurement.id,
     });
   };
 
@@ -636,6 +806,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,
       notes: "Checked in via ParentPulse",
+    }, {
+      label: `Check in at ${placeName}`,
+      resourceType: "visit",
+      resourceId: newVisit.id,
     });
   };
 
@@ -669,7 +843,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated,
         dataLoading,
         dataError,
+        dataWarning,
         refreshData,
+        syncQueue,
+        syncBusy,
+        syncCenterVisible,
+        setSyncCenterVisible,
+        retrySyncMutation,
+        discardSyncMutation,
+        syncNow: flushPendingMutations,
         activeParent: currentData.profile,
         parentList: Object.values(dataStore).map((d) => d.profile),
         setActiveParentId,

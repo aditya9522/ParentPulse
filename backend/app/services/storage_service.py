@@ -5,6 +5,7 @@ import uuid
 from app.clients.supabase import (
     create_signed_storage_url,
     download_storage_object,
+    remove_storage_objects,
     upload_storage_object,
 )
 
@@ -32,3 +33,11 @@ class StorageService:
     @staticmethod
     async def read_document(storage_path: str) -> bytes:
         return await download_storage_object(StorageService.BUCKET, storage_path)
+
+    @staticmethod
+    async def delete_documents(storage_paths: list[str]) -> None:
+        # Supabase accepts batches; keep requests bounded for large family archives.
+        for start in range(0, len(storage_paths), 100):
+            await remove_storage_objects(
+                StorageService.BUCKET, storage_paths[start : start + 100]
+            )

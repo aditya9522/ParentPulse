@@ -2,6 +2,7 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { sessionStore, StoredSession } from "../services/session";
+import { clearGoogleSession } from "../services/googleAuth";
 import { QueuedMutation } from "../services/mutationQueue";
 import {
   ParentProfile,
@@ -32,6 +33,19 @@ const API_URL = configuredApiUrl || (__DEV__
   : (() => {
       throw new Error("EXPO_PUBLIC_API_URL is required in production builds.");
     })());
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number | null,
+    public readonly endpoint: string,
+    public readonly code?: string,
+    public readonly requestId?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 class ApiClient {
   private baseUrl: string;
@@ -66,6 +80,7 @@ class ApiClient {
   async signOut(): Promise<void> {
     this.session = null;
     await sessionStore.clear();
+    await clearGoogleSession();
     this.authListeners.forEach((listener) => listener(false));
   }
 
@@ -73,16 +88,24 @@ class ApiClient {
     return this.session !== null;
   }
 
+  getAuthenticatedUserId(): string | null {
+    return this.session?.userId || null;
+  }
+
   onAuthStateChange(listener: (authenticated: boolean) => void): () => void {
     this.authListeners.add(listener);
     return () => this.authListeners.delete(listener);
   }
 
-  async executeQueuedMutation(operation: QueuedMutation): Promise<void> {
-    await this.request(operation.endpoint, {
+  async executeQueuedMutation(operation: QueuedMutation): Promise<unknown> {
+    return this.request(operation.endpoint, {
       method: operation.method,
       body: operation.body === undefined ? undefined : JSON.stringify(operation.body),
-      headers: { "Idempotency-Key": operation.id },
+      headers: {
+        "Idempotency-Key": operation.id,
+        ...(operation.expectedVersion ? { "X-Record-Version": operation.expectedVersion } : {}),
+        ...(operation.conflictResolution === "overwrite" ? { "X-Conflict-Resolution": "overwrite" } : {}),
+      },
     });
   }
 
@@ -127,14 +150,37 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.session.accessToken}`;
     }
 
-    const response = await fetch(url, { ...options, headers });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+    let response: Response;
+    try {
+      response = await fetch(url, { ...options, headers, signal: controller.signal });
+    } catch {
+      const timedOut = controller.signal.aborted;
+      throw new ApiError(
+        timedOut
+          ? "The secure service took too long to respond. Please try again."
+          : "Could not reach the secure service. Check your connection and try again.",
+        null,
+        endpoint,
+        timedOut ? "REQUEST_TIMEOUT" : "NETWORK_UNAVAILABLE",
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
     if (response.status === 401 && authenticated && retryAuth && await this.refreshSession()) {
       return this.request<T>(endpoint, options, true, false);
     }
     if (!response.ok) {
       const payload = await response.json().catch(() => null);
-      const detail = payload?.detail || payload?.message || response.statusText;
-      const error = new Error(detail || `Request failed (${response.status})`);
+      const detail = payload?.error?.message || payload?.detail || payload?.message || response.statusText;
+      const error = new ApiError(
+        detail || `Request failed (${response.status})`,
+        response.status,
+        endpoint,
+        payload?.error?.code,
+        payload?.error?.request_id || response.headers.get("x-request-id") || undefined,
+      );
       if (__DEV__) {
         console.warn(`Backend rejected ${endpoint}:`, error.message);
       }
@@ -163,6 +209,55 @@ class ApiClient {
 
   async getCurrentUser(): Promise<UserProfile> {
     return this.request<UserProfile>(`/users/me`);
+  }
+
+  async listConsents(): Promise<ConsentPreference[]> {
+    return this.request<ConsentPreference[]>("/users/me/consents");
+  }
+
+  async updateConsent(
+    consentType: ConsentType,
+    granted: boolean,
+    policyVersion = consentType === "voice_input" ? "2026-09-voice-v1" : "2026-09",
+  ): Promise<ConsentPreference> {
+    return this.request<ConsentPreference>(`/users/me/consents/${consentType}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        granted,
+        policy_version: policyVersion,
+      }),
+    });
+  }
+
+  async updateVoiceConsent(granted: boolean): Promise<ConsentPreference> {
+    try {
+      return await this.updateConsent("voice_input", granted, "2026-09-voice-v1");
+    } catch (error) {
+      // Rolling deployments may briefly run the pre-voice enum. Preserve an
+      // explicit voice policy version without treating generic AI consent as mic consent.
+      if (!(error instanceof ApiError) || error.status !== 422) throw error;
+      return this.updateConsent("ai_assistant", granted, "2026-09-voice-v1");
+    }
+  }
+
+  async exportAccountData(): Promise<AccountExport> {
+    return this.request<AccountExport>("/users/me/export");
+  }
+
+  async getDeletionImpact(): Promise<DeletionImpact> {
+    return this.request<DeletionImpact>("/users/me/deletion-impact");
+  }
+
+  async getAuthMethods(): Promise<AuthMethod[]> {
+    const result = await this.request<{ methods: AuthMethod[] }>("/users/me/auth-methods");
+    return result.methods;
+  }
+
+  async deleteAccount(input: DeleteAccountInput): Promise<DeleteAccountResult> {
+    return this.request<DeleteAccountResult>("/users/me", {
+      method: "DELETE",
+      body: JSON.stringify(input),
+    });
   }
 
   // Parent Profile
@@ -428,5 +523,45 @@ interface AuthResponse {
   expires_in: number;
   user_id: string;
 }
+
+export type ConsentType = "location_history" | "sos_location_sharing" | "ai_assistant" | "voice_input";
+
+export interface ConsentPreference {
+  id: string;
+  consent_type: ConsentType;
+  granted: boolean;
+  policy_version: string;
+  source: string;
+  occurred_at: string;
+}
+
+export interface AccountExport {
+  format_version: string;
+  generated_at: string;
+  account: Record<string, unknown>;
+  consents: Record<string, unknown>[];
+  care_circles: Record<string, unknown>[];
+  records: Record<string, Record<string, unknown>[]>;
+  notes: string[];
+}
+
+export interface DeletionImpact {
+  owned_care_circles: number;
+  shared_care_circles: number;
+  parent_profiles_removed: number;
+  medical_documents_removed: number;
+  confirmation_phrase: string;
+}
+
+export interface DeleteAccountResult {
+  deleted: boolean;
+  auth_cleanup_status: "completed" | "pending";
+}
+
+export type AuthMethod = "password" | "google";
+
+export type DeleteAccountInput =
+  | { credential_type: "password"; password: string; confirmation: string }
+  | { credential_type: "google"; google_id_token: string; confirmation: string };
 
 export const apiClient = new ApiClient();

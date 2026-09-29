@@ -1,16 +1,18 @@
 # backend/app/api/v1/endpoints/parents.py
 from uuid import UUID
-from typing import List
-from fastapi import APIRouter, Depends
+
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
-from app.models.user import User
-from app.schemas.parent import ParentProfileCreate, ParentProfileUpdate, ParentProfileResponse
-from app.schemas.common import ApiResponse
-from app.helpers.response_builder import build_response
-from app.crud.parents import ParentRepository
-from app.core.permissions import verify_family_membership
+from app.core.concurrency import enforce_record_version
 from app.core.exceptions import ResourceNotFoundError
+from app.core.permissions import verify_family_membership
+from app.crud.parents import ParentRepository
+from app.helpers.response_builder import build_response
+from app.models.user import User
+from app.schemas.common import ApiResponse
+from app.schemas.parent import ParentProfileCreate, ParentProfileResponse, ParentProfileUpdate
 
 router = APIRouter(prefix="/parents", tags=["Parent Profiles"])
 
@@ -45,7 +47,7 @@ async def create_parent_profile(
     return build_response(ParentProfileResponse.model_validate(parent))
 
 
-@router.get("/family/{family_id}", response_model=ApiResponse[List[ParentProfileResponse]])
+@router.get("/family/{family_id}", response_model=ApiResponse[list[ParentProfileResponse]])
 async def list_parents_in_family(
     family_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -72,14 +74,18 @@ async def update_parent_profile(
     data: ParentProfileUpdate,
     context=Depends(get_parent_access_context),
     session: AsyncSession = Depends(get_db),
+    record_version: str | None = Header(None, alias="X-Record-Version"),
+    conflict_resolution: str | None = Header(None, alias="X-Conflict-Resolution"),
 ):
+    parent, _ = context
+    enforce_record_version(parent.updated_at, record_version, conflict_resolution)
     repo = ParentRepository(session)
     update_data = data.model_dump(exclude_unset=True)
-    if "surgeries" in update_data and update_data["surgeries"]:
+    if update_data.get("surgeries"):
         update_data["surgeries"] = [s.model_dump() if hasattr(s, "model_dump") else s for s in update_data["surgeries"]]
-    if "emergency_contacts" in update_data and update_data["emergency_contacts"]:
+    if update_data.get("emergency_contacts"):
         update_data["emergency_contacts"] = [e.model_dump() if hasattr(e, "model_dump") else e for e in update_data["emergency_contacts"]]
-    if "primary_doctors" in update_data and update_data["primary_doctors"]:
+    if update_data.get("primary_doctors"):
         update_data["primary_doctors"] = [d.model_dump() if hasattr(d, "model_dump") else d for d in update_data["primary_doctors"]]
 
     updated = await repo.update(parent_id, **update_data)

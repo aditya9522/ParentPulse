@@ -10,6 +10,7 @@ from app.models.family_member import FamilyMember
 from app.models.notification import Notification
 from app.models.push_device import PushDevice
 from app.models.sos_event import SosAcknowledgement, SosEvent
+from app.services.account_control_service import has_consent
 from app.services.push_service import expo_push_service
 
 
@@ -41,6 +42,12 @@ class SosService:
 
     async def start(self, user_id: UUID, parent_id: UUID, latitude: float | None, longitude: float | None, message: str | None) -> tuple[SosEvent, int, int]:
         parent, _ = await verify_parent_access(self.session, user_id, parent_id)
+        has_coordinates = latitude is not None or longitude is not None
+        if has_coordinates and not await has_consent(
+            self.session, user_id, "sos_location_sharing"
+        ):
+            latitude = None
+            longitude = None
         active = (await self.session.execute(select(SosEvent).where(SosEvent.parent_id == parent_id, SosEvent.status == "active"))).scalar_one_or_none()
         if active:
             raise ConflictError("An SOS event is already active for this parent.")

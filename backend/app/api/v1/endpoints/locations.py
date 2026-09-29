@@ -1,13 +1,16 @@
 # backend/app/api/v1/endpoints/locations.py
 from uuid import UUID
-from typing import List
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
-from app.models.user import User
-from app.schemas.location import LocationVisitCreate, LocationVisitUpdate, LocationVisitResponse
-from app.schemas.common import ApiResponse
+from app.core.exceptions import AuthorizationError, ResourceNotFoundError
 from app.helpers.response_builder import build_response
+from app.models.user import User
+from app.schemas.common import ApiResponse
+from app.schemas.location import LocationVisitCreate, LocationVisitResponse, LocationVisitUpdate
+from app.services.account_control_service import has_consent
 from app.services.location_service import LocationService
 
 router = APIRouter(prefix="/parents/{parent_id}/locations", tags=["Location Visits"])
@@ -21,18 +24,27 @@ async def record_parent_visit(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    parent, _ = context
+    parent, member = context
+    if not member.can_view_location_history:
+        raise AuthorizationError("Location history permission is required.")
+    if not await has_consent(session, current_user.id, "location_history"):
+        raise AuthorizationError("Enable location history in Privacy settings before recording a visit.")
+    if data.parent_id != parent_id:
+        raise AuthorizationError("The visit parent does not match the authorized profile.")
     service = LocationService(session)
     visit = await service.record_visit(parent.family_id, current_user.id, data)
     return build_response(LocationVisitResponse.model_validate(visit))
 
 
-@router.get("/visits", response_model=ApiResponse[List[LocationVisitResponse]])
+@router.get("/visits", response_model=ApiResponse[list[LocationVisitResponse]])
 async def list_parent_visits(
     parent_id: UUID,
     context=Depends(get_parent_access_context),
     session: AsyncSession = Depends(get_db),
 ):
+    _, member = context
+    if not member.can_view_location_history:
+        raise AuthorizationError("Location history permission is required.")
     service = LocationService(session)
     visits = await service.list_parent_visits(parent_id)
     return build_response([LocationVisitResponse.model_validate(v) for v in visits])
@@ -46,7 +58,15 @@ async def update_parent_visit(
     context=Depends(get_parent_access_context),
     session: AsyncSession = Depends(get_db),
 ):
+    _, member = context
+    if not member.can_view_location_history:
+        raise AuthorizationError("Location history permission is required.")
     service = LocationService(session)
+    visit = await service.loc_repo.get_by_id(visit_id)
+    if not visit:
+        raise ResourceNotFoundError("LocationVisit", visit_id)
+    if visit.parent_id != parent_id:
+        raise AuthorizationError("This visit does not belong to the authorized parent.")
     updated = await service.update_visit(visit_id, data)
     return build_response(LocationVisitResponse.model_validate(updated))
 
@@ -58,6 +78,14 @@ async def delete_parent_visit(
     context=Depends(get_parent_access_context),
     session: AsyncSession = Depends(get_db),
 ):
+    _, member = context
+    if not member.can_view_location_history:
+        raise AuthorizationError("Location history permission is required.")
     service = LocationService(session)
+    visit = await service.loc_repo.get_by_id(visit_id)
+    if not visit:
+        raise ResourceNotFoundError("LocationVisit", visit_id)
+    if visit.parent_id != parent_id:
+        raise AuthorizationError("This visit does not belong to the authorized parent.")
     await service.delete_visit(visit_id)
     return build_response({"status": "deleted", "visit_id": str(visit_id)})

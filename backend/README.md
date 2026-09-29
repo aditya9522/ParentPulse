@@ -77,7 +77,7 @@ Recipients can acknowledge an event as `acknowledged` or `responding`. The uniqu
 
 ## Database and storage
 
-Apply every migration in `supabase/migrations/`. `202609270004_harden_medical_storage.sql` hardens private medical storage; `202609270005_push_and_sos.sql` adds push and SOS state; `202609270006_persistent_expenses.sql` adds durable expenses and insurance; and `202609270007_remove_development_seed.sql` removes only the former fixed development identities. The migration runner no longer executes a seed file.
+Apply every migration in `supabase/migrations/`. `202609270004_harden_medical_storage.sql` hardens private medical storage; `202609270005_push_and_sos.sql` adds push and SOS state; `202609270006_persistent_expenses.sql` adds durable expenses and insurance; and `202609270007_remove_development_seed.sql` removes only the former fixed development identities. Security migrations `008` through `010` add idempotency, family RLS, consent, and deletion controls. Migration `011` rejects existing cross-family parent references and permanently enforces that every dual-scoped care record's `parent_id` belongs to its `family_id`; migration `012` adds distinct append-only consent for native voice input. A failure from an integrity migration must be investigated; never rewrite affected clinical records automatically. The migration runner serializes concurrent deployments with a PostgreSQL advisory lock, records SHA-256 checksums to detect migration drift, and never executes seed data.
 
 The backend service role performs private uploads and creates short-lived signed URLs. Never expose the service key to the mobile app.
 
@@ -86,3 +86,5 @@ The backend service role performs private uploads and creates short-lived signed
 Set `ENVIRONMENT=production` and provide real Supabase URL, publishable key, service key, JWKS URL, async database URL, Gemini key, Pinecone key, and Google Maps key. Startup fails closed if a required provider value is mocked or missing.
 
 Gemini credentials are required for document extraction. Failed extraction leaves the original intact and exposes a retry workflow instead of inventing results.
+
+Native Google authentication also requires the Google provider to be enabled in the Supabase dashboard with the Google Web OAuth client ID and secret. The mobile EAS environment must define `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`; production app configuration fails closed when either value or the HTTPS API URL is absent. Register `com.parentpulse.app` with the EAS and Play signing SHA-1 fingerprints as Android OAuth clients in the same Google Cloud project.

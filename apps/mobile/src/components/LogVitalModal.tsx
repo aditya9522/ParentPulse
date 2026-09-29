@@ -6,10 +6,10 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Platform,
   ScrollView,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
@@ -21,11 +21,10 @@ import {
   X,
   Plus,
   Minus,
-  Sparkles,
   Info,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, Gradients, Glass } from "../theme";
+import { Colors, Spacing, Shadows, Gradients } from "../theme";
 
 export const LogVitalModal: React.FC = () => {
   const {

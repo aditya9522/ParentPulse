@@ -40,3 +40,8 @@ pythonpath = ["."]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+# FastAPI's dependency/parameter declarations intentionally call Depends,
+# Header, Form, and related factories in function defaults.
+ignore = ["B008"]

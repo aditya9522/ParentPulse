@@ -1,7 +1,7 @@
 # backend/app/schemas/expense.py
 import uuid
-from datetime import datetime, date
-from typing import Optional, List
+from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -16,6 +16,7 @@ class ExpenseCategory:
 
 
 class HealthcareExpenseCreate(BaseModel):
+    id: uuid.UUID | None = None
     parent_id: uuid.UUID
     family_id: uuid.UUID
     title: str
@@ -23,9 +24,9 @@ class HealthcareExpenseCreate(BaseModel):
     amount: float
     currency: str = "INR"
     expense_date: date
-    provider_name: Optional[str] = None
-    receipt_document_id: Optional[uuid.UUID] = None
-    notes: Optional[str] = None
+    provider_name: str | None = None
+    receipt_document_id: uuid.UUID | None = None
+    notes: str | None = None
     is_reimbursed: bool = False
 
 
@@ -38,9 +39,9 @@ class HealthcareExpenseResponse(BaseModel):
     amount: float
     currency: str
     expense_date: date
-    provider_name: Optional[str] = None
-    receipt_document_id: Optional[uuid.UUID] = None
-    notes: Optional[str] = None
+    provider_name: str | None = None
+    receipt_document_id: uuid.UUID | None = None
+    notes: str | None = None
     is_reimbursed: bool
     created_at: datetime
 
@@ -48,6 +49,7 @@ class HealthcareExpenseResponse(BaseModel):
 
 
 class InsurancePolicyCreate(BaseModel):
+    id: uuid.UUID | None = None
     parent_id: uuid.UUID
     family_id: uuid.UUID
     provider: str
@@ -56,8 +58,8 @@ class InsurancePolicyCreate(BaseModel):
     coverage_amount: float
     currency: str = "INR"
     expiry_date: date
-    tpa_cashless_helpline: Optional[str] = None
-    notes: Optional[str] = None
+    tpa_cashless_helpline: str | None = None
+    notes: str | None = None
 
 
 class InsurancePolicyResponse(BaseModel):
@@ -70,8 +72,8 @@ class InsurancePolicyResponse(BaseModel):
     coverage_amount: float
     currency: str
     expiry_date: date
-    tpa_cashless_helpline: Optional[str] = None
-    notes: Optional[str] = None
+    tpa_cashless_helpline: str | None = None
+    notes: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

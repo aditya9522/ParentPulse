@@ -1,18 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Animated, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import { AlertOctagon, CheckCircle2, Droplet, MapPin, PhoneCall, Radio, ShieldAlert, User, X } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { apiClient } from "../api/client";
 import { useApp } from "../context/AppContext";
-import { BorderRadius, Colors, Shadows, Spacing, Typography } from "../theme";
+import { Colors, Shadows, Spacing } from "../theme";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 
 export const EmergencyCenterModal: React.FC = () => {
   const { activeParent, userLocation, sosModalVisible, setSosModalVisible, seniorMode } = useApp();
   const [eventId, setEventId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [delivery, setDelivery] = useState<{ registered: number; accepted: number } | null>(null);
+  const [delivery, setDelivery] = useState<{ registered: number; accepted: number; sharedGps: boolean } | null>(null);
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -30,9 +31,21 @@ export const EmergencyCenterModal: React.FC = () => {
     haptic();
     setBusy(true);
     try {
-      const result = await apiClient.createSosEvent({ parent_id: activeParent.id, latitude: userLocation?.latitude, longitude: userLocation?.longitude, message: "Emergency assistance requested from ParentPulse" });
+      let shareCoordinates = false;
+      try {
+        const consents = await apiClient.listConsents();
+        shareCoordinates = consents.find((item) => item.consent_type === "sos_location_sharing")?.granted === true;
+      } catch {
+        // Fail closed for coordinates while preserving the emergency alert itself.
+      }
+      const result = await apiClient.createSosEvent({
+        parent_id: activeParent.id,
+        latitude: shareCoordinates ? userLocation?.latitude : undefined,
+        longitude: shareCoordinates ? userLocation?.longitude : undefined,
+        message: "Emergency assistance requested from ParentPulse",
+      });
       setEventId(result.id);
-      setDelivery({ registered: result.recipients_registered, accepted: result.pushes_accepted });
+      setDelivery({ registered: result.recipients_registered, accepted: result.pushes_accepted, sharedGps: shareCoordinates && Boolean(userLocation) });
       Alert.alert("Emergency event active", result.pushes_accepted > 0 ? `${result.pushes_accepted} registered device${result.pushes_accepted === 1 ? "" : "s"} accepted the alert. Call emergency services for immediate help.` : "The emergency event is recorded, but no remote device confirmed push delivery. Call emergency services now.");
     } catch (error) {
       Alert.alert("Couldn’t activate remote SOS", `${error instanceof Error ? error.message : "The service is unavailable."}\n\nCall 112 or 108 for immediate help.`);
@@ -63,7 +76,7 @@ export const EmergencyCenterModal: React.FC = () => {
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Animated.View style={{ transform: [{ scale: pulse }] }}><TouchableOpacity style={styles.sosTouch} onPress={() => void (eventId ? resolve() : activate())} disabled={busy} activeOpacity={0.9}><LinearGradient colors={eventId ? ["#7F1D1D", "#991B1B"] : ["#EF4444", "#B91C1C"]} style={styles.sosGradient}>{busy ? <ActivityIndicator size="large" color="#FFFFFF" /> : <><View style={styles.sosIcon}><AlertOctagon size={46} color="#FFFFFF" /></View><Text style={[styles.sosTitle, seniorMode && { fontSize: 22 }]}>{eventId ? "SOS ACTIVE — TAP TO RESOLVE" : "ACTIVATE FAMILY SOS"}</Text><Text style={styles.sosSubtitle}>{eventId ? "The emergency event remains active until resolved" : "Creates a durable event and alerts registered family devices"}</Text></>}</LinearGradient></TouchableOpacity></Animated.View>
 
-      {eventId && <View style={styles.deliveryCard}><CheckCircle2 size={20} color={delivery?.accepted ? "#15803D" : "#B45309"} /><View style={styles.deliveryInfo}><Text style={styles.deliveryTitle}>{delivery?.accepted ? "Push request accepted" : "No confirmed push target"}</Text><Text style={styles.deliveryText}>{delivery?.accepted || 0} accepted · {delivery?.registered || 0} registered device tokens</Text><Text style={styles.eventId}>Event ···{eventId.slice(-8)}</Text></View></View>}
+      {eventId && <View style={styles.deliveryCard}><CheckCircle2 size={20} color={delivery?.accepted ? "#15803D" : "#B45309"} /><View style={styles.deliveryInfo}><Text style={styles.deliveryTitle}>{delivery?.accepted ? "Push request accepted" : "No confirmed push target"}</Text><Text style={styles.deliveryText}>{delivery?.accepted || 0} accepted · {delivery?.registered || 0} registered device tokens</Text><Text style={styles.deliveryText}>{delivery?.sharedGps ? "GPS shared with this alert" : "GPS not shared"}</Text><Text style={styles.eventId}>Event ···{eventId.slice(-8)}</Text></View></View>}
 
       <Text style={styles.sectionLabel}>CALL EMERGENCY SERVICES</Text>
       <View style={styles.callRow}><CallButton number="112" label="National emergency" onPress={() => call("112")} /><CallButton number="108" label="Ambulance" onPress={() => call("108")} /></View>

@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/SettingsScreen.tsx
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   View,
@@ -8,11 +8,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   Switch,
-  Alert,
   Platform,
   Linking,
   Share,
+  ActivityIndicator,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import {
   Globe,
   Eye,
@@ -23,6 +24,8 @@ import {
   ChevronRight,
   Heart,
   Bell,
+  ShieldCheck,
+  Trash2,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -30,7 +33,10 @@ import { useApp , SupportedLanguage } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
 import * as Notifications from "expo-notifications";
 import { registerRemotePushDevice, syncCareReminders } from "../services/reminders";
-import { apiClient } from "../api/client";
+import { apiClient, ConsentType } from "../api/client";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
+import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
 
 const INDIAN_LANGUAGES: { code: SupportedLanguage; label: string; native: string; available: boolean }[] = [
   { code: "en", label: "English", native: "English", available: true },
@@ -53,28 +59,47 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
     toggleSeniorMode,
     language,
     setLanguage,
-    activeParent,
     setActiveScreen,
     medicines,
     appointments,
-    documents,
-    measurements,
-    tasks,
-    expenses,
-    insurance,
-    visits,
     setReportModalVisible,
   } = useApp();
 
   const isHindi = language === "hi";
 
-  const [locationTrackingOptIn, setLocationTrackingOptIn] = useState(true);
-  const [voiceAssistanceEnabled, setVoiceAssistanceEnabled] = useState(true);
-  const [sosGpsBroadcast, setSosGpsBroadcast] = useState(true);
+  const [locationTrackingOptIn, setLocationTrackingOptIn] = useState(false);
+  const [voiceAssistanceEnabled, setVoiceAssistanceEnabled] = useState(false);
+  const [sosGpsBroadcast, setSosGpsBroadcast] = useState(false);
   const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [consentsLoading, setConsentsLoading] = useState(true);
+  const [consentSaving, setConsentSaving] = useState<ConsentType | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [deleteSheetVisible, setDeleteSheetVisible] = useState(false);
+  const closeDeleteSheet = useCallback(() => setDeleteSheetVisible(false), []);
 
   useEffect(() => {
     void Notifications.getPermissionsAsync().then((permission) => setRemindersEnabled(permission.status === "granted"));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void apiClient.listConsents()
+      .then((consents) => {
+        if (!active) return;
+        setLocationTrackingOptIn(consents.find((item) => item.consent_type === "location_history")?.granted ?? false);
+        setSosGpsBroadcast(consents.find((item) => item.consent_type === "sos_location_sharing")?.granted ?? false);
+        setVoiceAssistanceEnabled(consents.some((item) =>
+          item.granted && (
+            item.consent_type === "voice_input" ||
+            (item.consent_type === "ai_assistant" && item.policy_version === "2026-09-voice-v1")
+          )
+        ));
+      })
+      .catch(() => {
+        if (active) Alert.alert("Privacy settings unavailable", "Your privacy choices could not be loaded. Sensitive sharing remains off until they can be verified.");
+      })
+      .finally(() => active && setConsentsLoading(false));
+    return () => { active = false; };
   }, []);
 
   const enableReminders = async () => {
@@ -98,8 +123,60 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
   const handleExportData = async () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const archive = { exported_at: new Date().toISOString(), parent: activeParent, medicines, appointments, documents, measurements, tasks, expenses, insurance, visits };
-    await Share.share({ title: `ParentPulse data · ${activeParent.full_name}`, message: JSON.stringify(archive, null, 2) });
+    setExporting(true);
+    try {
+      const archive = await apiClient.exportAccountData();
+      const serialized = JSON.stringify(archive, null, 2);
+      const date = new Date().toISOString().slice(0, 10);
+      if (Platform.OS === "web") {
+        await Share.share({ title: `ParentPulse account export · ${date}`, message: serialized });
+      } else {
+        const file = new File(Paths.cache, `parentpulse-account-${date}.json`);
+        file.create({ overwrite: true });
+        file.write(serialized);
+        if (!(await Sharing.isAvailableAsync())) throw new Error("File sharing is not available on this device.");
+        try {
+          await Sharing.shareAsync(file.uri, {
+            dialogTitle: "Share ParentPulse account archive",
+            mimeType: "application/json",
+            UTI: "public.json",
+          });
+        } finally {
+          if (file.exists) file.delete();
+        }
+      }
+    } catch (error) {
+      Alert.alert("Export could not be created", error instanceof Error ? error.message : "Please try again when connected.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const updateConsent = async (
+    type: "location_history" | "sos_location_sharing" | "voice_input",
+    granted: boolean,
+  ) => {
+    const settings = {
+      location_history: { value: locationTrackingOptIn, setter: setLocationTrackingOptIn },
+      sos_location_sharing: { value: sosGpsBroadcast, setter: setSosGpsBroadcast },
+      voice_input: { value: voiceAssistanceEnabled, setter: setVoiceAssistanceEnabled },
+    } as const;
+    const { value: previous, setter } = settings[type];
+    triggerHaptic();
+    setter(granted);
+    setConsentSaving(type);
+    try {
+      if (type === "voice_input") {
+        await apiClient.updateVoiceConsent(granted);
+      } else {
+        await apiClient.updateConsent(type, granted);
+      }
+    } catch (error) {
+      setter(previous);
+      Alert.alert("Privacy choice not saved", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setConsentSaving(null);
+    }
   };
 
   return (
@@ -303,7 +380,6 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         </View>
 
         {/* Voice Assistant & Search */}
-        {false && (
         <View style={[styles.sectionCard, Shadows.card]}>
           <View style={styles.switchRow}>
             <View style={styles.switchTextInfo}>
@@ -316,22 +392,19 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               <Text style={styles.sectionHeaderSub}>
                 {isHindi
                   ? "बोलकर अपॉइंटमेंट, दवाइयां व रिपोर्ट खोजने की सुविधा"
-                  : "Senior-friendly voice speech queries in selected language"}
+                  : "Microphone access is used only while dictating. Audio is not saved; review the transcript before sending."}
               </Text>
             </View>
 
             <Switch
               value={voiceAssistanceEnabled}
-              onValueChange={() => {
-                triggerHaptic();
-                setVoiceAssistanceEnabled(!voiceAssistanceEnabled);
-              }}
+              disabled={consentsLoading || consentSaving !== null}
+              onValueChange={(value) => void updateConsent("voice_input", value)}
               trackColor={{ false: Colors.border, true: "#7C3AED" }}
               thumbColor={voiceAssistanceEnabled ? "#FFFFFF" : "#F1F5F9"}
             />
           </View>
         </View>
-        )}
 
         {/* Location Privacy & Healthcare Visit History */}
         <View style={[styles.sectionCard, Shadows.card]}>
@@ -352,10 +425,8 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
             <Switch
               value={locationTrackingOptIn}
-              onValueChange={() => {
-                triggerHaptic();
-                setLocationTrackingOptIn(!locationTrackingOptIn);
-              }}
+              disabled={consentsLoading || consentSaving !== null}
+              onValueChange={(value) => void updateConsent("location_history", value)}
               trackColor={{ false: Colors.border, true: Colors.primary }}
               thumbColor={locationTrackingOptIn ? "#FFFFFF" : "#F1F5F9"}
             />
@@ -377,13 +448,21 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
             <Switch
               value={sosGpsBroadcast}
-              onValueChange={() => {
-                triggerHaptic();
-                setSosGpsBroadcast(!sosGpsBroadcast);
-              }}
+              disabled={consentsLoading || consentSaving !== null}
+              onValueChange={(value) => void updateConsent("sos_location_sharing", value)}
               trackColor={{ false: Colors.border, true: Colors.emergency }}
               thumbColor={sosGpsBroadcast ? "#FFFFFF" : "#F1F5F9"}
             />
+          </View>
+          <View style={styles.privacyStatus}>
+            {consentsLoading || consentSaving ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <ShieldCheck size={15} color={Colors.successDark} />
+            )}
+            <Text style={styles.privacyStatusText}>
+              {consentsLoading ? "Loading verified choices…" : consentSaving ? "Saving secure preference…" : "Choices are versioned and securely recorded"}
+            </Text>
           </View>
         </View>
 
@@ -395,7 +474,7 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
           <Text style={styles.sectionHeaderSub}>
             {isHindi
               ? "डॉक्टर परामर्श या यात्रा के लिए संपूर्ण रिकॉर्ड डाउनलोड करें"
-              : "Review a factual care summary or share the currently loaded records as JSON"}
+              : "Create a complete structured archive of every care circle and record available to your account"}
           </Text>
 
           <View style={styles.exportButtonsRow}>
@@ -411,15 +490,36 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
             <TouchableOpacity
               style={styles.exportBtn}
               onPress={() => void handleExportData()}
+              disabled={exporting}
               activeOpacity={0.8}
             >
-              <Download size={15} color={Colors.secondaryDark} />
-              <Text style={styles.exportBtnText}>{isHindi ? "JSON डेटा शेयर" : "Share JSON data"}</Text>
+              {exporting ? <ActivityIndicator size="small" color={Colors.secondaryDark} /> : <Download size={15} color={Colors.secondaryDark} />}
+              <Text style={styles.exportBtnText}>{exporting ? "Preparing archive…" : isHindi ? "JSON डेटा शेयर" : "Export account data"}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
+        <View style={[styles.sectionCard, styles.dangerCard]}>
+          <View style={styles.cardHeaderWithIcon}>
+            <Trash2 size={18} color={Colors.emergencyDark} />
+            <Text style={styles.sectionHeaderTitle}>Account ownership</Text>
+          </View>
+          <Text style={styles.sectionHeaderSub}>
+            Review exactly what will be removed, verify your password, and permanently revoke account access.
+          </Text>
+          <TouchableOpacity
+            style={styles.deleteAccountBtn}
+            onPress={() => setDeleteSheetVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Trash2 size={16} color={Colors.emergencyDark} />
+            <Text style={styles.deleteAccountBtnText}>Review account deletion</Text>
+          </TouchableOpacity>
+        </View>
+
       </ScrollView>
+
+      <DeleteAccountSheet visible={deleteSheetVisible} onClose={closeDeleteSheet} />
 
     </View>
   );
@@ -664,6 +764,20 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
   },
+  privacyStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+  },
+  privacyStatusText: {
+    color: Colors.textMuted,
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.medium,
+  },
   exportButtonsRow: {
     flexDirection: "row",
     gap: 8,
@@ -695,11 +809,18 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     paddingVertical: 10,
     marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#FECACA",
   },
   deleteAccountBtnText: {
     fontSize: Typography.sizes.xs,
     fontWeight: Typography.weights.bold,
     color: Colors.emergencyDark,
+  },
+  dangerCard: {
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    backgroundColor: "#FFFDFD",
   },
   onboardingLaunchBtn: {
     marginTop: Spacing.sm,

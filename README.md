@@ -28,20 +28,24 @@ The Expo application uses responsive glass surfaces, safe-area-aware navigation,
 
 | Area | Implementation |
 | --- | --- |
-| Authentication | Supabase email signup/sign-in, account recovery, refresh-token rotation, strict JWT verification, and hardware-backed secure session storage |
+| Authentication | Supabase email and native Google sign-in, account recovery, refresh-token rotation, isolated per-request Auth clients, ES256/RS256 JWKS verification, server-verified legacy sessions, and hardware-backed secure session storage |
 | Authorization | Family membership and per-capability checks for document, medicine, appointment, and doctor-share mutations |
-| Production data | Authenticated startup loads the current user, family memberships, parent profiles, and every care domain from the API; unavailable services show explicit empty/error states instead of sample records |
-| Offline writes | An ordered mutation queue retries user-entered writes after connectivity or authentication changes without substituting clinical data |
+| Production data | Authenticated startup loads the current user, family memberships, parent profiles, and every care domain from the API; new accounts enter onboarding cleanly and optional service failures do not hide healthy live records |
+| Offline writes | AES-GCM-encrypted, account-scoped mutation queue with atomic persistence, backoff, coalescing, visible Sync Center recovery, optimistic conflict resolution, stable client record IDs, and durable API idempotency |
 | Medical vault | Camera, gallery, and file uploads; MIME/size validation; private Supabase Storage; real Gemini multimodal extraction; processing/failure/retry states; signed original downloads |
 | Secure sharing | Server-issued scoped tokens, actual encoded QR codes, expiry, access counts, and immediate revocation |
 | Reminders | Native daily medicine reminders and appointment reminders at 24 hours and 2 hours, enabled through explicit permission UI |
 | Emergency delivery | Durable family SOS events, per-device Expo Push registration, high-priority alerts, actionable acknowledgements, explicit resolution, and honest provider-ticket reporting |
-| Data integrity | Collision-resistant UUIDs, production configuration validation, private storage paths, and family-bound Storage/RLS policies |
-| UI | Premium vault and sharing experiences, full-screen AI assistant, stable bottom navigation, back icons, glassmorphic surfaces, and predictable swipe dismissal |
+| Data integrity | Collision-resistant UUIDs, record-version concurrency checks, durable duplicate protection, production configuration validation, private storage paths, and capability-bound Storage/RLS policies |
+| Account controls | Append-only versioned privacy choices, live account-wide JSON file export, deletion impact review, password re-verification, owned-circle erasure, shared-record anonymization, Supabase Auth revocation, and deleted-identity tombstones |
+| Voice input | Native English/Hindi speech-to-text with separate append-only consent, OS permissions, non-persistent audio, visible listening state, and transcript review before submission |
+| UI | Premium vault and sharing experiences, branded in-app feedback/dialogs, full-screen AI assistant, stable bottom navigation, back icons, glassmorphic surfaces, and predictable swipe dismissal |
 
 The application contains no bundled family or clinical records. New accounts start with an empty care circle, and onboarding only completes after the production API persists the family and parent profile. See [FEATURE_STATUS.md](FEATURE_STATUS.md) for the evidence-based completion audit and remaining work.
 
 Production API: [https://parentpulse-yjnj.onrender.com](https://parentpulse-yjnj.onrender.com). The `/health` endpoint was verified healthy with `environment: production` on 2026-09-27. Render free instances can require a cold start before the first response.
+
+After authentication or API code changes, redeploy the Render backend before testing a new mobile build. The API accepts current Supabase asymmetric signing keys through JWKS and validates legacy HMAC sessions through Supabase Auth rather than treating an API key as a JWT secret.
 
 ## Architecture
 
@@ -96,12 +100,18 @@ Configure public mobile values:
 ```dotenv
 EXPO_PUBLIC_API_URL=https://parentpulse-yjnj.onrender.com/api/v1
 EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_restricted_client_key
-EXPO_PUBLIC_SHARE_BASE_URL=https://your-doctor-portal.example/share/brief
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your_web_oauth_client.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your_ios_oauth_client.apps.googleusercontent.com
+EXPO_PUBLIC_SHARE_BASE_URL=https://parentpulse-yjnj.onrender.com/api/v1/sharing/doctor-brief
 ```
 
 For an Android emulator, use `http://10.0.2.2:8000/api/v1`. A physical device must be able to reach the backend over the local network or HTTPS.
 
 `EXPO_PUBLIC_` values are embedded into the client. Never put service-role, database, AI, or signing secrets in the mobile environment file.
+
+Google authentication uses Android Credential Manager and the native iOS Google Sign-In SDK through `react-native-nitro-google-signin`. Register `com.parentpulse.app`, the EAS upload SHA-1, and the Google Play signing SHA-1 in Google Cloud; configure the same web client in Supabase Auth. The Google button is intentionally hidden when both public client IDs are not present. Production builds fail closed when either ID or the HTTPS API endpoint is missing.
+
+Voice input uses the native platform recognizer through `expo-speech-recognition`. Enabling it records a distinct `voice_input` consent event; during a rolling backend deployment, older API instances receive the same voice-specific policy version through the existing consent endpoint instead of granting microphone access from a generic AI consent. The microphone activates only after OS permission, raw audio is not persisted, and recognized text remains editable until the user explicitly sends it. Google sign-in and voice recognition both require a development, preview, or store build and do not run in Expo Go.
 
 After adding native dependencies, create a development build:
 
@@ -110,6 +120,15 @@ cd apps/mobile
 npx expo run:android
 # or: npx eas-cli@latest build --profile development
 ```
+
+To create an Android APK that can be shared directly with testers:
+
+```powershell
+cd apps/mobile
+npx eas-cli@latest build --platform android --profile preview
+```
+
+The `preview` profile uses internal distribution and embeds the production API URL. Configure `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` in the EAS `preview` environment before building if live maps are required in the shared APK.
 
 ## Backend setup
 
@@ -120,7 +139,7 @@ backend\.venv\Scripts\python -m pip install -r backend/requirements.txt
 npm run dev:backend
 ```
 
-Apply every SQL migration in `backend/supabase/migrations/` in filename order. The latest migrations add durable expenses/insurance and remove the former fixed development identities. Production migration execution never applies seed data. Configure at minimum:
+Apply every SQL migration in `backend/supabase/migrations/` in filename order. The latest migrations add durable expenses/insurance, remove former development identities, persist idempotent mutation results, harden capability-based family RLS, and add auditable account consent/deletion controls. Production migration execution never applies seed data. Configure at minimum:
 
 ```dotenv
 ENVIRONMENT=production
@@ -145,6 +164,11 @@ Before redeploying the API, apply these new migrations to the same Supabase proj
 202609270005_push_and_sos.sql
 202609270006_persistent_expenses.sql
 202609270007_remove_development_seed.sql
+202609280008_idempotency_records.sql
+202609280009_harden_family_rls.sql
+202609280010_account_controls.sql
+202609290011_enforce_parent_family_integrity.sql
+202609290012_voice_input_consent.sql
 ```
 
 Migration `007` removes only the former fixed development family and the three exact development identities defined by both ID and known email. It does not broadly delete user data. Then deploy the current backend commit, verify `GET /health`, and create a new EAS build so the embedded `EXPO_PUBLIC_API_URL` points to the production API.
@@ -154,6 +178,13 @@ The migration runner now records applied filenames and safely baselines installa
 ```powershell
 cd backend
 .venv\Scripts\python scripts\run_migrations.py
+```
+
+After migration, run the rollback-only multi-user security matrix against the same database. It switches among temporary owner/member identities, verifies RLS isolation, capability enforcement, append-only consent, deletion boundaries, private tombstones, and cross-family integrity, then rolls every fixture back:
+
+```powershell
+cd backend
+.venv\Scripts\python scripts\verify_rls_matrix.py
 ```
 
 API documentation:
@@ -199,6 +230,23 @@ Relevant endpoints:
 
 An accepted Expo push ticket means the provider accepted the request. It is not evidence that the device received the message or that a person saw it. ParentPulse reports acknowledgements separately and continues to tell users to call emergency services for immediate help.
 
+## Account privacy controls
+
+- Location-history and SOS-coordinate choices are stored as append-only, policy-versioned consent events. Defaults remain off when the server cannot verify a choice.
+- SOS remains available without GPS consent; the API strips coordinates before persistence and delivery.
+- Account export is generated from current authorized backend records, written to a JSON file in the app cache, and shared through the native file sheet. Internal storage paths, doctor-share tokens, push tokens, and document binaries are excluded.
+- Account deletion requires the exact confirmation phrase plus a current password or fresh Google account selection matching the authenticated Supabase identity. Owned care circles and their stored documents are removed; memberships and private device/account data are erased. Records belonging to other families remain, with the deleted member pseudonymized for referential integrity.
+- A minimal pseudonymous tombstone blocks stale JWTs or delayed provider cleanup from recreating a deleted application account.
+
+Relevant endpoints:
+
+- `GET /api/v1/users/me/consents`
+- `PUT /api/v1/users/me/consents/{consent_type}`
+- `GET /api/v1/users/me/export`
+- `GET /api/v1/users/me/deletion-impact`
+- `GET /api/v1/users/me/auth-methods`
+- `DELETE /api/v1/users/me`
+
 ## Verification
 
 ```powershell
@@ -227,8 +275,7 @@ The npm audit currently reports moderate findings in Expo CLI build tooling thro
 
 - [Feature implementation audit](FEATURE_STATUS.md)
 - [Product specification](FEATURES.md)
-- [Backend architecture](BACKEND_README.md)
-- [Backend service guide](backend/README.md)
+- [Backend architecture and operations](backend/README.md)
 
 ## License
 

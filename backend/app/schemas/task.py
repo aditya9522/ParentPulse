@@ -1,28 +1,30 @@
 # backend/app/schemas/task.py
 import uuid
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, ConfigDict
+
 from app.core.constants import TaskPriority, TaskStatus
 
 
 class TaskCreate(BaseModel):
+    id: uuid.UUID | None = None
     parent_id: uuid.UUID
     family_id: uuid.UUID
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     priority: TaskPriority = TaskPriority.MEDIUM
-    due_date: Optional[datetime] = None
-    assigned_to_user_id: Optional[uuid.UUID] = None
+    due_date: datetime | None = None
+    assigned_to_user_id: uuid.UUID | None = None
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    priority: Optional[TaskPriority] = None
-    status: Optional[TaskStatus] = None
-    due_date: Optional[datetime] = None
-    assigned_to_user_id: Optional[uuid.UUID] = None
+    title: str | None = None
+    description: str | None = None
+    priority: TaskPriority | None = None
+    status: TaskStatus | None = None
+    due_date: datetime | None = None
+    assigned_to_user_id: uuid.UUID | None = None
 
 
 class TaskResponse(BaseModel):
@@ -30,11 +32,11 @@ class TaskResponse(BaseModel):
     parent_id: uuid.UUID
     family_id: uuid.UUID
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     priority: str
     status: str
-    due_date: Optional[datetime] = None
-    assigned_to_user_id: Optional[uuid.UUID] = None
+    due_date: datetime | None = None
+    assigned_to_user_id: uuid.UUID | None = None
     created_by: uuid.UUID
     created_at: datetime
     updated_at: datetime

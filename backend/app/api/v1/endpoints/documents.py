@@ -8,6 +8,7 @@ from fastapi import (
     Depends,
     File,
     Form,
+    Header,
     HTTPException,
     Query,
     UploadFile,
@@ -15,6 +16,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
+from app.core.concurrency import enforce_record_version
 from app.core.config import get_settings
 from app.core.constants import DocumentType
 from app.core.exceptions import AuthorizationError
@@ -157,12 +159,15 @@ async def update_document(
     data: DocumentUpdate,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
+    record_version: str | None = Header(None, alias="X-Record-Version"),
+    conflict_resolution: str | None = Header(None, alias="X-Conflict-Resolution"),
 ):
     service = DocumentService(session)
     doc = await service.get_document(document_id)
     _, member = await verify_parent_access(session, current_user.id, doc.parent_id)
     if not member.can_upload_documents:
         raise AuthorizationError("Document management permission is required.")
+    enforce_record_version(doc.updated_at, record_version, conflict_resolution)
     updated = await service.update_document(document_id, data)
     return build_response(DocumentResponse.model_validate(updated))
 
@@ -172,11 +177,14 @@ async def archive_document(
     document_id: UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
+    record_version: str | None = Header(None, alias="X-Record-Version"),
+    conflict_resolution: str | None = Header(None, alias="X-Conflict-Resolution"),
 ):
     service = DocumentService(session)
     doc = await service.get_document(document_id)
     _, member = await verify_parent_access(session, current_user.id, doc.parent_id)
     if not member.can_upload_documents:
         raise AuthorizationError("Document management permission is required.")
+    enforce_record_version(doc.updated_at, record_version, conflict_resolution)
     await service.delete_document(document_id)
     return build_response({"status": "archived", "document_id": str(document_id)})

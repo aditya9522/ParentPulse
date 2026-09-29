@@ -8,8 +8,8 @@ import {
   StyleSheet,
   ScrollView,
   Platform,
-  Alert,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";

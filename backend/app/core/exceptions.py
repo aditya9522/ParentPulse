@@ -1,5 +1,6 @@
 # backend/app/core/exceptions.py
-from typing import Any, Optional
+from typing import Any
+
 from fastapi import status
 
 
@@ -9,7 +10,7 @@ class ParentPulseException(Exception):
         code: str,
         message: str,
         status_code: int = status.HTTP_400_BAD_REQUEST,
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ):
         self.code = code
         self.message = message
@@ -46,11 +47,12 @@ class ResourceNotFoundError(ParentPulseException):
 
 
 class ConflictError(ParentPulseException):
-    def __init__(self, message: str):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         super().__init__(
             code="RESOURCE_CONFLICT",
             message=message,
             status_code=status.HTTP_409_CONFLICT,
+            details=details,
         )
 
 

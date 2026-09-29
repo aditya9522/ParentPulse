@@ -8,11 +8,11 @@ import {
   TouchableOpacity,
   Platform,
   ActivityIndicator,
-  Alert,
   StatusBar,
   Animated,
   PanResponder,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
@@ -29,7 +29,7 @@ import {
   RefreshCw,
   ScanLine,
 } from "lucide-react-native";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "../theme";
+import { Colors, Typography, Spacing, BorderRadius } from "../theme";
 
 interface ScannerModalProps {
   visible: boolean;

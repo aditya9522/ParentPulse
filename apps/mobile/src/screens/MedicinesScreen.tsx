@@ -6,9 +6,9 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   Platform,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -23,9 +23,6 @@ import {
   CheckCircle2,
   Package,
   PhoneCall,
-  ChevronRight,
-  Sparkles,
-  Info,
   Plus,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
@@ -33,12 +30,12 @@ import { MedicineCard } from "../components/MedicineCard";
 import { AddMedicineModal } from "../components/AddMedicineModal";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { MedicineSchedule } from "../types";
-import { Colors, Typography, Spacing, Shadows, Gradients, Glass } from "../theme";
+import { Colors, Spacing, Shadows, Gradients, Glass } from "../theme";
 
 type TimeSlot = "all" | "morning" | "afternoon" | "evening" | "night";
 
 export const MedicinesScreen: React.FC = () => {
-  const { activeParent, medicines, deleteMedicine, seniorMode, language } = useApp();
+  const { medicines, deleteMedicine, seniorMode, language } = useApp();
   const [activeTab, setActiveTab] = useState<"today" | "all" | "refills">("today");
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot>("all");
   const [addMedicineModalVisible, setAddMedicineModalVisible] = useState(false);

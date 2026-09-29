@@ -1,12 +1,13 @@
 # backend/app/services/medicine_service.py
+from datetime import UTC, datetime
 from uuid import UUID
-from datetime import datetime, timezone
-from typing import List
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import ResourceNotFoundError
 from app.crud.medicines import MedicineRepository
 from app.models.medicine import Medicine, MedicineDoseLog
-from app.schemas.medicine import MedicineCreate, MedicineUpdate, DoseRecordRequest
-from app.core.exceptions import ResourceNotFoundError
+from app.schemas.medicine import DoseRecordRequest, MedicineCreate, MedicineUpdate
 
 
 class MedicineService:
@@ -14,11 +15,12 @@ class MedicineService:
         self.session = session
         self.med_repo = MedicineRepository(session)
 
-    async def list_medicines(self, parent_id: UUID, active_only: bool = True) -> List[Medicine]:
+    async def list_medicines(self, parent_id: UUID, active_only: bool = True) -> list[Medicine]:
         return await self.med_repo.list_by_parent(parent_id, active_only=active_only)
 
     async def create_medicine(self, data: MedicineCreate) -> Medicine:
         return await self.med_repo.create(
+            id=data.id,
             parent_id=data.parent_id,
             family_id=data.family_id,
             name=data.name,
@@ -51,7 +53,7 @@ class MedicineService:
         if not med:
             raise ResourceNotFoundError("Medicine", medicine_id)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         dose = await self.med_repo.record_dose(
             medicine_id=medicine_id,
             parent_id=med.parent_id,
@@ -68,5 +70,5 @@ class MedicineService:
 
         return dose
 
-    async def get_parent_dose_logs(self, parent_id: UUID) -> List[MedicineDoseLog]:
+    async def get_parent_dose_logs(self, parent_id: UUID) -> list[MedicineDoseLog]:
         return await self.med_repo.get_dose_logs_for_parent(parent_id)

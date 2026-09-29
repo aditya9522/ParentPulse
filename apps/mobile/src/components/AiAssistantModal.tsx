@@ -1,5 +1,5 @@
 // apps/mobile/src/components/AiAssistantModal.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   View,
@@ -12,6 +12,7 @@ import {
   Platform,
   StatusBar,
   KeyboardAvoidingView,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -32,6 +33,7 @@ import {
 import { useApp } from "../context/AppContext";
 import { Colors, Spacing, Shadows } from "../theme";
 import { apiClient } from "../api/client";
+import { AppAlert as Alert } from "../services/appAlert";
 
 interface Message {
   id: string;
@@ -54,6 +56,7 @@ export const AiAssistantModal: React.FC = () => {
   const [inputQuery, setInputQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [voiceConsentGranted, setVoiceConsentGranted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "m_0",
@@ -74,19 +77,155 @@ export const AiAssistantModal: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (!aiAssistantModalVisible) return;
+    let active = true;
+    void apiClient.listConsents()
+      .then((consents) => {
+        if (active) {
+          setVoiceConsentGranted(consents.some((item) =>
+            item.granted && (
+              item.consent_type === "voice_input" ||
+              (item.consent_type === "ai_assistant" && item.policy_version === "2026-09-voice-v1")
+            )
+          ));
+        }
+      })
+      .catch(() => {
+        if (active) setVoiceConsentGranted(false);
+      });
+    return () => { active = false; };
+  }, [aiAssistantModalVisible]);
+
+  useEffect(() => {
+    let active = true;
+    const subscriptions: { remove: () => void }[] = [];
+    void import("expo-speech-recognition")
+      .then(({ ExpoSpeechRecognitionModule }) => {
+        if (!active) return;
+        subscriptions.push(
+          ExpoSpeechRecognitionModule.addListener("start", () => setIsRecording(true)),
+          ExpoSpeechRecognitionModule.addListener("end", () => setIsRecording(false)),
+          ExpoSpeechRecognitionModule.addListener("result", (event) => {
+            const transcript = event.results[0]?.transcript?.trim();
+            if (transcript) setInputQuery(transcript);
+          }),
+          ExpoSpeechRecognitionModule.addListener("error", (event) => {
+            setIsRecording(false);
+            if (event.error === "aborted") return;
+            if (event.error === "no-speech" || event.error === "speech-timeout") {
+              Alert.alert("No speech detected", "Tap the microphone and speak clearly, then review the transcript before sending.");
+              return;
+            }
+            Alert.alert(
+              "Voice input unavailable",
+              event.error === "not-allowed"
+                ? "Microphone or speech-recognition permission is off. Enable it in device settings."
+                : event.message || "The device speech-recognition service could not complete this request.",
+            );
+          }),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      subscriptions.forEach((subscription) => subscription.remove());
+    };
+  }, []);
+
+  const beginVoiceRecognition = async () => {
+    try {
+      const { ExpoSpeechRecognitionModule } = await import("expo-speech-recognition");
+      if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
+        throw new Error("Speech recognition is not available on this device.");
+      }
+      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          "Microphone permission required",
+          "Enable microphone and speech recognition in device settings to dictate a question.",
+          permission.canAskAgain ? [] : [
+            { text: "Not now", style: "cancel" },
+            { text: "Open settings", onPress: () => void Linking.openSettings() },
+          ],
+        );
+        return;
+      }
+      triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+      ExpoSpeechRecognitionModule.start({
+        lang: isHindi ? "hi-IN" : "en-IN",
+        interimResults: true,
+        continuous: false,
+        maxAlternatives: 1,
+        addsPunctuation: true,
+        contextualStrings: [activeParent.full_name, "medicine", "appointment", "report"],
+        recordingOptions: { persist: false },
+        iosTaskHint: "search",
+      });
+    } catch (error) {
+      Alert.alert(
+        "Voice input unavailable",
+        error instanceof Error
+          ? error.message
+          : "Install a ParentPulse development or store build with speech recognition enabled.",
+      );
+    }
+  };
+
+  const grantVoiceConsentAndStart = async () => {
+    try {
+      await apiClient.updateVoiceConsent(true);
+      setVoiceConsentGranted(true);
+      await beginVoiceRecognition();
+    } catch (error) {
+      Alert.alert("Voice consent not saved", error instanceof Error ? error.message : "Please try again.");
+    }
+  };
+
   const startVoiceRecording = async () => {
-    triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
-    setIsRecording(true);
+    let consentGranted = voiceConsentGranted;
+    if (!consentGranted) {
+      try {
+        const consents = await apiClient.listConsents();
+        consentGranted = consents.some((item) =>
+          item.granted && (
+            item.consent_type === "voice_input" ||
+            (item.consent_type === "ai_assistant" && item.policy_version === "2026-09-voice-v1")
+          )
+        );
+        setVoiceConsentGranted(consentGranted);
+      } catch {
+        consentGranted = false;
+      }
+    }
+    if (consentGranted) {
+      await beginVoiceRecognition();
+      return;
+    }
+    Alert.alert(
+      "Allow voice input?",
+      "ParentPulse activates the microphone only while you dictate. The device speech service converts audio to text; ParentPulse does not save the recording. Review the transcript before sending.",
+      [
+        { text: "Not now", style: "cancel" },
+        { text: "Allow voice input", onPress: () => void grantVoiceConsentAndStart() },
+      ],
+    );
   };
 
   const stopVoiceRecording = async () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setIsRecording(false);
 
-    const spokenQuery = isHindi
-      ? `${activeParent.full_name.split(" ")[0]} à¤•à¥€ à¤¸à¥à¤¬à¤¹ à¤•à¥€ à¤¦à¤µà¤¾à¤à¤‚ à¤•à¥Œà¤¨ à¤¸à¥€ à¤¹à¥ˆà¤‚?`
-      : `What medicines does ${activeParent.full_name.split(" ")[0]} take in morning?`;
-    handleSend(spokenQuery);
+    const { ExpoSpeechRecognitionModule } = await import("expo-speech-recognition");
+    ExpoSpeechRecognitionModule.stop();
+  };
+
+  const closeAssistant = () => {
+    void import("expo-speech-recognition")
+      .then(({ ExpoSpeechRecognitionModule }) => ExpoSpeechRecognitionModule.abort())
+      .catch(() => undefined);
+    setIsRecording(false);
+    setAiAssistantModalVisible(false);
   };
 
   const quickQuestions = isHindi
@@ -153,7 +292,7 @@ export const AiAssistantModal: React.FC = () => {
       statusBarTranslucent={true}
       navigationBarTranslucent={true}
       hardwareAccelerated={true}
-      onRequestClose={() => setAiAssistantModalVisible(false)}
+      onRequestClose={closeAssistant}
     >
       <View style={[styles.fullScreenContainer, { paddingTop: topPadding, paddingBottom: insets.bottom }]}>
         <StatusBar barStyle="light-content" backgroundColor="#4F46E5" />
@@ -168,7 +307,7 @@ export const AiAssistantModal: React.FC = () => {
             <TouchableOpacity
               onPress={() => {
                 triggerHaptic();
-                setAiAssistantModalVisible(false);
+                closeAssistant();
               }}
               style={styles.backBtn}
               activeOpacity={0.8}
@@ -193,7 +332,7 @@ export const AiAssistantModal: React.FC = () => {
           <TouchableOpacity
             onPress={() => {
               triggerHaptic();
-              setAiAssistantModalVisible(false);
+              closeAssistant();
             }}
             style={styles.closeBtn}
             activeOpacity={0.8}
@@ -307,7 +446,7 @@ export const AiAssistantModal: React.FC = () => {
           <View style={styles.listeningBanner}>
             <View style={styles.recordingPulseDot} />
             <Text style={styles.listeningText}>
-              {isHindi ? "à¤¸à¥à¤¨ à¤°à¤¹à¤¾ à¤¹à¥‚à¤... à¤¬à¥‹à¤²à¤¨à¥‡ à¤•à¥‡ à¤¬à¤¾à¤¦ à¤®à¤¾à¤‡à¤• à¤¦à¥‹à¤¬à¤¾à¤°à¤¾ à¤¦à¤¬à¤¾à¤à¤‚" : "Listening to question... Tap mic when finished"}
+              {isHindi ? "सुन रहा है… पूरा होने पर माइक फिर दबाएं। ऑडियो सेव नहीं होता।" : "Listening… Tap the mic when finished. Audio is not saved."}
             </Text>
           </View>
         )}
@@ -315,11 +454,13 @@ export const AiAssistantModal: React.FC = () => {
         {/* Input Bar with Mic and Send Buttons */}
         <View style={styles.inputBar}>
           {/* Real Microphone Voice Button */}
-          {false && (
           <TouchableOpacity
             style={[styles.micBtn, isRecording && styles.micBtnActive]}
             onPress={isRecording ? stopVoiceRecording : startVoiceRecording}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isRecording ? "Stop voice input" : "Start voice input"}
+            accessibilityState={{ selected: isRecording }}
           >
             {isRecording ? (
               <Radio size={18} color="#FFFFFF" />
@@ -327,7 +468,6 @@ export const AiAssistantModal: React.FC = () => {
               <Mic size={18} color={Colors.primaryDark} />
             )}
           </TouchableOpacity>
-          )}
 
           <TextInput
             style={[styles.input, seniorMode && styles.seniorInput]}
@@ -643,4 +783,3 @@ const styles = StyleSheet.create({
     color: "#DC2626",
   },
 });
-

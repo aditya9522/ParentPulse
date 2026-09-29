@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import { Clock, FileText, Lock, RotateCcw, Share2, ShieldCheck, Stethoscope, X } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -17,7 +18,7 @@ export const SecureDoctorShareModal: React.FC = () => {
   const [token, setToken] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const baseUrl = (process.env.EXPO_PUBLIC_SHARE_BASE_URL || "https://parentpulse.example/share/brief").replace(/\/$/, "");
+  const baseUrl = (process.env.EXPO_PUBLIC_SHARE_BASE_URL || "http://localhost:8000/api/v1/sharing/doctor-brief").replace(/\/$/, "");
   const shareUrl = token ? `${baseUrl}/${token}` : null;
 
   const haptic = () => {

@@ -66,10 +66,12 @@ export interface ParentProfile {
   allergies: string[];
   chronic_conditions: string[];
   disabilities?: string[];
-  surgeries: Array<{ name: string; date?: string; notes?: string }>;
+  surgeries: { name: string; date?: string; notes?: string }[];
   emergency_contacts: EmergencyContact[];
   primary_doctors: PrimaryDoctor[];
   notes?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface MedicalDocument {
@@ -85,6 +87,8 @@ export interface MedicalDocument {
   summary?: string;
   extracted_tags: string[];
   extracted_fields?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface TimelineEvent {
@@ -114,6 +118,8 @@ export interface MedicineSchedule {
   current_inventory: number;
   refill_alert_threshold: number;
   is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface MedicineDoseLog {
@@ -138,6 +144,8 @@ export interface Appointment {
   latitude?: number;
   longitude?: number;
   google_place_id?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface HealthMeasurement {
@@ -194,6 +202,7 @@ export interface CareTask {
   assigned_to_user_id?: string;
   created_by?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface HealthcareExpense {

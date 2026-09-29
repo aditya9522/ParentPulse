@@ -7,7 +7,7 @@ import {
   StatusBar,
   Platform,
   Animated,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -34,7 +34,10 @@ import { LogVitalModal } from "./src/components/LogVitalModal";
 import { ScannerModal } from "./src/components/ScannerModal";
 import { AuthModal } from "./src/components/AuthModal";
 import { HealthReportModal } from "./src/components/HealthReportModal";
+import { PremiumFeedbackHost } from "./src/components/PremiumFeedbackHost";
+import { SyncCenterModal } from "./src/components/SyncCenterModal";
 import { apiClient } from "./src/api/client";
+import { AppAlert as Alert } from "./src/services/appAlert";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "./src/theme";
 
 type TabId = "home" | "documents" | "timeline" | "medicines" | "maps";
@@ -74,9 +77,16 @@ const MainApp: React.FC = () => {
     isAuthenticated,
     dataLoading,
     dataError,
+    dataWarning,
     refreshData,
     setAuthModalVisible,
   } = useApp();
+
+  useEffect(() => {
+    if (dataWarning) {
+      Alert.alert("Some services are reconnecting", dataWarning);
+    }
+  }, [dataWarning]);
 
   useEffect(() => {
     Animated.spring(dockEntrance, {
@@ -87,7 +97,7 @@ const MainApp: React.FC = () => {
     }).start();
   }, [dockEntrance]);
 
-  if (!runtimeReady || (dataLoading && parentList.length === 0)) {
+  if (!runtimeReady || (dataLoading && parentList.length === 0 && !dataError)) {
     return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="pulse" size={32} color={Colors.primaryDark} /><Text style={styles.stateTitle}>Loading secure care data</Text><Text style={styles.stateCopy}>Connecting to ParentPulse and verifying your care circle.</Text></View></View>;
   }
 
@@ -96,7 +106,7 @@ const MainApp: React.FC = () => {
   }
 
   if (dataError && parentList.length === 0) {
-    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="cloud-offline-outline" size={34} color="#B45309" /><Text style={styles.stateTitle}>Live data is unavailable</Text><Text style={styles.stateCopy}>{dataError}</Text><TouchableOpacity style={styles.stateAction} onPress={() => void refreshData()}><Text style={styles.stateActionText}>Try again</Text><Ionicons name="refresh" size={18} color="#FFFFFF" /></TouchableOpacity></View></View>;
+    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="cloud-offline-outline" size={34} color="#B45309" /><Text style={styles.stateTitle}>We couldn’t connect your care data</Text><Text style={styles.stateCopy}>{dataError}</Text><TouchableOpacity disabled={dataLoading} style={[styles.stateAction, dataLoading && styles.stateActionDisabled]} onPress={() => void refreshData()}>{dataLoading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.stateActionText}>Reconnect securely</Text><Ionicons name="refresh" size={18} color="#FFFFFF" /></>}</TouchableOpacity><TouchableOpacity style={styles.stateSecondaryAction} onPress={() => void apiClient.signOut()}><Text style={styles.stateSecondaryActionText}>Sign in with another account</Text></TouchableOpacity></View></View>;
   }
 
   const showOnboarding = activeScreen === "onboarding" || parentList.length === 0;
@@ -209,6 +219,7 @@ const MainApp: React.FC = () => {
       <LogVitalModal />
       <AuthModal />
       <HealthReportModal />
+      <SyncCenterModal />
       <ScannerModal
         visible={scannerModalVisible}
         mode={scannerMode}
@@ -245,6 +256,7 @@ export default function App() {
           <MainApp />
         </AppProvider>
       </GlassBlurProvider>
+      <PremiumFeedbackHost />
     </SafeAreaProvider>
   );
 }
@@ -266,6 +278,9 @@ const styles = StyleSheet.create({
   stateCopy: { fontSize: 13, lineHeight: 20, color: Colors.textMuted, textAlign: "center", marginTop: 10 },
   stateAction: { minHeight: 52, marginTop: 22, paddingHorizontal: 20, borderRadius: 17, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: Colors.primaryDark },
   stateActionText: { color: "#FFFFFF", fontSize: 13, fontWeight: "900" },
+  stateActionDisabled: { opacity: 0.7 },
+  stateSecondaryAction: { minHeight: 44, marginTop: 8, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
+  stateSecondaryActionText: { color: Colors.primaryDark, fontSize: 13, fontWeight: "800" },
   floatingNavWrapper: {
     position: "absolute",
     left: Spacing.md,

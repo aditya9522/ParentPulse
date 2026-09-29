@@ -7,16 +7,15 @@ import {
   StyleSheet,
   TouchableOpacity,
   Linking,
-  Alert,
   Platform,
   Image,
   ActivityIndicator,
   Animated,
   PanResponder,
 } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   Hospital,
   Pill,
@@ -24,10 +23,8 @@ import {
   Stethoscope,
   MapPin,
   Navigation,
-  Phone,
   Clock,
   Star,
-  ShieldCheck,
   CheckCircle2,
   LocateFixed,
   Compass,
@@ -36,21 +33,19 @@ import {
   Layers,
   ZoomIn,
   ZoomOut,
-  ExternalLink,
   ChevronUp,
   ChevronDown,
-  X,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
 import { HealthcarePlace, PlaceCategory } from "../types";
-import { Colors, Typography, Spacing, Shadows, Gradients, Glass, BorderRadius } from "../theme";
+import { Colors, Typography, Spacing, Shadows, Glass } from "../theme";
 import { GlassView } from "../components/GlassView";
 import { apiClient } from "../api/client";
 
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
 export const MapsScreen: React.FC = () => {
-  const { activeParent, visits, recordNewVisit, userLocation, refreshLocation, seniorMode, language } = useApp();
+  const { activeParent, visits, recordNewVisit, userLocation, seniorMode, language } = useApp();
   const [selectedCategory, setSelectedCategory] = useState<PlaceCategory>("hospital");
   const [viewMode, setViewMode] = useState<"nearby" | "visits">("nearby");
   const [maxDistanceKm, setMaxDistanceKm] = useState<number>(10);

@@ -1,15 +1,17 @@
 # backend/app/api/v1/endpoints/caregivers.py
 from uuid import UUID
-from typing import List
+
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
+from app.core.permissions import verify_family_membership, verify_family_owner, verify_parent_access
+from app.helpers.response_builder import build_response
 from app.models.caregiver import Caregiver
 from app.models.user import User
 from app.schemas.caregiver import CaregiverCreate, CaregiverResponse
 from app.schemas.common import ApiResponse
-from app.helpers.response_builder import build_response
 
 router = APIRouter(prefix="/caregivers", tags=["Caregivers"])
 
@@ -20,6 +22,9 @@ async def assign_caregiver(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    parent, _ = await verify_parent_access(session, current_user.id, data.parent_id)
+    await verify_family_owner(session, current_user.id, parent.family_id)
+    await verify_family_membership(session, data.user_id, parent.family_id)
     caregiver = Caregiver(
         parent_id=data.parent_id,
         user_id=data.user_id,
@@ -31,7 +36,7 @@ async def assign_caregiver(
     return build_response(CaregiverResponse.model_validate(caregiver))
 
 
-@router.get("/parent/{parent_id}", response_model=ApiResponse[List[CaregiverResponse]])
+@router.get("/parent/{parent_id}", response_model=ApiResponse[list[CaregiverResponse]])
 async def list_parent_caregivers(
     parent_id: UUID,
     context=Depends(get_parent_access_context),

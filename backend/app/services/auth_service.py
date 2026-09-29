@@ -1,11 +1,13 @@
 # backend/app/services/auth_service.py
 import asyncio
 import uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.clients.supabase import get_supabase_client
+
+from app.clients.supabase import create_public_auth_client
+from app.core.exceptions import AuthenticationError
 from app.crud.users import UserRepository
 from app.schemas.auth import AuthTokenResponse
-from app.core.exceptions import AuthenticationError
 
 
 class AuthService:
@@ -14,7 +16,7 @@ class AuthService:
         self.user_repo = UserRepository(session)
 
     async def login_with_email_password(self, email: str, password: str) -> AuthTokenResponse:
-        client = get_supabase_client()
+        client = create_public_auth_client()
         try:
             result = await asyncio.to_thread(
                 client.auth.sign_in_with_password,
@@ -25,7 +27,7 @@ class AuthService:
         return await self._build_response(result, email)
 
     async def sign_up(self, email: str, password: str, full_name: str) -> AuthTokenResponse:
-        client = get_supabase_client()
+        client = create_public_auth_client()
         try:
             result = await asyncio.to_thread(
                 client.auth.sign_up,
@@ -42,7 +44,7 @@ class AuthService:
         return await self._build_response(result, email, full_name)
 
     async def login_with_google(self, id_token: str) -> AuthTokenResponse:
-        client = get_supabase_client()
+        client = create_public_auth_client()
         try:
             result = await asyncio.to_thread(
                 client.auth.sign_in_with_id_token,
@@ -56,7 +58,7 @@ class AuthService:
         return await self._build_response(result, email)
 
     async def refresh(self, refresh_token: str) -> AuthTokenResponse:
-        client = get_supabase_client()
+        client = create_public_auth_client()
         try:
             result = await asyncio.to_thread(client.auth.refresh_session, refresh_token)
         except Exception as exc:
@@ -67,7 +69,7 @@ class AuthService:
         return await self._build_response(result, email)
 
     async def request_password_reset(self, email: str) -> None:
-        client = get_supabase_client()
+        client = create_public_auth_client()
         try:
             await asyncio.to_thread(client.auth.reset_password_email, email)
         except Exception as exc:

@@ -1,39 +1,41 @@
 # backend/app/schemas/appointment.py
 import uuid
 from datetime import datetime
-from typing import Optional, List
+
 from pydantic import BaseModel, ConfigDict
+
 from app.core.constants import AppointmentStatus
 
 
 class AppointmentCreate(BaseModel):
+    id: uuid.UUID | None = None
     parent_id: uuid.UUID
     family_id: uuid.UUID
     doctor_name: str
     specialty: str
     hospital_clinic_name: str
     appointment_date: datetime
-    reason: Optional[str] = None
-    notes: Optional[str] = None
-    address: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    google_place_id: Optional[str] = None
-    assigned_to_user_id: Optional[uuid.UUID] = None
-    related_document_ids: List[str] = []
+    reason: str | None = None
+    notes: str | None = None
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    google_place_id: str | None = None
+    assigned_to_user_id: uuid.UUID | None = None
+    related_document_ids: list[str] = []
 
 
 class AppointmentUpdate(BaseModel):
-    doctor_name: Optional[str] = None
-    specialty: Optional[str] = None
-    hospital_clinic_name: Optional[str] = None
-    appointment_date: Optional[datetime] = None
-    status: Optional[AppointmentStatus] = None
-    reason: Optional[str] = None
-    notes: Optional[str] = None
-    address: Optional[str] = None
-    assigned_to_user_id: Optional[uuid.UUID] = None
-    related_document_ids: Optional[List[str]] = None
+    doctor_name: str | None = None
+    specialty: str | None = None
+    hospital_clinic_name: str | None = None
+    appointment_date: datetime | None = None
+    status: AppointmentStatus | None = None
+    reason: str | None = None
+    notes: str | None = None
+    address: str | None = None
+    assigned_to_user_id: uuid.UUID | None = None
+    related_document_ids: list[str] | None = None
 
 
 class AppointmentResponse(BaseModel):
@@ -45,14 +47,14 @@ class AppointmentResponse(BaseModel):
     hospital_clinic_name: str
     appointment_date: datetime
     status: str
-    reason: Optional[str] = None
-    notes: Optional[str] = None
-    address: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    google_place_id: Optional[str] = None
-    assigned_to_user_id: Optional[uuid.UUID] = None
-    related_document_ids: List[str] = []
+    reason: str | None = None
+    notes: str | None = None
+    address: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    google_place_id: str | None = None
+    assigned_to_user_id: uuid.UUID | None = None
+    related_document_ids: list[str] = []
     created_at: datetime
     updated_at: datetime
 

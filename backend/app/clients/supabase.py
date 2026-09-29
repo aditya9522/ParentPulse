@@ -23,6 +23,15 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 
+def create_public_auth_client() -> Client:
+    """Return an isolated public client so concurrent user sessions never share SDK state."""
+    settings = get_settings()
+    return create_client(
+        settings.supabase_url,
+        settings.supabase_publishable_key.get_secret_value(),
+    )
+
+
 async def create_signed_storage_url(bucket: str, path: str, expires_in: int = 3600) -> str:
     """
     Creates a time-limited signed URL for private medical document access.
@@ -52,3 +61,10 @@ async def download_storage_object(bucket: str, path: str) -> bytes:
     if client is None:
         raise RuntimeError("Supabase storage is not configured")
     return await asyncio.to_thread(client.storage.from_(bucket).download, path)
+
+
+async def remove_storage_objects(bucket: str, paths: list[str]) -> None:
+    if not paths:
+        return
+    client = get_supabase_client()
+    await asyncio.to_thread(client.storage.from_(bucket).remove, paths)

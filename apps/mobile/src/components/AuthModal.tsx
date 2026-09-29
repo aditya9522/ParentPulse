@@ -1,12 +1,14 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ArrowLeft, ArrowRight, Lock, Mail, ShieldCheck, User, X } from "lucide-react-native";
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
+import { ArrowLeft, ArrowRight, BadgeCheck, Lock, Mail, ShieldCheck, User, X } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../context/AppContext";
 import { apiClient } from "../api/client";
 import { BorderRadius, Colors, Gradients, Spacing, Typography } from "../theme";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
+import { getFreshGoogleIdToken, isGoogleAuthConfigured } from "../services/googleAuth";
 
 type AuthMode = "login" | "signup" | "forgot";
 
@@ -49,6 +51,23 @@ export const AuthModal: React.FC = () => {
     }
   };
 
+  const continueWithGoogle = async () => {
+    if (!isGoogleAuthConfigured) return;
+    if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsLoading(true);
+    try {
+      const idToken = await getFreshGoogleIdToken();
+      const result = await apiClient.loginWithGoogle(idToken);
+      await apiClient.setSession(result);
+      setAuthModalVisible(false);
+      Alert.alert("Welcome", "Your Google identity was securely verified.");
+    } catch (error) {
+      Alert.alert("Google sign-in couldn’t continue", error instanceof Error ? error.message : "Try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <SwipeableBottomSheet visible={authModalVisible} onClose={() => setAuthModalVisible(false)} maxHeight="86%">
       <View style={styles.header}>
@@ -78,6 +97,16 @@ export const AuthModal: React.FC = () => {
           </LinearGradient>
         </TouchableOpacity>
 
+        {mode !== "forgot" && isGoogleAuthConfigured && (
+          <>
+            <View style={styles.dividerRow}><View style={styles.dividerLine} /><Text style={styles.dividerText}>OR</Text><View style={styles.dividerLine} /></View>
+            <TouchableOpacity style={styles.googleButton} onPress={() => void continueWithGoogle()} disabled={isLoading} activeOpacity={0.82}>
+              <BadgeCheck size={19} color={Colors.secondaryDark} />
+              <Text style={styles.googleButtonText}>Continue with Google</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
         {mode !== "forgot" && <View style={styles.switchRow}><Text style={styles.switchPrompt}>{mode === "login" ? "New to ParentPulse?" : "Already have an account?"}</Text><TouchableOpacity onPress={() => setMode(mode === "login" ? "signup" : "login")}><Text style={styles.switchAction}>{mode === "login" ? "Create account" : "Sign in"}</Text></TouchableOpacity></View>}
         <View style={styles.securityNote}><ShieldCheck size={16} color={Colors.primaryDark} /><Text style={styles.securityText}>Session keys stay in your device’s secure hardware-backed storage.</Text></View>
       </ScrollView>
@@ -104,6 +133,11 @@ const styles = StyleSheet.create({
   primaryButton: { borderRadius: BorderRadius.lg, overflow: "hidden", marginTop: 14 },
   primaryGradient: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
   primaryText: { color: "#FFFFFF", fontSize: Typography.sizes.sm, fontWeight: Typography.weights.extraBold },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 17 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.borderStrong },
+  dividerText: { color: Colors.textSubtle, fontSize: 9, fontWeight: Typography.weights.extraBold },
+  googleButton: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 13, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: "#BAE6FD", backgroundColor: "#FFFFFF" },
+  googleButtonText: { color: Colors.textPrimary, fontSize: Typography.sizes.sm, fontWeight: Typography.weights.bold },
   switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 18 },
   switchPrompt: { fontSize: Typography.sizes.xs, color: Colors.textMuted },
   switchAction: { fontSize: Typography.sizes.xs, color: Colors.primaryDark, fontWeight: Typography.weights.extraBold },

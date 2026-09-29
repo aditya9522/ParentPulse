@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { AppAlert as Alert } from "../services/appAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Camera, CheckCircle2, CloudUpload, ExternalLink, FileText, FolderOpen, Image as ImageIcon, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, X } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,7 +10,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { apiClient } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { MedicalDocument } from "../types";
-import { BorderRadius, Colors, Gradients, Shadows, Spacing, Typography } from "../theme";
+import { Colors, Shadows, Spacing } from "../theme";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 

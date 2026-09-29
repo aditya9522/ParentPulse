@@ -1,18 +1,21 @@
 # backend/app/main.py
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.v1.api import api_router
 from app.core.config import get_settings
-from app.core.logging import setup_logging, logger
 from app.core.exceptions import ParentPulseException
+from app.core.logging import logger, setup_logging
 from app.middleware.correlation_id import CorrelationIdMiddleware
+from app.middleware.error_handler import (
+    global_exception_handler,
+    parentpulse_exception_handler,
+)
+from app.middleware.idempotency import IdempotencyMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.middleware.error_handler import (
-    parentpulse_exception_handler,
-    global_exception_handler,
-)
 
 settings = get_settings()
 setup_logging(debug=settings.debug)
@@ -42,6 +45,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 # Custom Middlewares
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 
 # CORS Middleware
