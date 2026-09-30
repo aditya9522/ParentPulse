@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
 from app.core.concurrency import enforce_record_version
 from app.core.exceptions import ResourceNotFoundError
-from app.core.permissions import verify_family_membership
+from app.core.permissions import verify_family_membership, verify_family_owner
 from app.crud.parents import ParentRepository
 from app.helpers.response_builder import build_response
 from app.models.user import User
@@ -23,7 +23,7 @@ async def create_parent_profile(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    await verify_family_membership(session, current_user.id, data.family_id)
+    await verify_family_owner(session, current_user.id, data.family_id)
     repo = ParentRepository(session)
     parent = await repo.create(
         family_id=data.family_id,

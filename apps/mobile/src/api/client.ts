@@ -8,6 +8,7 @@ import {
   ParentProfile,
   MedicalDocument,
   MedicineSchedule,
+  MedicineDoseLog,
   Appointment,
   TimelineEvent,
   HealthMeasurement,
@@ -67,6 +68,7 @@ class ApiClient {
   }
 
   async setSession(response: AuthResponse): Promise<void> {
+    const wasAuthenticated = this.session !== null;
     this.session = {
       accessToken: response.access_token,
       refreshToken: response.refresh_token,
@@ -74,14 +76,17 @@ class ApiClient {
       userId: response.user_id,
     };
     await sessionStore.save(this.session);
-    this.authListeners.forEach((listener) => listener(true));
+    // Token refreshes update the stored credentials without rebootstrapping the
+    // whole application. Listeners only need the signed-out -> signed-in edge.
+    if (!wasAuthenticated) this.authListeners.forEach((listener) => listener(true));
   }
 
   async signOut(): Promise<void> {
+    const wasAuthenticated = this.session !== null;
     this.session = null;
     await sessionStore.clear();
     await clearGoogleSession();
-    this.authListeners.forEach((listener) => listener(false));
+    if (wasAuthenticated) this.authListeners.forEach((listener) => listener(false));
   }
 
   isAuthenticated(): boolean {
@@ -339,6 +344,10 @@ class ApiClient {
   // Medicines
   async listMedicines(parentId: string): Promise<MedicineSchedule[]> {
     return this.request<MedicineSchedule[]>(`/medicines/parent/${parentId}`);
+  }
+
+  async listDoseHistory(parentId: string): Promise<MedicineDoseLog[]> {
+    return this.request<MedicineDoseLog[]>(`/medicines/parent/${parentId}/dose-history`);
   }
 
   async recordDose(medicineId: string, status: "taken" | "missed" | "skipped", notes?: string) {

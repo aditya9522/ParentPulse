@@ -123,7 +123,7 @@ export const MapsScreen: React.FC = () => {
     {
       id: "hospital" as PlaceCategory,
       label: "Hospitals",
-      hindiLabel: "à¤…à¤¸à¥à¤ªà¤¤à¤¾à¤²",
+      hindiLabel: "अस्पताल",
       icon: Hospital,
       color: Colors.emergency,
       bg: "#FEE2E2",
@@ -131,7 +131,7 @@ export const MapsScreen: React.FC = () => {
     {
       id: "pharmacy" as PlaceCategory,
       label: "Pharmacies",
-      hindiLabel: "à¤¦à¤µà¤¾ à¤•à¥€ à¤¦à¥à¤•à¤¾à¤¨à¥‡à¤‚",
+      hindiLabel: "दवा की दुकानें",
       icon: Pill,
       color: Colors.primary,
       bg: Colors.primaryLight,
@@ -139,7 +139,7 @@ export const MapsScreen: React.FC = () => {
     {
       id: "laboratory" as PlaceCategory,
       label: "Diagnostic Labs",
-      hindiLabel: "à¤œà¤¾à¤‚à¤š à¤ªà¥à¤°à¤¯à¥‹à¤—à¤¶à¤¾à¤²à¤¾à¤à¤‚",
+      hindiLabel: "जांच प्रयोगशालाएं",
       icon: FlaskConical,
       color: "#7C3AED",
       bg: "#F3E8FF",
@@ -147,7 +147,7 @@ export const MapsScreen: React.FC = () => {
     {
       id: "doctor" as PlaceCategory,
       label: "Specialist Clinics",
-      hindiLabel: "à¤µà¤¿à¤¶à¥‡à¤·à¤œà¥à¤ž à¤•à¥à¤²à¤¿à¤¨à¤¿à¤•",
+      hindiLabel: "विशेषज्ञ क्लिनिक",
       icon: Stethoscope,
       color: "#0284C7",
       bg: "#E0F2FE",
@@ -239,9 +239,9 @@ export const MapsScreen: React.FC = () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
     recordNewVisit(place.name, place.category, place.address);
     Alert.alert(
-      isHindi ? "ðŸ“ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤¦à¤°à¥à¤œ à¤•à¥€ à¤—à¤ˆ!" : "ðŸ“ Visit Confirmed!",
+      isHindi ? "📍 विज़िट दर्ज की गई!" : "📍 Visit Confirmed!",
       isHindi
-        ? `${activeParent.full_name} à¤•à¥‡ à¤²à¤¿à¤ ${place.name} à¤•à¥€ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤¦à¤°à¥à¤œ à¤•à¥€ à¤—à¤ˆ à¤”à¤° à¤«à¤¼à¥ˆà¤®à¤¿à¤²à¥€ à¤Ÿà¤¾à¤‡à¤®à¤²à¤¾à¤‡à¤¨ à¤®à¥‡à¤‚ à¤¸à¤¿à¤‚à¤• à¤¹à¥‹ à¤—à¤ˆà¥¤`
+        ? `${activeParent.full_name} के लिए ${place.name} की विज़िट दर्ज की गई और फ़ैमिली टाइमलाइन में सिंक हो गई।`
         : `Recorded healthcare visit to ${place.name} for ${activeParent.full_name}. Synced to family timeline and map history.`
     );
   };
@@ -264,7 +264,7 @@ export const MapsScreen: React.FC = () => {
               color={viewMode === "nearby" ? Colors.primaryDark : Colors.textMuted}
             />
             <Text style={[styles.viewToggleText, viewMode === "nearby" && styles.viewToggleTextActive]}>
-              {isHindi ? "à¤†à¤¸à¤ªà¤¾à¤¸ à¤•à¥€ à¤¸à¥à¤µà¤¾à¤¸à¥à¤¥à¥à¤¯ à¤¸à¥‡à¤µà¤¾à¤à¤‚" : "Nearby Healthcare"}
+              {isHindi ? "आसपास की स्वास्थ्य सेवाएं" : "Nearby Healthcare"}
             </Text>
           </TouchableOpacity>
 
@@ -281,7 +281,7 @@ export const MapsScreen: React.FC = () => {
               color={viewMode === "visits" ? Colors.primaryDark : Colors.textMuted}
             />
             <Text style={[styles.viewToggleText, viewMode === "visits" && styles.viewToggleTextActive]}>
-              {isHindi ? `à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤‡à¤¤à¤¿à¤¹à¤¾à¤¸ (${visits.length})` : `Visit Log (${visits.length})`}
+              {isHindi ? `विज़िट इतिहास (${visits.length})` : `Visit Log (${visits.length})`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -344,7 +344,7 @@ export const MapsScreen: React.FC = () => {
 
             {/* Distance Filter Chips */}
             <View style={styles.radiusRowFloating}>
-              <Text style={styles.radiusLabelFloating}>{isHindi ? "à¤¦à¤¾à¤¯à¤°à¤¾:" : "Radius:"}</Text>
+              <Text style={styles.radiusLabelFloating}>{isHindi ? "दायरा:" : "Radius:"}</Text>
               {[2, 5, 10, 20].map((dist) => (
                 <TouchableOpacity
                   key={dist}
@@ -423,7 +423,7 @@ export const MapsScreen: React.FC = () => {
                     <MapPin size={14} color="#FFFFFF" />
                   </View>
                   <Text style={styles.sheetCollapsedText} numberOfLines={1}>
-                    {currentPlaces.length} {isHindi ? "à¤•à¥‡à¤‚à¤¦à¥à¤° à¤¨à¤œà¤¼à¤¦à¥€à¤• â€¢ à¤¸à¥‚à¤šà¥€ à¤¦à¥‡à¤–à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤Ÿà¥ˆà¤ª à¤•à¤°à¥‡à¤‚" : "Healthcare places nearby · Tap to view"}
+                    {currentPlaces.length} {isHindi ? "केंद्र नज़दीक • सूची देखने के लिए टैप करें" : "Healthcare places nearby · Tap to view"}
                   </Text>
                   <View style={styles.sheetCollapsedArrow}>
                     <ChevronUp size={16} color={Colors.primaryDark} />
@@ -447,10 +447,10 @@ export const MapsScreen: React.FC = () => {
               <View style={styles.sheetHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.sheetTitle}>
-                    {currentPlaces.length} {isHindi ? "à¤¨à¤œà¤¼à¤¦à¥€à¤•à¥€ à¤•à¥‡à¤‚à¤¦à¥à¤° à¤‰à¤ªà¤²à¤¬à¥à¤§" : "Healthcare places nearby"}
+                    {currentPlaces.length} {isHindi ? "नज़दीकी केंद्र उपलब्ध" : "Healthcare places nearby"}
                   </Text>
                   <Text style={styles.sheetSub}>
-                    {selectedCategory.toUpperCase()} â€¢ {maxDistanceKm}km radius
+                    {selectedCategory.toUpperCase()} • {maxDistanceKm}km radius
                   </Text>
                 </View>
 
@@ -465,8 +465,8 @@ export const MapsScreen: React.FC = () => {
                   >
                     <Text style={styles.expandToggleText}>
                       {sheetState === "expanded"
-                        ? (isHindi ? "à¤›à¥‹à¤Ÿà¤¾ à¤•à¤°à¥‡à¤‚" : "Half")
-                        : (isHindi ? "à¤µà¤¿à¤¸à¥à¤¤à¤¾à¤°" : "Expand")}
+                        ? (isHindi ? "छोटा करें" : "Half")
+                        : (isHindi ? "विस्तार" : "Expand")}
                     </Text>
                   </TouchableOpacity>
 
@@ -543,7 +543,7 @@ export const MapsScreen: React.FC = () => {
                         >
                           <CheckCircle2 size={13} color={Colors.primaryDark} />
                           <Text style={styles.checkInText}>
-                            {isHindi ? "à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤¦à¤°à¥à¤œ" : "Check-in"}
+                            {isHindi ? "विज़िट दर्ज" : "Check-in"}
                           </Text>
                         </TouchableOpacity>
 
@@ -554,7 +554,7 @@ export const MapsScreen: React.FC = () => {
                         >
                           <ArrowUpRight size={14} color="#FFFFFF" />
                           <Text style={styles.directionsText}>
-                            {isHindi ? "à¤¦à¤¿à¤¶à¤¾-à¤¨à¤¿à¤°à¥à¤¦à¥‡à¤¶" : "Directions"}
+                            {isHindi ? "दिशा-निर्देश" : "Directions"}
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -571,11 +571,11 @@ export const MapsScreen: React.FC = () => {
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>
-              {isHindi ? `${activeParent.full_name} à¤•à¤¾ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿ à¤‡à¤¤à¤¿à¤¹à¤¾à¤¸` : `Healthcare Visit Log for ${activeParent.full_name}`}
+              {isHindi ? `${activeParent.full_name} का विज़िट इतिहास` : `Healthcare Visit Log for ${activeParent.full_name}`}
             </Text>
             <Text style={styles.historySub}>
               {isHindi
-                ? "à¤…à¤¸à¥à¤ªà¤¤à¤¾à¤², à¤•à¥à¤²à¤¿à¤¨à¤¿à¤• à¤”à¤° à¤²à¥ˆà¤¬ à¤•à¥€ à¤¦à¤°à¥à¤œ à¤•à¥€ à¤—à¤ˆ à¤ªà¤¿à¤›à¤²à¥€ à¤µà¤¿à¤œà¤¼à¤¿à¤Ÿà¥à¤¸:"
+                ? "अस्पताल, क्लिनिक और लैब की दर्ज की गई पिछली विज़िट्स:"
                 : "Timeline of verified healthcare visits with location timestamps:"}
             </Text>
           </View>

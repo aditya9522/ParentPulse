@@ -2,7 +2,7 @@
 import uuid
 from datetime import date, datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EmergencyContactSchema(BaseModel):
@@ -37,12 +37,12 @@ class ParentProfileCreate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     phone_number: str
-    allergies: List[str] = []
-    chronic_conditions: List[str] = []
-    disabilities: List[str] = []
-    surgeries: List[SurgeryRecordSchema] = []
-    emergency_contacts: List[EmergencyContactSchema] = []
-    primary_doctors: List[PrimaryDoctorSchema] = []
+    allergies: List[str] = Field(default_factory=list)
+    chronic_conditions: List[str] = Field(default_factory=list)
+    disabilities: List[str] = Field(default_factory=list)
+    surgeries: List[SurgeryRecordSchema] = Field(default_factory=list)
+    emergency_contacts: List[EmergencyContactSchema] = Field(default_factory=list)
+    primary_doctors: List[PrimaryDoctorSchema] = Field(default_factory=list)
     notes: Optional[str] = None
 
 
@@ -77,12 +77,12 @@ class ParentProfileResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     phone_number: str
-    allergies: List[Any] = []
-    chronic_conditions: List[Any] = []
-    disabilities: List[Any] = []
-    surgeries: List[Any] = []
-    emergency_contacts: List[Any] = []
-    primary_doctors: List[Any] = []
+    allergies: List[Any] = Field(default_factory=list)
+    chronic_conditions: List[Any] = Field(default_factory=list)
+    disabilities: List[Any] = Field(default_factory=list)
+    surgeries: List[Any] = Field(default_factory=list)
+    emergency_contacts: List[Any] = Field(default_factory=list)
+    primary_doctors: List[Any] = Field(default_factory=list)
     notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime

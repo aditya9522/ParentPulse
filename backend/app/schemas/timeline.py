@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.core.constants import TimelineEventType
 
 
@@ -16,7 +16,7 @@ class TimelineEventCreate(BaseModel):
     doctor_name: Optional[str] = None
     facility_name: Optional[str] = None
     document_id: Optional[uuid.UUID] = None
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class TimelineEventResponse(BaseModel):
@@ -30,7 +30,7 @@ class TimelineEventResponse(BaseModel):
     doctor_name: Optional[str] = None
     facility_name: Optional[str] = None
     document_id: Optional[uuid.UUID] = None
-    metadata_json: dict[str, Any] = {}
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

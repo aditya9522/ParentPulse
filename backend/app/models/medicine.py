@@ -1,6 +1,6 @@
 # backend/app/models/medicine.py
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Optional, Any, List
 from sqlalchemy import String, Integer, Date, Text, Boolean, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB

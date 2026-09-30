@@ -1,21 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { Appointment, MedicineSchedule } from "../types";
 import { apiClient } from "../api/client";
+import { getNotifications } from "./notificationRuntime";
 
 const IDS_KEY = "parentpulse.notification-ids.v1";
 const CHANNEL_ID = "care-reminders";
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
 
 const parseClock = (value: string): { hour: number; minute: number } | null => {
   const match = value.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
@@ -34,6 +25,8 @@ export async function syncCareReminders(
   appointments: Appointment[],
   requestPermission = false,
 ): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) return;
   const permission = await Notifications.getPermissionsAsync();
   const status = permission.status === "granted" || !requestPermission
     ? permission.status
@@ -95,6 +88,8 @@ export async function syncCareReminders(
 export async function registerRemotePushDevice(): Promise<boolean> {
   if (Platform.OS !== "android" && Platform.OS !== "ios") return false;
   if (!apiClient.isAuthenticated()) return false;
+  const Notifications = await getNotifications();
+  if (!Notifications) return false;
   await Notifications.setNotificationCategoryAsync("sos-alert", [
     { identifier: "acknowledged", buttonTitle: "I’ve seen this", options: { opensAppToForeground: false } },
     { identifier: "responding", buttonTitle: "I’m responding", options: { opensAppToForeground: true } },

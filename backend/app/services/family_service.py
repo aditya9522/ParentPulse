@@ -1,5 +1,6 @@
 # backend/app/services/family_service.py
 import asyncio
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,7 +68,7 @@ class FamilyService:
             }
             options = {"data": metadata} if metadata else None
             auth_response = await asyncio.to_thread(
-                get_supabase_client().auth.admin.invite_user_by_email, email, options
+                get_supabase_client().auth.admin.invite_user_by_email, email, cast(Any, options)
             )
             if not auth_response.user:
                 raise RuntimeError("Supabase did not create the invited identity")

@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import { isExpoGo } from "../services/runtimeEnvironment";
 import * as Crypto from "expo-crypto";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -62,7 +63,7 @@ export const AiAssistantModal: React.FC = () => {
       id: "m_0",
       sender: "ai",
       text: isHindi
-        ? `à¤¨à¤®à¤¸à¥à¤¤à¥‡! à¤®à¥ˆà¤‚ à¤ªà¥ˆà¤°à¥‡à¤‚à¤Ÿà¤ªà¤²à¥à¤¸ AI à¤¸à¤¹à¤¾à¤¯à¤• à¤¹à¥‚à¤à¥¤ à¤®à¥ˆà¤‚ ${activeParent.full_name} à¤•à¥‡ à¤®à¥‡à¤¡à¤¿à¤•à¤² à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡, à¤¦à¤µà¤¾à¤“à¤‚ à¤”à¤° à¤œà¤¾à¤‚à¤š à¤°à¤¿à¤ªà¥‹à¤°à¥à¤Ÿà¥‹à¤‚ à¤ªà¤° à¤†à¤§à¤¾à¤°à¤¿à¤¤ à¤ªà¥à¤°à¤¶à¥à¤¨à¥‹à¤‚ à¤•à¥‡ à¤‰à¤¤à¥à¤¤à¤° à¤¦à¥‡ à¤¸à¤•à¤¤à¤¾ à¤¹à¥‚à¤à¥¤`
+        ? `नमस्ते! मैं पैरेंटपल्स AI सहायक हूँ। मैं ${activeParent.full_name} के मेडिकल रिकॉर्ड, दवाओं और जांच रिपोर्टों पर आधारित प्रश्नों के उत्तर दे सकता हूँ।`
         : `Hello! I am ParentPulse AI. I can answer questions grounded in ${activeParent.full_name}'s medical records, medicines, and consultation history.`,
     },
   ]);
@@ -98,6 +99,7 @@ export const AiAssistantModal: React.FC = () => {
   }, [aiAssistantModalVisible]);
 
   useEffect(() => {
+    if (isExpoGo) return;
     let active = true;
     const subscriptions: { remove: () => void }[] = [];
     void import("expo-speech-recognition")
@@ -135,6 +137,9 @@ export const AiAssistantModal: React.FC = () => {
 
   const beginVoiceRecognition = async () => {
     try {
+      if (isExpoGo) {
+        throw new Error("Voice input requires the ParentPulse development or store build. Typed questions still work in Expo Go.");
+      }
       const { ExpoSpeechRecognitionModule } = await import("expo-speech-recognition");
       if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
         throw new Error("Speech recognition is not available on this device.");
@@ -230,9 +235,9 @@ export const AiAssistantModal: React.FC = () => {
 
   const quickQuestions = isHindi
     ? [
-        `${activeParent.full_name.split(" ")[0]} à¤¸à¥à¤¬à¤¹ à¤•à¥Œà¤¨ à¤¸à¥€ à¤¦à¤µà¤¾à¤à¤‚ à¤²à¥‡à¤¤à¥‡ à¤¹à¥ˆà¤‚?`,
-        `à¤¨à¤µà¥€à¤¨à¤¤à¤® à¤¬à¥à¤²à¤¡ à¤¶à¥à¤—à¤° à¤Ÿà¥‡à¤¸à¥à¤Ÿ à¤ªà¤°à¤¿à¤£à¤¾à¤® à¤¦à¤¿à¤–à¤¾à¤à¤‚à¥¤`,
-        `à¤…à¤—à¤²à¤¾ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤ªà¤°à¤¾à¤®à¤°à¥à¤¶ à¤•à¤¬ à¤¹à¥ˆ?`,
+        `${activeParent.full_name.split(" ")[0]} सुबह कौन सी दवाएं लेते हैं?`,
+        `नवीनतम ब्लड शुगर टेस्ट परिणाम दिखाएं।`,
+        `अगला डॉक्टर परामर्श कब है?`,
       ]
     : [
         `What medicines does ${activeParent.full_name.split(" ")[0]} take in morning?`,
@@ -320,11 +325,11 @@ export const AiAssistantModal: React.FC = () => {
             </View>
             <View>
               <Text style={styles.headerTitle}>
-                {isHindi ? "à¤ªà¥ˆà¤°à¥‡à¤‚à¤Ÿà¤ªà¤²à¥à¤¸ AI à¤¸à¤¹à¤¾à¤¯à¤•" : "ParentPulse AI Assistant"}
+                {isHindi ? "पैरेंटपल्स AI सहायक" : "ParentPulse AI Assistant"}
               </Text>
               <Text style={styles.headerSub}>
                 {isHindi
-                  ? `${activeParent.full_name} à¤•à¥‡ à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡à¥à¤¸ à¤ªà¤° à¤†à¤§à¤¾à¤°à¤¿à¤¤`
+                  ? `${activeParent.full_name} के रिकॉर्ड्स पर आधारित`
                   : `Grounded in ${activeParent.full_name}'s Records`}
               </Text>
             </View>
@@ -347,7 +352,7 @@ export const AiAssistantModal: React.FC = () => {
           <ShieldCheck size={14} color="#1E40AF" style={{ marginTop: 1 }} />
           <Text style={styles.disclaimerText}>
             {isHindi
-              ? "à¤ªà¥ˆà¤°à¥‡à¤‚à¤Ÿà¤ªà¤²à¥à¤¸ AI à¤•à¥‡à¤µà¤² à¤ªà¤¾à¤°à¤¿à¤µà¤¾à¤°à¤¿à¤• à¤¸à¥à¤µà¤¾à¤¸à¥à¤¥à¥à¤¯ à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡ à¤•à¤¾ à¤¸à¤¾à¤°à¤¾à¤‚à¤¶ à¤ªà¥à¤°à¤¸à¥à¤¤à¥à¤¤ à¤•à¤°à¤¤à¤¾ à¤¹à¥ˆà¥¤ à¤¯à¤¹ à¤šà¤¿à¤•à¤¿à¤¤à¥à¤¸à¥€à¤¯ à¤¸à¤²à¤¾à¤¹ à¤¯à¤¾ à¤¦à¤µà¤¾ à¤•à¤¾ à¤µà¤¿à¤•à¤²à¥à¤ª à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤"
+              ? "पैरेंटपल्स AI केवल पारिवारिक स्वास्थ्य रिकॉर्ड का सारांश प्रस्तुत करता है। यह चिकित्सीय सलाह या दवा का विकल्प नहीं है।"
               : "ParentPulse AI summarizes verified family medical records. It does not replace professional clinical diagnosis or prescribe treatment."}
           </Text>
         </View>
@@ -392,7 +397,7 @@ export const AiAssistantModal: React.FC = () => {
                 {m.citations && m.citations.length > 0 && (
                   <View style={styles.citationBox}>
                     <Text style={styles.citationLabel}>
-                      {isHindi ? "à¤¸à¤¤à¥à¤¯à¤¾à¤ªà¤¿à¤¤ à¤¸à¥à¤°à¥‹à¤¤:" : "Grounded Medical Sources:"}
+                      {isHindi ? "सत्यापित स्रोत:" : "Grounded Medical Sources:"}
                     </Text>
                     <View style={styles.citationList}>
                       {m.citations.map((c, idx) => (
@@ -412,7 +417,7 @@ export const AiAssistantModal: React.FC = () => {
               <ActivityIndicator color="#7C3AED" size="small" />
               <Text style={styles.loadingText}>
                 {isHindi
-                  ? "à¤¸à¤¤à¥à¤¯à¤¾à¤ªà¤¿à¤¤ à¤®à¥‡à¤¡à¤¿à¤•à¤² à¤°à¤¿à¤•à¥‰à¤°à¥à¤¡à¥à¤¸ à¤•à¤¾ à¤µà¤¿à¤¶à¥à¤²à¥‡à¤·à¤£ à¤•à¤¿à¤¯à¤¾ à¤œà¤¾ à¤°à¤¹à¤¾ à¤¹à¥ˆ..."
+                  ? "सत्यापित मेडिकल रिकॉर्ड्स का विश्लेषण किया जा रहा है..."
                   : "Retrieving verified records via Gemini..."}
               </Text>
             </View>
@@ -424,7 +429,7 @@ export const AiAssistantModal: React.FC = () => {
           <View style={styles.quickPromptHeader}>
             <Lightbulb size={13} color="#7C3AED" />
             <Text style={styles.quickPromptTitle}>
-              {isHindi ? "à¤¸à¥à¤à¤¾à¤ à¤—à¤ à¤ªà¥à¤°à¤¶à¥à¤¨" : "Suggested Prompts"}
+              {isHindi ? "सुझाए गए प्रश्न" : "Suggested Prompts"}
             </Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
@@ -435,7 +440,7 @@ export const AiAssistantModal: React.FC = () => {
                 onPress={() => handleSend(q)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.promptText}>â€œ{q}â€</Text>
+                <Text style={styles.promptText}>“{q}”</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -473,9 +478,9 @@ export const AiAssistantModal: React.FC = () => {
             style={[styles.input, seniorMode && styles.seniorInput]}
             placeholder={
               isRecording
-                ? (isHindi ? "à¤¬à¥‹à¤²à¤¿à¤..." : "Listening...")
+                ? (isHindi ? "बोलिए..." : "Listening...")
                 : (isHindi
-                    ? `${activeParent.full_name.split(" ")[0]} à¤•à¥‡ à¤¬à¤¾à¤°à¥‡ à¤®à¥‡à¤‚ à¤ªà¥‚à¤›à¥‡à¤‚ à¤¯à¤¾ à¤¬à¥‹à¤²à¥‡à¤‚...`
+                    ? `${activeParent.full_name.split(" ")[0]} के बारे में पूछें या बोलें...`
                     : `Ask about ${activeParent.full_name.split(" ")[0]}'s records...`)
             }
             placeholderTextColor={isRecording ? "#EF4444" : Colors.textMuted}

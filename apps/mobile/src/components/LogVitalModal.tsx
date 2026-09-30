@@ -199,7 +199,7 @@ export const LogVitalModal: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
             {/* Form Inputs with Steppers */}
             {selectedType === "blood_pressure" && (
               <View>

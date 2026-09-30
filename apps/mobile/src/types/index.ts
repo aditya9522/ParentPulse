@@ -125,6 +125,7 @@ export interface MedicineSchedule {
 export interface MedicineDoseLog {
   id: string;
   medicine_id: string;
+  parent_id?: string;
   scheduled_time: string;
   status: DoseStatus;
   recorded_at?: string;

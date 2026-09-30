@@ -142,7 +142,7 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
             {/* Medicine Name */}
             <Text style={styles.fieldLabel}>
               {isHindi ? "दवा का नाम *" : "Medicine Name *"}

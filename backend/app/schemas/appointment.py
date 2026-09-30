@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.constants import AppointmentStatus
 
@@ -22,7 +22,7 @@ class AppointmentCreate(BaseModel):
     longitude: float | None = None
     google_place_id: str | None = None
     assigned_to_user_id: uuid.UUID | None = None
-    related_document_ids: list[str] = []
+    related_document_ids: list[str] = Field(default_factory=list, max_length=50)
 
 
 class AppointmentUpdate(BaseModel):
@@ -54,7 +54,7 @@ class AppointmentResponse(BaseModel):
     longitude: float | None = None
     google_place_id: str | None = None
     assigned_to_user_id: uuid.UUID | None = None
-    related_document_ids: list[str] = []
+    related_document_ids: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

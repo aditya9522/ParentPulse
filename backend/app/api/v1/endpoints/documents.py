@@ -1,5 +1,6 @@
 # backend/app/api/v1/endpoints/documents.py
 from datetime import date
+import asyncio
 from uuid import UUID
 
 from fastapi import (
@@ -19,7 +20,7 @@ from app.api.dependencies import get_current_user, get_db, get_parent_access_con
 from app.core.concurrency import enforce_record_version
 from app.core.config import get_settings
 from app.core.constants import DocumentType
-from app.core.exceptions import AuthorizationError
+from app.core.exceptions import AuthorizationError, ResourceNotFoundError
 from app.core.permissions import verify_parent_access
 from app.db.session import AsyncSessionFactory
 from app.helpers.response_builder import build_response
@@ -34,16 +35,20 @@ router = APIRouter(prefix="/documents", tags=["Medical Documents"])
 ALLOWED_DOCUMENT_TYPES = {
     "application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic",
 }
+DOCUMENT_PROCESSING_LIMIT = asyncio.Semaphore(2)
 
 
 async def process_document_job(document_id: UUID, content: bytes) -> None:
-    async with AsyncSessionFactory() as session:
-        try:
-            await DocumentService(session).process_extraction(document_id, content)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+    # Bound expensive OCR/embedding work so concurrent uploads cannot exhaust
+    # the API process while requests and care-data hydration are in flight.
+    async with DOCUMENT_PROCESSING_LIMIT:
+        async with AsyncSessionFactory() as session:
+            try:
+                await DocumentService(session).process_extraction(document_id, content)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
 
 @router.post("/upload", response_model=ApiResponse[DocumentResponse], status_code=202)
@@ -148,9 +153,11 @@ async def retry_document_extraction(
     if not member.can_upload_documents:
         raise AuthorizationError("Document management permission is required.")
     content = await StorageService.read_document(doc.storage_path)
-    doc = await service.doc_repo.update(doc.id, status="pending", summary=None)
+    updated_doc = await service.doc_repo.update(doc.id, status="pending", summary=None)
+    if not updated_doc:
+        raise ResourceNotFoundError("Document", document_id)
     background_tasks.add_task(process_document_job, document_id, content)
-    return build_response(DocumentResponse.model_validate(doc))
+    return build_response(DocumentResponse.model_validate(updated_doc))
 
 
 @router.patch("/{document_id}", response_model=ApiResponse[DocumentResponse])

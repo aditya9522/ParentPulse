@@ -23,10 +23,10 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 
 
 async def get_current_user(
-    authorization: str = Header(..., description="Bearer <token>"),
+    authorization: str | None = Header(None, description="Bearer <token>"),
     session: AsyncSession = Depends(get_db),
 ) -> User:
-    if not authorization.startswith("Bearer "):
+    if not authorization or not authorization.startswith("Bearer "):
         raise AuthenticationError("Invalid Authorization header format. Expected 'Bearer <token>'.")
 
     token = authorization.replace("Bearer ", "").strip()
@@ -52,7 +52,8 @@ async def get_current_user(
         email = payload.get("email")
         if not isinstance(email, str) or not email.strip():
             raise AuthenticationError("Verified account is missing an email address.")
-        metadata = payload.get("user_metadata") if isinstance(payload.get("user_metadata"), dict) else {}
+        raw_metadata = payload.get("user_metadata")
+        metadata: dict[str, object] = raw_metadata if isinstance(raw_metadata, dict) else {}
         full_name = metadata.get("full_name") or metadata.get("name") or email.split("@", 1)[0]
         user = await user_repo.create(
             id=user_uuid,

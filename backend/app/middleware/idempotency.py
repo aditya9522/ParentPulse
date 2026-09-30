@@ -1,5 +1,6 @@
 import hashlib
 import json
+from typing import Any, cast
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -110,7 +111,7 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             )
 
         response = await call_next(request)
-        response_body = b"".join([chunk async for chunk in response.body_iterator])
+        response_body = b"".join([chunk async for chunk in cast(Any, response).body_iterator])
         replayable = 200 <= response.status_code < 300
         try:
             async with AsyncSessionFactory() as session:

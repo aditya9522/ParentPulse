@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -36,9 +36,17 @@ import { AuthModal } from "./src/components/AuthModal";
 import { HealthReportModal } from "./src/components/HealthReportModal";
 import { PremiumFeedbackHost } from "./src/components/PremiumFeedbackHost";
 import { SyncCenterModal } from "./src/components/SyncCenterModal";
+import { BrandLaunchScreen } from "./src/components/BrandLaunchScreen";
+import { AppErrorBoundary } from "./src/components/AppErrorBoundary";
+import { EmptyCareHubScreen } from "./src/screens/EmptyCareHubScreen";
+import * as SplashScreen from "expo-splash-screen";
+import { isExpoGo } from "./src/services/runtimeEnvironment";
 import { apiClient } from "./src/api/client";
 import { AppAlert as Alert } from "./src/services/appAlert";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "./src/theme";
+
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
+if (!isExpoGo) SplashScreen.setOptions({ duration: 300, fade: true });
 
 type TabId = "home" | "documents" | "timeline" | "medicines" | "maps";
 
@@ -80,6 +88,8 @@ const MainApp: React.FC = () => {
     dataWarning,
     refreshData,
     setAuthModalVisible,
+    hasCompletedOnboarding,
+    setHasCompletedOnboarding,
   } = useApp();
 
   useEffect(() => {
@@ -98,7 +108,7 @@ const MainApp: React.FC = () => {
   }, [dockEntrance]);
 
   if (!runtimeReady || (dataLoading && parentList.length === 0 && !dataError)) {
-    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="pulse" size={32} color={Colors.primaryDark} /><Text style={styles.stateTitle}>Loading secure care data</Text><Text style={styles.stateCopy}>Connecting to ParentPulse and verifying your care circle.</Text></View></View>;
+    return <View style={[styles.stateScreen, { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xl }]}><StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" /><AmbientBackground /><View style={styles.stateCard}><ActivityIndicator size="large" color={Colors.primaryDark} /><Text style={styles.stateTitle}>Loading secure care data</Text><Text style={styles.stateCopy}>Connecting to ParentPulse and verifying your care circle.</Text></View></View>;
   }
 
   if (!isAuthenticated) {
@@ -109,7 +119,8 @@ const MainApp: React.FC = () => {
     return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="cloud-offline-outline" size={34} color="#B45309" /><Text style={styles.stateTitle}>We couldn’t connect your care data</Text><Text style={styles.stateCopy}>{dataError}</Text><TouchableOpacity disabled={dataLoading} style={[styles.stateAction, dataLoading && styles.stateActionDisabled]} onPress={() => void refreshData()}>{dataLoading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.stateActionText}>Reconnect securely</Text><Ionicons name="refresh" size={18} color="#FFFFFF" /></>}</TouchableOpacity><TouchableOpacity style={styles.stateSecondaryAction} onPress={() => void apiClient.signOut()}><Text style={styles.stateSecondaryActionText}>Sign in with another account</Text></TouchableOpacity></View></View>;
   }
 
-  const showOnboarding = activeScreen === "onboarding" || parentList.length === 0;
+  const showOnboarding = activeScreen === "onboarding" || (!hasCompletedOnboarding && parentList.length === 0);
+  const showEmptyCareHub = !showOnboarding && parentList.length === 0;
 
   return (
     <View style={styles.safeArea}>
@@ -119,14 +130,15 @@ const MainApp: React.FC = () => {
       <AmbientBackground />
 
       {/* Top Universal App Header (Hidden during Onboarding) */}
-      {!showOnboarding && <Header />}
+      {!showOnboarding && !showEmptyCareHub && <Header />}
 
       {/* Primary Screen View */}
       <View style={styles.screenContainer}>
         {showOnboarding && (
-          <OnboardingScreen onComplete={() => setActiveScreen("tabs")} />
+          <OnboardingScreen onComplete={() => { setHasCompletedOnboarding(true); setActiveScreen("tabs"); }} />
         )}
-        {!showOnboarding && activeScreen === "tabs" && (
+        {showEmptyCareHub && <EmptyCareHubScreen />}
+        {!showOnboarding && !showEmptyCareHub && activeScreen === "tabs" && (
           <>
             {activeTab === "home" && <HomeScreen onNavigateTab={(tab) => setActiveTab(tab as TabId)} />}
             {activeTab === "documents" && <DocumentVaultScreen />}
@@ -142,7 +154,7 @@ const MainApp: React.FC = () => {
       </View>
 
       {/* Modern Floating Frosted Glass Bottom Navigation Dock (Visible on all screens except Onboarding) */}
-      {!showOnboarding && (
+      {!showOnboarding && !showEmptyCareHub && (
         <Animated.View
           style={[
             styles.floatingNavWrapper,
@@ -213,7 +225,7 @@ const MainApp: React.FC = () => {
       )}
 
       {/* Global Interactive Feature Modals */}
-      {!showOnboarding && <><EmergencyCenterModal />
+      {!showOnboarding && !showEmptyCareHub && <><EmergencyCenterModal />
       <SecureDoctorShareModal />
       <AiAssistantModal />
       <LogVitalModal />
@@ -249,19 +261,31 @@ const MainApp: React.FC = () => {
 };
 
 export default function App() {
+  const [showLaunchScreen, setShowLaunchScreen] = useState(true);
+  const [appSessionKey, setAppSessionKey] = useState(0);
+  const finishLaunch = useCallback(() => setShowLaunchScreen(false), []);
+
   return (
     <SafeAreaProvider>
-      <GlassBlurProvider>
-        <AppProvider>
-          <MainApp />
-        </AppProvider>
-      </GlassBlurProvider>
-      <PremiumFeedbackHost />
+      <View style={styles.appRoot}>
+        <AppErrorBoundary onRetry={() => setAppSessionKey((value) => value + 1)}>
+          <GlassBlurProvider key={appSessionKey}>
+            <AppProvider>
+              <MainApp />
+            </AppProvider>
+          </GlassBlurProvider>
+        </AppErrorBoundary>
+        <PremiumFeedbackHost />
+        {showLaunchScreen && <BrandLaunchScreen onFinished={finishLaunch} />}
+      </View>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  appRoot: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: "#F8FAFC",
@@ -344,5 +368,4 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 });
-
 

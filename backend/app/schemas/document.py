@@ -2,8 +2,8 @@
 import uuid
 from datetime import date, datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel, ConfigDict
-from app.core.constants import DocumentType, DocumentStatus
+from pydantic import BaseModel, ConfigDict, Field
+from app.core.constants import DocumentType
 
 
 class DocumentCreate(BaseModel):
@@ -44,8 +44,8 @@ class DocumentResponse(BaseModel):
     doctor_name: Optional[str] = None
     hospital_name: Optional[str] = None
     summary: Optional[str] = None
-    extracted_tags: List[Any] = []
-    extracted_fields: dict[str, Any] = {}
+    extracted_tags: List[Any] = Field(default_factory=list)
+    extracted_fields: dict[str, Any] = Field(default_factory=dict)
     is_archived: bool
     created_at: datetime
     updated_at: datetime

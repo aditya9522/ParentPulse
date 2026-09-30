@@ -64,9 +64,10 @@ class GoogleMapsClient:
         self,
         origin_lat: float,
         origin_lng: float,
-        dest_lat: float,
-        dest_lng: float,
+        dest_lat: float | None,
+        dest_lng: float | None,
         mode: str = "driving",
+        destination_place_id: str | None = None,
     ) -> dict[str, Any]:
         api_key = self.settings.google_maps_api_key.get_secret_value()
         if api_key and not api_key.startswith("mock") and not api_key.startswith("your-"):
@@ -74,7 +75,7 @@ class GoogleMapsClient:
                 url = "https://maps.googleapis.com/maps/api/distancematrix/json"
                 params = {
                     "origins": f"{origin_lat},{origin_lng}",
-                    "destinations": f"{dest_lat},{dest_lng}",
+                    "destinations": f"place_id:{destination_place_id}" if destination_place_id else f"{dest_lat},{dest_lng}",
                     "mode": mode,
                     "key": api_key,
                 }

@@ -1,10 +1,14 @@
 import { Platform } from "react-native";
+import { isExpoGo } from "./runtimeEnvironment";
 
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
 const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
 
 export const isGoogleAuthConfigured = Boolean(
-  webClientId && iosClientId && Platform.OS !== "web",
+  webClientId &&
+  iosClientId &&
+  Platform.OS !== "web" &&
+  !isExpoGo,
 );
 
 export const getFreshGoogleIdToken = async (): Promise<string> => {

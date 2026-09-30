@@ -3,6 +3,7 @@ import asyncio
 
 from app.core.config import get_settings
 from app.core.logging import logger
+from app.core.exceptions import ProviderError
 from supabase import Client, create_client
 
 _supabase_client: Client | None = None
@@ -38,7 +39,10 @@ async def create_signed_storage_url(bucket: str, path: str, expires_in: int = 36
     """
     client = get_supabase_client()
     res = client.storage.from_(bucket).create_signed_url(path, expires_in)
-    return res.get("signedURL") or res.get("signedUrl", "")
+    signed_url = res.get("signedURL") or res.get("signedUrl")
+    if not isinstance(signed_url, str) or not signed_url:
+        raise ProviderError("Supabase Storage", "The provider did not return a signed URL.")
+    return signed_url
 
 
 async def upload_storage_object(bucket: str, path: str, content: bytes, mime_type: str) -> None:

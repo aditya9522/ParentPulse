@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.core.constants import PlaceCategory
 
 
@@ -12,8 +12,8 @@ class LocationVisitCreate(BaseModel):
     place_name: str
     category: PlaceCategory
     address: str
-    latitude: float
-    longitude: float
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
     visited_at: Optional[datetime] = None
     appointment_id: Optional[uuid.UUID] = None
     notes: Optional[str] = None

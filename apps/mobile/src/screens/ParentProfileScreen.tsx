@@ -498,7 +498,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
             <Text style={styles.inputLabel}>{isHindi ? "पूरा नाम" : "Full Name"}</Text>
             <TextInput style={styles.textInput} value={fullName} onChangeText={setFullName} />
 
@@ -564,7 +564,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
             <Text style={styles.inputLabel}>{isHindi ? "नाम *" : "Full Name *"}</Text>
             <TextInput
               style={styles.textInput}
@@ -625,7 +625,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
             <Text style={styles.inputLabel}>{isHindi ? "डॉक्टर का नाम *" : "Doctor Name *"}</Text>
             <TextInput
               style={styles.textInput}

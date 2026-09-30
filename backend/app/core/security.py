@@ -57,6 +57,8 @@ async def verify_access_token(token: str) -> dict[str, Any]:
             audience=settings.access_token_audience,
             options={"verify_aud": True},
         )
+        if not isinstance(payload, dict):
+            raise AuthenticationError("Token payload is invalid.")
         return payload
     except AuthenticationError:
         raise
@@ -83,6 +85,8 @@ async def _verify_legacy_token_with_auth_server(token: str) -> dict[str, Any]:
 
     user = response.json()
     payload = jwt.get_unverified_claims(token)
+    if not isinstance(payload, dict):
+        raise AuthenticationError("Token payload is invalid.")
     if payload.get("sub") != user.get("id"):
         raise AuthenticationError("Token identity could not be verified.")
     return payload

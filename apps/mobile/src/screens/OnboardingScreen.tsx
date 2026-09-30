@@ -1,5 +1,5 @@
 // apps/mobile/src/screens/OnboardingScreen.tsx
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,9 +10,12 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApp } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "../theme";
 
@@ -87,6 +90,7 @@ const WALKTHROUGH_SLIDES = [
 
 export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
   const { registerNewParentAndFamily, language, seniorMode, setLanguage } = useApp();
+  const insets = useSafeAreaInsets();
 
   const [step, setStep] = useState<OnboardingStep>(0);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
@@ -99,6 +103,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   const [parentName, setParentName] = useState("");
   const [parentRelationship, setParentRelationship] = useState("");
   const [parentDob, setParentDob] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [parentGender] = useState("other");
   const [bloodGroup, setBloodGroup] = useState("");
   const [preferredLang] = useState("en");
@@ -113,6 +118,18 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState("Creating your Family Care Circle...");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const submissionInFlight = useRef(false);
+
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const selectedBirthDate = parentDob
+    ? new Date(`${parentDob}T12:00:00`)
+    : new Date(1960, 0, 1);
 
   // Toggle helpers
   const toggleCondition = (cond: string) => {
@@ -138,10 +155,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   // Submit to Backend API
   const handleCreateProfile = async () => {
+    if (submissionInFlight.current) return;
     if (!familyName.trim() || !parentName.trim() || !parentDob.trim() || !address.trim() || !phoneNumber.trim()) {
       setErrorMessage("Complete the required family and parent details before continuing.");
       return;
     }
+    submissionInFlight.current = true;
     setIsSyncing(true);
     setErrorMessage(null);
     setSyncStatus("Connecting to ParentPulse API...");
@@ -192,13 +211,18 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
     } catch (err: any) {
       setErrorMessage(err instanceof Error ? err.message : "The care circle could not be created. Try again.");
       setIsSyncing(false);
+    } finally {
+      submissionInFlight.current = false;
     }
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       {/* Top Header Bar */}
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
         <View style={styles.logoRow}>
           <View style={styles.logoBadge}>
             <Ionicons name="pulse" size={20} color="#FFFFFF" />
@@ -249,7 +273,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
       {/* STEP 0: App Opening & Welcome Splash Screen */}
       {step === 0 && (
-        <ScrollView contentContainerStyle={styles.welcomeScrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.welcomeScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Welcome Visual Hero Card */}
           <View style={[styles.welcomeHeroCard, Shadows.cardElevated]}>
             <Image
@@ -370,7 +394,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
       {/* STEP 1: Feature Hero Carousel with 4 Generated 3D Images */}
       {step === 1 && (
-        <ScrollView contentContainerStyle={styles.stepContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.stepContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Category Pill & Step Counter */}
           <View style={styles.slideCategoryRow}>
             <View style={styles.slideCategoryPill}>
@@ -483,7 +507,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
       {/* STEP 2: Role & Family Name */}
       {step === 2 && (
-        <ScrollView contentContainerStyle={styles.stepContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.stepContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <Text style={[styles.stepHeading, seniorMode && styles.seniorTitle]}>
             Tell us about your care circle
           </Text>
@@ -570,7 +594,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
       {/* STEP 3: Parent Profile Details Form */}
       {step === 3 && (
-        <ScrollView contentContainerStyle={styles.stepContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.stepContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
           <Text style={[styles.stepHeading, seniorMode && styles.seniorTitle]}>
             Add Parent Health Profile
           </Text>
@@ -607,15 +631,45 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
             <View style={{ flex: 1 }}>
               <Text style={styles.fieldLabel}>Date of Birth:</Text>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.textInput}
-                  value={parentDob}
-                  onChangeText={setParentDob}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={Colors.textSubtle}
+              <TouchableOpacity style={styles.inputWrap} onPress={() => setShowDatePicker(true)} activeOpacity={0.7}>
+                <Ionicons name="calendar-outline" size={18} color={Colors.textMuted} style={styles.inputIcon} />
+                <Text style={[styles.textInput, !parentDob && { color: Colors.textSubtle }]}>
+                  {parentDob || "Select date"}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && Platform.OS === 'ios' ? (
+                <View style={styles.iosDatePickerContainer}>
+                  <View style={styles.iosDatePickerHeader}>
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                      <Text style={styles.iosDatePickerDoneBtn}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={selectedBirthDate}
+                    mode="date"
+                    display="spinner"
+                    maximumDate={new Date()}
+                    onChange={(event, selectedDate) => {
+                      if (selectedDate) {
+                        setParentDob(formatLocalDate(selectedDate));
+                      }
+                    }}
+                  />
+                </View>
+              ) : showDatePicker && Platform.OS === 'android' ? (
+                <DateTimePicker
+                  value={selectedBirthDate}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (event.type === 'set' && selectedDate) {
+                      setParentDob(formatLocalDate(selectedDate));
+                    }
+                  }}
                 />
-              </View>
+              ) : null}
             </View>
           </View>
 
@@ -732,6 +786,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
             <TouchableOpacity
               style={[styles.primaryActionBtn, styles.flexButton, Shadows.glowTeal]}
               onPress={handleCreateProfile}
+              disabled={isSyncing}
               activeOpacity={0.85}
             >
               <Text style={styles.primaryActionBtnText}>Create Care Circle</Text>
@@ -825,13 +880,6 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
             </View>
           </View>
 
-          {errorMessage && (
-            <View style={styles.infoBanner}>
-              <Ionicons name="information-circle" size={18} color={Colors.secondary} />
-              <Text style={styles.infoBannerText}>{errorMessage}</Text>
-            </View>
-          )}
-
           <TouchableOpacity
             style={[styles.launchHubBtn, Shadows.glowTeal]}
             onPress={onComplete}
@@ -842,7 +890,14 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
           </TouchableOpacity>
         </ScrollView>
       )}
-    </View>
+
+      {errorMessage && !isSyncing && (
+        <View style={styles.globalErrorBanner}>
+          <Ionicons name="information-circle" size={18} color="#FFFFFF" />
+          <Text style={styles.globalErrorText}>{errorMessage}</Text>
+        </View>
+      )}
+    </KeyboardAvoidingView>
   );
 };
 
@@ -856,7 +911,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: Spacing.md,
-    paddingTop: Platform.OS === "ios" ? 44 : 12,
     paddingBottom: 8,
     backgroundColor: "rgba(255, 255, 255, 0.95)",
     borderBottomWidth: 1,
@@ -1315,6 +1369,27 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.sm,
     color: Colors.textPrimary,
   },
+  iosDatePickerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: BorderRadius.md,
+    marginTop: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  iosDatePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    padding: Spacing.sm,
+    backgroundColor: Colors.primaryLight,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  iosDatePickerDoneBtn: {
+    color: Colors.primaryDeep,
+    fontWeight: Typography.weights.bold,
+    fontSize: Typography.sizes.sm,
+  },
   presetChipsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1620,5 +1695,24 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.bold,
     color: "#FFFFFF",
+  },
+  globalErrorBanner: {
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: Colors.emergency,
+    padding: 12,
+    borderRadius: BorderRadius.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    ...Shadows.card,
+  },
+  globalErrorText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: Typography.weights.bold,
+    flex: 1,
   },
 });

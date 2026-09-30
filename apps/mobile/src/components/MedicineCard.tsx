@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Pill, CheckCircle2, Clock, AlertTriangle, User, Circle, Trash2 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { MedicineSchedule } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius } from "../theme";
 import { useApp } from "../context/AppContext";
 
 export const MedicineCard: React.FC<{
@@ -16,6 +16,7 @@ export const MedicineCard: React.FC<{
   const isLowInventory = medicine.current_inventory <= medicine.refill_alert_threshold;
 
   const handleToggle = () => {
+    if (isTaken) return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {
@@ -121,8 +122,10 @@ export const MedicineCard: React.FC<{
           seniorMode && styles.seniorActionBtn,
         ]}
         onPress={handleToggle}
+        disabled={isTaken}
         activeOpacity={0.75}
-        accessibilityLabel={`Mark ${medicine.name} as ${isTaken ? "not taken" : "taken"}`}
+        accessibilityLabel={isTaken ? `${medicine.name} dose already taken` : `Mark ${medicine.name} as taken`}
+        accessibilityState={{ disabled: isTaken }}
       >
         {isTaken ? (
           <CheckCircle2 size={seniorMode ? 22 : 18} color="#FFFFFF" strokeWidth={2.5} />
@@ -317,4 +320,3 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
-

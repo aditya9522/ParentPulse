@@ -1,14 +1,14 @@
 # backend/app/schemas/map.py
-from typing import Optional, List
-from pydantic import BaseModel
+from typing import Literal, Optional
+from pydantic import BaseModel, Field, model_validator
 from app.core.constants import PlaceCategory
 
 
 class NearbyPlacesQuery(BaseModel):
-    latitude: float
-    longitude: float
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
     category: PlaceCategory
-    radius_meters: int = 5000
+    radius_meters: int = Field(default=5000, ge=100, le=50000)
     page_token: Optional[str] = None
 
 
@@ -28,12 +28,23 @@ class PlaceSummary(BaseModel):
 
 
 class DistanceCalculationRequest(BaseModel):
-    origin_latitude: float
-    origin_longitude: float
+    origin_latitude: float = Field(ge=-90, le=90)
+    origin_longitude: float = Field(ge=-180, le=180)
     destination_place_id: Optional[str] = None
-    destination_latitude: Optional[float] = None
-    destination_longitude: Optional[float] = None
-    mode: str = "driving"  # driving, walking, transit
+    destination_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    destination_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    mode: Literal["driving", "walking", "transit"] = "driving"
+
+    @model_validator(mode="after")
+    def require_destination(self):
+        has_place = bool(self.destination_place_id and self.destination_place_id.strip())
+        has_latitude = self.destination_latitude is not None
+        has_longitude = self.destination_longitude is not None
+        if has_latitude != has_longitude:
+            raise ValueError("Destination latitude and longitude must be provided together.")
+        if not has_place and not (has_latitude and has_longitude):
+            raise ValueError("Provide a destination place ID or destination coordinates.")
+        return self
 
 
 class DistanceCalculationResponse(BaseModel):
@@ -44,7 +55,7 @@ class DistanceCalculationResponse(BaseModel):
 
 
 class GeocodeRequest(BaseModel):
-    address: str
+    address: str = Field(min_length=3, max_length=500)
 
 
 class GeocodeResponse(BaseModel):

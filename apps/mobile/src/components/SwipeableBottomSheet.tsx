@@ -11,6 +11,7 @@ import {
   StyleProp,
   ViewStyle,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BlurView } from "expo-blur";
@@ -138,6 +139,10 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
       onRequestClose={dismiss}
       testID={testID}
     >
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoider}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
       <View style={styles.modalBackdrop}>
         <Animated.View
           pointerEvents="none"
@@ -179,11 +184,15 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
           {children}
         </Animated.View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  keyboardAvoider: {
+    flex: 1,
+  },
   modalBackdrop: {
     flex: 1,
     justifyContent: "flex-end",

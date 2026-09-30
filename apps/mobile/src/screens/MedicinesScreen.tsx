@@ -81,11 +81,11 @@ export const MedicinesScreen: React.FC = () => {
   });
 
   const timeSlots: { id: TimeSlot; label: string; hindiLabel: string; icon: any }[] = [
-    { id: "all", label: "All Day", hindiLabel: "à¤ªà¥‚à¤°à¤¾ à¤¦à¤¿à¤¨", icon: Clock },
-    { id: "morning", label: "Morning", hindiLabel: "à¤¸à¥à¤¬à¤¹", icon: Sun },
-    { id: "afternoon", label: "Afternoon", hindiLabel: "à¤¦à¥‹à¤ªà¤¹à¤°", icon: CloudSun },
-    { id: "evening", label: "Evening", hindiLabel: "à¤¶à¤¾à¤®", icon: Sunset },
-    { id: "night", label: "Night", hindiLabel: "à¤°à¤¾à¤¤", icon: Moon },
+    { id: "all", label: "All Day", hindiLabel: "पूरा दिन", icon: Clock },
+    { id: "morning", label: "Morning", hindiLabel: "सुबह", icon: Sun },
+    { id: "afternoon", label: "Afternoon", hindiLabel: "दोपहर", icon: CloudSun },
+    { id: "evening", label: "Evening", hindiLabel: "शाम", icon: Sunset },
+    { id: "night", label: "Night", hindiLabel: "रात", icon: Moon },
   ];
 
   return (
@@ -104,10 +104,10 @@ export const MedicinesScreen: React.FC = () => {
             </View>
             <View style={styles.alertContent}>
               <Text style={styles.alertTitle}>
-                {isHindi ? "à¤¦à¤µà¤¾ à¤°à¤¿à¤«à¤¿à¤² à¤†à¤µà¤¶à¥à¤¯à¤•!" : "Prescription Refill Required!"}
+                {isHindi ? "दवा रिफिल आवश्यक!" : "Prescription Refill Required!"}
               </Text>
               <Text style={styles.alertSub} numberOfLines={1}>
-                {refillMedicines.map((m) => m.name).join(", ")} {isHindi ? "à¤•à¤¾ à¤¸à¥à¤Ÿà¥‰à¤• à¤•à¤® à¤¹à¥ˆà¥¤" : "running low."}
+                {refillMedicines.map((m) => m.name).join(", ")} {isHindi ? "का स्टॉक कम है।" : "running low."}
               </Text>
             </View>
             <TouchableOpacity
@@ -116,7 +116,7 @@ export const MedicinesScreen: React.FC = () => {
               activeOpacity={0.8}
             >
               <Package size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-              <Text style={styles.orderBtnText}>{isHindi ? "à¤°à¤¿à¤«à¤¿à¤²" : "Refill"}</Text>
+              <Text style={styles.orderBtnText}>{isHindi ? "रिफिल" : "Refill"}</Text>
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -138,7 +138,7 @@ export const MedicinesScreen: React.FC = () => {
               color={activeTab === "today" ? Colors.primaryDark : Colors.textMuted}
             />
             <Text style={[styles.tabText, activeTab === "today" && styles.tabTextActive]}>
-              {isHindi ? "à¤†à¤œ à¤•à¤¾ à¤¸à¤®à¤¯" : "Today"}
+              {isHindi ? "आज का समय" : "Today"}
             </Text>
           </TouchableOpacity>
 
@@ -155,7 +155,7 @@ export const MedicinesScreen: React.FC = () => {
               color={activeTab === "all" ? Colors.primaryDark : Colors.textMuted}
             />
             <Text style={[styles.tabText, activeTab === "all" && styles.tabTextActive]}>
-              {isHindi ? `à¤¸à¤­à¥€ (${medicines.length})` : `All (${medicines.length})`}
+              {isHindi ? `सभी (${medicines.length})` : `All (${medicines.length})`}
             </Text>
           </TouchableOpacity>
 
@@ -182,7 +182,7 @@ export const MedicinesScreen: React.FC = () => {
                 refillMedicines.length > 0 && { color: Colors.emergency },
               ]}
             >
-              {isHindi ? `à¤°à¤¿à¤«à¤¿à¤² (${refillMedicines.length})` : `Refills (${refillMedicines.length})`}
+              {isHindi ? `रिफिल (${refillMedicines.length})` : `Refills (${refillMedicines.length})`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -191,10 +191,10 @@ export const MedicinesScreen: React.FC = () => {
         <View style={styles.actionHeaderRow}>
           <Text style={[styles.sectionSubtitle, seniorMode && styles.seniorSubtitle]}>
             {activeTab === "today"
-              ? (isHindi ? "à¤¦à¥ˆà¤¨à¤¿à¤• à¤–à¥à¤°à¤¾à¤• à¤…à¤¨à¥à¤ªà¤¾à¤²à¤¨" : "Daily Dosage Checklist")
+              ? (isHindi ? "दैनिक खुराक अनुपालन" : "Daily Dosage Checklist")
               : activeTab === "all"
-              ? (isHindi ? `à¤¸à¤•à¥à¤°à¤¿à¤¯ à¤¦à¤µà¤¾à¤à¤‚ (${medicines.length})` : `Active Regimen (${medicines.length})`)
-              : (isHindi ? "à¤•à¤® à¤‡à¤¨à¥à¤µà¥‡à¤‚à¤Ÿà¤°à¥€ à¤…à¤²à¤°à¥à¤Ÿ" : "Low Inventory Thresholds")}
+              ? (isHindi ? `सक्रिय दवाएं (${medicines.length})` : `Active Regimen (${medicines.length})`)
+              : (isHindi ? "कम इन्वेंटरी अलर्ट" : "Low Inventory Thresholds")}
           </Text>
           <TouchableOpacity
             style={styles.addMedButton}
@@ -206,7 +206,7 @@ export const MedicinesScreen: React.FC = () => {
           >
             <Plus size={14} color="#FFFFFF" strokeWidth={2.5} />
             <Text style={styles.addMedButtonText}>
-              {isHindi ? "à¤¦à¤µà¤¾ à¤œà¥‹à¤¡à¤¼à¥‡à¤‚" : "Add Medicine"}
+              {isHindi ? "दवा जोड़ें" : "Add Medicine"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -256,11 +256,11 @@ export const MedicinesScreen: React.FC = () => {
                 <CheckCircle2 size={36} color={Colors.success} />
               </View>
               <Text style={styles.emptyTitle}>
-                {isHindi ? "à¤¸à¤­à¥€ à¤¦à¤µà¤¾à¤“à¤‚ à¤•à¤¾ à¤ªà¤°à¥à¤¯à¤¾à¤ªà¥à¤¤ à¤¸à¥à¤Ÿà¥‰à¤• à¤¹à¥ˆ" : "All Inventories Fully Stocked"}
+                {isHindi ? "सभी दवाओं का पर्याप्त स्टॉक है" : "All Inventories Fully Stocked"}
               </Text>
               <Text style={styles.emptySub}>
                 {isHindi
-                  ? "à¤•à¤¿à¤¸à¥€ à¤­à¥€ à¤¦à¤µà¤¾ à¤•à¥‡ à¤²à¤¿à¤ à¤¤à¥à¤°à¤‚à¤¤ à¤°à¤¿à¤«à¤¿à¤² à¤•à¥€ à¤†à¤µà¤¶à¥à¤¯à¤•à¤¤à¤¾ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤"
+                  ? "किसी भी दवा के लिए तुरंत रिफिल की आवश्यकता नहीं है।"
                   : "No medicines are below their safety threshold."}
               </Text>
             </View>
@@ -282,13 +282,13 @@ export const MedicinesScreen: React.FC = () => {
                           {med.name} {med.dosage}
                         </Text>
                         <Text style={styles.refillDoctor}>
-                          {isHindi ? "à¤šà¤¿à¤•à¤¿à¤¤à¥à¤¸à¤•" : "Prescribed by"}: {med.prescribing_doctor}
+                          {isHindi ? "चिकित्सक" : "Prescribed by"}: {med.prescribing_doctor}
                         </Text>
                       </View>
                     </View>
                     <View style={styles.criticalPill}>
                       <Text style={styles.criticalText}>
-                        {med.current_inventory} {isHindi ? "à¤¬à¤šà¥‡ à¤¹à¥ˆà¤‚" : "LEFT"}
+                        {med.current_inventory} {isHindi ? "बचे हैं" : "LEFT"}
                       </Text>
                     </View>
                   </View>
@@ -308,15 +308,15 @@ export const MedicinesScreen: React.FC = () => {
                   </View>
                   <View style={styles.inventoryLabels}>
                     <Text style={styles.inventorySub}>
-                      {isHindi ? "à¤¦à¥ˆà¤¨à¤¿à¤• à¤–à¥à¤°à¤¾à¤•" : "Daily dose"}: {med.schedule_times.length}x daily
+                      {isHindi ? "दैनिक खुराक" : "Daily dose"}: {med.schedule_times.length}x daily
                     </Text>
                     <Text style={styles.inventorySub}>
-                      ~{Math.round(med.current_inventory / (med.schedule_times.length || 1))} {isHindi ? "à¤¦à¤¿à¤¨ à¤¬à¤¾à¤•à¥€" : "days left"}
+                      ~{Math.round(med.current_inventory / (med.schedule_times.length || 1))} {isHindi ? "दिन बाकी" : "days left"}
                     </Text>
                   </View>
 
                   <Text style={styles.refillReason}>
-                    <Text style={{ fontWeight: "700" }}>{isHindi ? "à¤•à¤¾à¤°à¤£" : "Condition"}:</Text> {med.reason}
+                    <Text style={{ fontWeight: "700" }}>{isHindi ? "कारण" : "Condition"}:</Text> {med.reason}
                   </Text>
 
                   {/* Refill Action Button */}
@@ -334,7 +334,7 @@ export const MedicinesScreen: React.FC = () => {
                       <PhoneCall size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
                       <Text style={styles.actionRefillText}>
                         {isHindi
-                          ? "à¤…à¤ªà¥‹à¤²à¥‹ à¤«à¤¼à¤¾à¤°à¥à¤®à¥‡à¤¸à¥€ à¤¸à¥‡ à¤¤à¥à¤°à¤‚à¤¤ à¤°à¤¿à¤«à¤¿à¤² à¤‘à¤°à¥à¤¡à¤° à¤•à¤°à¥‡à¤‚"
+                          ? "अपोलो फ़ार्मेसी से तुरंत रिफिल ऑर्डर करें"
                           : "Review nearby refill options"}
                       </Text>
                     </LinearGradient>
@@ -358,14 +358,14 @@ export const MedicinesScreen: React.FC = () => {
       {/* Confirmation Modal for Discontinuing/Deleting Medicine */}
       <ConfirmationModal
         visible={!!medToDelete}
-        title={isHindi ? "à¤¦à¤µà¤¾ à¤¶à¥‡à¤¡à¥à¤¯à¥‚à¤² à¤¹à¤Ÿà¤¾à¤à¤‚?" : "Discontinue Medication?"}
+        title={isHindi ? "दवा शेड्यूल हटाएं?" : "Discontinue Medication?"}
         message={
           isHindi
-            ? `à¤•à¥à¤¯à¤¾ à¤†à¤ª à¤¨à¤¿à¤¶à¥à¤šà¤¿à¤¤ à¤¹à¥ˆà¤‚ à¤•à¤¿ à¤†à¤ª ${medToDelete?.name} (${medToDelete?.dosage}) à¤•à¥‹ à¤¸à¤•à¥à¤°à¤¿à¤¯ à¤¦à¤µà¤¾ à¤¸à¥‚à¤šà¥€ à¤¸à¥‡ à¤¹à¤Ÿà¤¾à¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚?`
+            ? `क्या आप निश्चित हैं कि आप ${medToDelete?.name} (${medToDelete?.dosage}) को सक्रिय दवा सूची से हटाना चाहते हैं?`
             : `Are you sure you want to remove ${medToDelete?.name} (${medToDelete?.dosage}) from the active schedule? Daily dosage alerts will be cancelled.`
         }
-        confirmText={isHindi ? "à¤¹à¤Ÿà¤¾à¤à¤‚" : "Remove"}
-        cancelText={isHindi ? "à¤°à¤¦à¥à¤¦ à¤•à¤°à¥‡à¤‚" : "Cancel"}
+        confirmText={isHindi ? "हटाएं" : "Remove"}
+        cancelText={isHindi ? "रद्द करें" : "Cancel"}
         isDestructive={true}
         iconType="danger"
         onConfirm={() => {

@@ -161,7 +161,7 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
             {/* Doctor Name */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>{isHindi ? "डॉक्टर का नाम" : "Doctor's Name"}</Text>

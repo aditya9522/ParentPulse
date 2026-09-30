@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, Sequence
 
 import httpx
 from fastapi.encoders import jsonable_encoder
@@ -143,7 +143,7 @@ async def build_account_export(session: AsyncSession, user: User) -> dict[str, A
     )).all()) if sos_ids else []
     consents = await current_consents(session, user.id)
 
-    record_sets: dict[str, tuple[list[Any], set[str]]] = {
+    record_sets: dict[str, tuple[Sequence[Any], set[str]]] = {
         "parent_profiles": (parents, set()),
         "caregivers": (await by_parent(Caregiver), set()),
         "documents": (await by_family(Document), {"storage_path", "file_url"}),
@@ -230,7 +230,7 @@ async def verify_password(email: str, password: str) -> None:
         raise AuthenticationError("Your current password is incorrect.")
 
 
-async def get_auth_methods(user_id: uuid.UUID) -> list[str]:
+async def get_auth_methods(user_id: uuid.UUID) -> list[Literal["password", "google"]]:
     client = get_supabase_client()
     try:
         response = await asyncio.to_thread(client.auth.admin.get_user_by_id, str(user_id))
@@ -243,7 +243,7 @@ async def get_auth_methods(user_id: uuid.UUID) -> list[str]:
         identity.get("provider") if isinstance(identity, dict) else getattr(identity, "provider", None)
         for identity in identities
     }
-    methods: list[str] = []
+    methods: list[Literal["password", "google"]] = []
     if "email" in providers:
         methods.append("password")
     if "google" in providers:

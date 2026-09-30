@@ -96,8 +96,9 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
       return;
     }
 
-    const amt = parseFloat(expAmount.replace(/[^0-9.]/g, ""));
-    if (isNaN(amt) || amt <= 0) {
+    const normalizedAmount = expAmount.replace(/[₹,\s]/g, "");
+    const amt = Number(normalizedAmount);
+    if (!/^\d+(\.\d{1,2})?$/.test(normalizedAmount) || !Number.isFinite(amt) || amt <= 0) {
       Alert.alert(isHindi ? "अमान्य राशि" : "Invalid Amount", isHindi ? "कृपया सही राशि दर्ज करें।" : "Please enter a valid amount.");
       return;
     }
@@ -127,8 +128,19 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
   };
 
   const handleCreateInsurance = () => {
-    if (!insProvider.trim() || !insPolicyNum.trim()) {
+    if (!insProvider.trim() || !insPolicyNum.trim() || !insPlanName.trim()) {
       Alert.alert(isHindi ? "विवरण आवश्यक है" : "Details Required", isHindi ? "कृपया बीमा प्रदाता और पॉलिसी नंबर दर्ज करें।" : "Please enter insurance provider and policy number.");
+      return;
+    }
+
+    const coverageAmount = Number(insCoverage.replace(/[,\s]/g, ""));
+    const expiryDate = new Date(`${insExpiry}T00:00:00`);
+    if (!Number.isFinite(coverageAmount) || coverageAmount <= 0) {
+      Alert.alert(isHindi ? "अमान्य कवरेज" : "Invalid Coverage", isHindi ? "कृपया सही कवरेज राशि दर्ज करें।" : "Please enter a valid coverage amount.");
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(insExpiry) || Number.isNaN(expiryDate.getTime()) || expiryDate.toISOString().slice(0, 10) !== insExpiry) {
+      Alert.alert(isHindi ? "अमान्य समाप्ति तिथि" : "Invalid Expiry Date", isHindi ? "कृपया YYYY-MM-DD प्रारूप में सही तिथि दर्ज करें।" : "Enter a real date in YYYY-MM-DD format.");
       return;
     }
 
@@ -139,8 +151,8 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
       family_id: activeParent.family_id,
       provider: insProvider.trim(),
       policy_number: insPolicyNum.trim(),
-      plan_name: insPlanName.trim() || "Senior Health Plan",
-      coverage_amount: parseFloat(insCoverage) || 1500000,
+      plan_name: insPlanName.trim(),
+      coverage_amount: coverageAmount,
       currency: "INR",
       expiry_date: insExpiry,
       tpa_cashless_helpline: insTpa.trim() || undefined,
@@ -151,6 +163,8 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
     setInsProvider("");
     setInsPolicyNum("");
     setInsPlanName("");
+    setInsCoverage("");
+    setInsExpiry("");
     setAddInsModalVisible(false);
   };
 
@@ -412,7 +426,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
               <Text style={styles.inputLabel}>{isHindi ? "खर्च शीर्षक *" : "Title *"}</Text>
               <TextInput
                 style={styles.textInput}
@@ -496,7 +510,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
               <Text style={styles.inputLabel}>{isHindi ? "बीमा कंपनी *" : "Insurance Provider *"}</Text>
               <TextInput
                 style={styles.textInput}

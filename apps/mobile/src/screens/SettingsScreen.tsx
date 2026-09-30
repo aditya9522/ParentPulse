@@ -31,8 +31,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useApp , SupportedLanguage } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
-import * as Notifications from "expo-notifications";
 import { registerRemotePushDevice, syncCareReminders } from "../services/reminders";
+import { getNotifications, notificationsAvailable } from "../services/notificationRuntime";
 import { apiClient, ConsentType } from "../api/client";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
@@ -78,7 +78,11 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
   const closeDeleteSheet = useCallback(() => setDeleteSheetVisible(false), []);
 
   useEffect(() => {
-    void Notifications.getPermissionsAsync().then((permission) => setRemindersEnabled(permission.status === "granted"));
+    void getNotifications().then(async (Notifications) => {
+      if (!Notifications) return;
+      const permission = await Notifications.getPermissionsAsync();
+      setRemindersEnabled(permission.status === "granted");
+    });
   }, []);
 
   useEffect(() => {
@@ -104,8 +108,17 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
   const enableReminders = async () => {
     triggerHaptic();
+    if (!notificationsAvailable) {
+      Alert.alert(
+        "Notifications require a ParentPulse build",
+        "Expo Go cannot initialize Android push notifications. Install the ParentPulse development or store build to enable reminders and SOS alerts.",
+      );
+      return;
+    }
     await syncCareReminders(medicines, appointments, true);
     await registerRemotePushDevice().catch(() => false);
+    const Notifications = await getNotifications();
+    if (!Notifications) return;
     const permission = await Notifications.getPermissionsAsync();
     setRemindersEnabled(permission.status === "granted");
     if (permission.status !== "granted") {

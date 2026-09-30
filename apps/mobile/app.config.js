@@ -49,9 +49,14 @@ const expo = {
   name: "Parent Pulse",
   slug: "parentpulse",
   scheme: "parentpulse",
-  version: "1.0.0",
+  version: "1.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
+  splash: {
+    image: "./assets/icon.png",
+    resizeMode: "contain",
+    backgroundColor: "#043F3B",
+  },
   userInterfaceStyle: "light",
   ios: {
     supportsTablet: true,
@@ -61,6 +66,7 @@ const expo = {
     },
   },
   android: {
+    softwareKeyboardLayoutMode: "resize",
     googleServicesFile: "./google-services.json",
     adaptiveIcon: {
       backgroundColor: "#E6F4FE",
@@ -72,6 +78,7 @@ const expo = {
   },
   web: { favicon: "./assets/favicon.png" },
   plugins: [
+    ["expo-splash-screen", { image: "./assets/icon.png", imageWidth: 180, resizeMode: "contain", backgroundColor: "#043F3B" }],
     "expo-secure-store",
     ["expo-notifications", { icon: "./assets/notification-icon-android.png", color: "#0D9488", defaultChannel: "care-reminders" }],
     "expo-sharing",
@@ -83,6 +90,7 @@ const expo = {
         androidSpeechServicePackages: ["com.google.android.googlequicksearchbox"],
       },
     ],
+    "@react-native-community/datetimepicker",
   ],
   extra: { eas: { projectId: "6a6e447c-14f9-4f77-8e93-eabb445c82aa" } },
   owner: "aditya010p",

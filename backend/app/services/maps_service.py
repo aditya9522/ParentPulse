@@ -35,16 +35,20 @@ class MapsService:
     async def get_distance_and_route(
         origin_lat: float,
         origin_lng: float,
-        dest_lat: float,
-        dest_lng: float,
+        dest_lat: float | None,
+        dest_lng: float | None,
         mode: str = "driving",
+        destination_place_id: str | None = None,
     ) -> DistanceCalculationResponse:
-        cache_key = f"maps:route:{round(origin_lat, 3)}_{round(origin_lng, 3)}:{round(dest_lat, 3)}_{round(dest_lng, 3)}:{mode}"
+        destination_key = destination_place_id or f"{round(dest_lat or 0, 3)}_{round(dest_lng or 0, 3)}"
+        cache_key = f"maps:route:{round(origin_lat, 3)}_{round(origin_lng, 3)}:{destination_key}:{mode}"
         cached = await cache_get(cache_key)
         if cached:
             return DistanceCalculationResponse(**cached)
 
-        data = await google_maps_client.calculate_distance(origin_lat, origin_lng, dest_lat, dest_lng, mode)
+        data = await google_maps_client.calculate_distance(
+            origin_lat, origin_lng, dest_lat, dest_lng, mode, destination_place_id
+        )
         res = DistanceCalculationResponse(
             distance_meters=data.get("distance_meters", 0),
             distance_text=data.get("distance_text", "0 km"),

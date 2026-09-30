@@ -1,13 +1,13 @@
 # backend/app/schemas/search.py
 import uuid
 from typing import Optional, List, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class UniversalSearchQuery(BaseModel):
     family_id: uuid.UUID
     parent_id: Optional[uuid.UUID] = None
-    query: str
+    query: str = Field(min_length=2, max_length=200)
     types: Optional[List[str]] = None  # ["documents", "medicines", "appointments", "timeline"]
 
 
@@ -17,7 +17,7 @@ class SearchResultItem(BaseModel):
     title: str
     subtitle: str
     date: Optional[str] = None
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class UniversalSearchResponse(BaseModel):

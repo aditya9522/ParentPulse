@@ -566,7 +566,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
               <Text style={styles.inputLabel}>{isHindi ? "कार्य शीर्षक *" : "Task Title *"}</Text>
               <TextInput
                 style={styles.textInput}
@@ -656,7 +656,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
         containerStyle={styles.memberEditorSheet}
       >
         {memberEditor && (
-          <ScrollView contentContainerStyle={styles.memberEditorContent} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={styles.memberEditorContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
             <View style={styles.memberEditorHero}>
               <View style={styles.memberEditorAvatar}><Text style={styles.memberEditorInitials}>{memberEditor.avatar_initials}</Text></View>
               <View style={{ flex: 1 }}>
@@ -749,7 +749,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
               <Text style={styles.inputLabel}>{isHindi ? "पूरा नाम *" : "Full Name *"}</Text>
               <TextInput
                 style={styles.textInput}

@@ -18,7 +18,8 @@ export const AuthModal: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<"email" | "google" | null>(null);
+  const isLoading = loadingAction !== null;
 
   const submit = async () => {
     if (!email.trim() || (mode !== "forgot" && !password)) {
@@ -30,7 +31,7 @@ export const AuthModal: React.FC = () => {
       return;
     }
     if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsLoading(true);
+    setLoadingAction("email");
     try {
       if (mode === "forgot") {
         await apiClient.requestPasswordReset(email.trim());
@@ -47,14 +48,14 @@ export const AuthModal: React.FC = () => {
     } catch (error) {
       Alert.alert("Couldn’t continue", error instanceof Error ? error.message : "Check your connection and try again.");
     } finally {
-      setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
   const continueWithGoogle = async () => {
     if (!isGoogleAuthConfigured) return;
     if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsLoading(true);
+    setLoadingAction("google");
     try {
       const idToken = await getFreshGoogleIdToken();
       const result = await apiClient.loginWithGoogle(idToken);
@@ -64,7 +65,7 @@ export const AuthModal: React.FC = () => {
     } catch (error) {
       Alert.alert("Google sign-in couldn’t continue", error instanceof Error ? error.message : "Try again.");
     } finally {
-      setIsLoading(false);
+      setLoadingAction(null);
     }
   };
 
@@ -93,7 +94,7 @@ export const AuthModal: React.FC = () => {
         {mode === "login" && <TouchableOpacity style={styles.forgotButton} onPress={() => setMode("forgot")}><Text style={styles.forgotText}>Forgot password?</Text></TouchableOpacity>}
         <TouchableOpacity style={styles.primaryButton} onPress={submit} disabled={isLoading} activeOpacity={0.85}>
           <LinearGradient colors={Gradients.primary} style={styles.primaryGradient}>
-            {isLoading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.primaryText}>{mode === "login" ? "Sign in securely" : mode === "signup" ? "Create account" : "Send reset link"}</Text><ArrowRight size={18} color="#FFFFFF" /></>}
+            {loadingAction === "email" ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.primaryText}>{mode === "login" ? "Sign in securely" : mode === "signup" ? "Create account" : "Send reset link"}</Text><ArrowRight size={18} color="#FFFFFF" /></>}
           </LinearGradient>
         </TouchableOpacity>
 
@@ -101,8 +102,8 @@ export const AuthModal: React.FC = () => {
           <>
             <View style={styles.dividerRow}><View style={styles.dividerLine} /><Text style={styles.dividerText}>OR</Text><View style={styles.dividerLine} /></View>
             <TouchableOpacity style={styles.googleButton} onPress={() => void continueWithGoogle()} disabled={isLoading} activeOpacity={0.82}>
-              <BadgeCheck size={19} color={Colors.secondaryDark} />
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
+              {loadingAction === "google" ? <ActivityIndicator color={Colors.secondaryDark} /> : <BadgeCheck size={19} color={Colors.secondaryDark} />}
+              <Text style={styles.googleButtonText}>{loadingAction === "google" ? "Verifying with Google…" : "Continue with Google"}</Text>
             </TouchableOpacity>
           </>
         )}

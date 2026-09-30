@@ -1,7 +1,6 @@
 import React, { createContext, useCallback, useContext, useState, useEffect, useMemo, useRef } from "react";
 import * as Location from "expo-location";
 import * as Crypto from "expo-crypto";
-import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import {
@@ -15,6 +14,7 @@ import {
   CareTask,
   HealthcareExpense,
   InsurancePolicy,
+  MedicineDoseLog,
   FamilyMemberItem,
   UserProfile,
 } from "../types";
@@ -30,6 +30,7 @@ import {
   retryQueuedMutation,
   subscribeToMutationQueue,
 } from "../services/mutationQueue";
+import { getNotifications } from "../services/notificationRuntime";
 
 export type SupportedLanguage =
   | "en"
@@ -63,6 +64,7 @@ export interface ParentData {
   tasks: CareTask[];
   expenses: HealthcareExpense[];
   insurance: InsurancePolicy[];
+  doseLogs: MedicineDoseLog[];
 }
 
 const EMPTY_PARENT_PROFILE: ParentProfile = {
@@ -94,6 +96,7 @@ const emptyParentData = (profile: ParentProfile = EMPTY_PARENT_PROFILE): ParentD
   tasks: [],
   expenses: [],
   insurance: [],
+  doseLogs: [],
 });
 
 const EMPTY_CURRENT_USER: UserProfile = {
@@ -211,7 +214,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [seniorMode, setSeniorMode] = useState<boolean>(false);
   const [language, setLanguage] = useState<SupportedLanguage>("en");
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("tabs");
-  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(false);
+  const [hasCompletedOnboarding, setHasCompletedOnboardingState] = useState<boolean>(false);
+  const [onboardingCompletionUserId, setOnboardingCompletionUserId] = useState<string | null>(null);
+  const onboardingCompletionUserIdRef = useRef<string | null>(null);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [dataWarning, setDataWarning] = useState<string | null>(null);
@@ -220,6 +225,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [syncCenterVisible, setSyncCenterVisible] = useState(false);
   const refreshDataRef = useRef<() => Promise<void>>(async () => undefined);
   const reconciliationPendingRef = useRef(false);
+  const refreshGenerationRef = useRef(0);
 
   // Per-parent data cache
   const [dataStore, setDataStore] = useState<Record<string, ParentData>>({});
@@ -228,6 +234,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<UserProfile>(EMPTY_CURRENT_USER);
 
   const [dosesTakenToday, setDosesTakenToday] = useState<Record<string, boolean>>({});
+  const [hydratedParentIds, setHydratedParentIds] = useState<Set<string>>(new Set());
 
   // Real GPS Device Location
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -243,17 +250,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [reportModalVisible, setReportModalVisible] = useState(false);
 
   useEffect(() => {
-    const handleResponse = (response: Notifications.NotificationResponse) => {
-      const data = response.notification.request.content.data;
-      if (data?.type !== "sos" || typeof data.sosEventId !== "string") return;
-      const acknowledgement = response.actionIdentifier === "responding" ? "responding" : "acknowledged";
-      void apiClient.acknowledgeSosEvent(data.sosEventId, acknowledgement);
-      if (acknowledgement === "responding") setSosModalVisible(true);
+    let active = true;
+    let subscription: { remove: () => void } | undefined;
+
+    void getNotifications().then((Notifications) => {
+      if (!active || !Notifications) return;
+      const handleResponse = (response: import("expo-notifications").NotificationResponse) => {
+        const data = response.notification.request.content.data;
+        if (data?.type !== "sos" || typeof data.sosEventId !== "string") return;
+        const acknowledgement = response.actionIdentifier === "responding" ? "responding" : "acknowledged";
+        void apiClient.acknowledgeSosEvent(data.sosEventId, acknowledgement);
+        if (acknowledgement === "responding") setSosModalVisible(true);
+      };
+      const initial = Notifications.getLastNotificationResponse();
+      if (initial) handleResponse(initial);
+      subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    }).catch(() => undefined);
+
+    return () => {
+      active = false;
+      subscription?.remove();
     };
-    const initial = Notifications.getLastNotificationResponse();
-    if (initial) handleResponse(initial);
-    const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
-    return () => subscription.remove();
   }, []);
 
   const currentData = dataStore[activeParentId] || emptyParentData();
@@ -277,7 +294,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSyncBusy(true);
     try {
       const result = await drainMutationQueue(ownerUserId, (operation) => apiClient.executeQueuedMutation(operation));
-      if (result.succeeded > 0) await refreshDataRef.current();
+      // Reconcile both accepted and rejected optimistic updates with server truth.
+      if (result.succeeded > 0 || result.blocked > 0) await refreshDataRef.current();
       if (result.blocked > 0) setSyncCenterVisible(true);
     } finally {
       setSyncBusy(false);
@@ -339,25 +357,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [syncQueue, syncBusy]);
 
   useEffect(() => {
-    if (!runtimeReady) return;
+    if (!runtimeReady || !activeParentId || !hydratedParentIds.has(activeParentId)) return;
     void syncCareReminders(currentData.medicines, currentData.appointments);
-  }, [runtimeReady, activeParentId, currentData.medicines, currentData.appointments]);
+  }, [runtimeReady, activeParentId, currentData.medicines, currentData.appointments, hydratedParentIds]);
 
   useEffect(() => {
     let mounted = true;
-    const unsubscribe = apiClient.onAuthStateChange(() => setAuthVersion((value) => value + 1));
+    const unsubscribe = apiClient.onAuthStateChange((authenticated) => {
+      const userId = authenticated ? apiClient.getAuthenticatedUserId() : null;
+      refreshGenerationRef.current += 1;
+      setDataLoading(authenticated);
+      setDataError(null);
+      setDataWarning(null);
+      setDataStore({});
+      setDosesTakenToday({});
+      setHydratedParentIds(new Set());
+      setFamilyMembers([]);
+      setCurrentUser(EMPTY_CURRENT_USER);
+      setActiveParentId("");
+      setActiveScreen("tabs");
+      setHasCompletedOnboardingState(Boolean(userId && onboardingCompletionUserIdRef.current === userId));
+      setAuthVersion((value) => value + 1);
+    });
     void (async () => {
       const [storedState] = await Promise.all([
         AsyncStorage.getItem(APP_STATE_KEY),
         apiClient.restoreSession(),
       ]);
       if (!mounted) return;
+      setDataLoading(apiClient.isAuthenticated());
       if (storedState) {
         try {
           const parsed = JSON.parse(storedState);
           if (parsed.activeParentId) setActiveParentId(parsed.activeParentId);
           if (parsed.language) setLanguage(parsed.language);
           if (typeof parsed.seniorMode === "boolean") setSeniorMode(parsed.seniorMode);
+          if (typeof parsed.onboardingCompletionUserId === "string") {
+            onboardingCompletionUserIdRef.current = parsed.onboardingCompletionUserId;
+            setOnboardingCompletionUserId(parsed.onboardingCompletionUserId);
+            setHasCompletedOnboardingState(
+              parsed.onboardingCompletionUserId === apiClient.getAuthenticatedUserId(),
+            );
+          }
         } catch {
           await AsyncStorage.removeItem(APP_STATE_KEY);
         }
@@ -378,12 +419,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeParentId,
         language,
         seniorMode,
+        onboardingCompletionUserId,
       }));
     }, 250);
     return () => {
       if (persistTimer.current) clearTimeout(persistTimer.current);
     };
-  }, [runtimeReady, activeParentId, language, seniorMode]);
+  }, [runtimeReady, activeParentId, language, seniorMode, onboardingCompletionUserId]);
+
+  const setHasCompletedOnboarding = useCallback((completed: boolean) => {
+    const ownerUserId = completed ? apiClient.getAuthenticatedUserId() : null;
+    onboardingCompletionUserIdRef.current = ownerUserId;
+    setOnboardingCompletionUserId(ownerUserId);
+    setHasCompletedOnboardingState(completed && Boolean(ownerUserId));
+  }, []);
 
   const refreshLocation = async () => {
     try {
@@ -421,12 +470,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const refreshData = useCallback(async () => {
+    const generation = ++refreshGenerationRef.current;
+    const ownerUserId = apiClient.getAuthenticatedUserId();
+    const isCurrentRefresh = () => (
+      generation === refreshGenerationRef.current
+      && ownerUserId !== null
+      && ownerUserId === apiClient.getAuthenticatedUserId()
+      && apiClient.isAuthenticated()
+    );
+
     if (!apiClient.isAuthenticated()) {
       setDataLoading(false);
       setDataStore({});
+      setDosesTakenToday({});
+      setHydratedParentIds(new Set());
       setFamilyMembers([]);
       setCurrentUser(EMPTY_CURRENT_USER);
-      setHasCompletedOnboarding(false);
+      setHasCompletedOnboardingState(false);
       setDataError(null);
       setDataWarning(null);
       reconciliationPendingRef.current = false;
@@ -436,41 +496,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDataWarning(null);
     try {
       const [profile, families] = await Promise.all([apiClient.getCurrentUser(), apiClient.listFamilies()]);
+      if (!isCurrentRefresh()) return;
       if (families.length === 0) {
         setCurrentUser({ ...profile, role: "family_member" });
         setFamilyMembers([]);
         setDataStore({});
+        setDosesTakenToday({});
+        setHydratedParentIds(new Set());
         setActiveParentId("");
-        setHasCompletedOnboarding(false);
+        setHasCompletedOnboardingState(
+          onboardingCompletionUserIdRef.current === apiClient.getAuthenticatedUserId(),
+        );
+        setActiveScreen("onboarding");
         setDataError(null);
         reconciliationPendingRef.current = false;
         return;
       }
 
       const parents = (await Promise.all(families.map((family) => apiClient.listFamilyParents(family.id)))).flat();
-      const unavailableDomains = new Set<string>();
-      const entries = await Promise.all(parents.map(async (parent) => {
-        const domainNames = ["medicines", "appointments", "documents", "timeline", "measurements", "visits", "tasks", "expenses", "insurance"] as const;
-        const results = await Promise.allSettled([
-          apiClient.listMedicines(parent.id),
-          apiClient.listAppointments(parent.id),
-          apiClient.listDocuments(parent.id),
-          apiClient.listTimeline(parent.id),
-          apiClient.listMeasurements(parent.id),
-          apiClient.listLocationVisits(parent.id),
-          apiClient.listTasks(parent.id),
-          apiClient.listExpenses(parent.id),
-          apiClient.listInsurance(parent.id),
-        ]);
-        const domainData = results.map((result, index) => {
-          if (result.status === "fulfilled") return result.value;
-          unavailableDomains.add(domainNames[index]);
-          return [];
-        });
-        const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance] = domainData;
-        return [parent.id, { profile: parent, medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance }] as const;
-      }));
-      const nextStore = Object.fromEntries(entries) as Record<string, ParentData>;
+      if (!isCurrentRefresh()) return;
       const members: FamilyMemberItem[] = families.flatMap((family) => (family.members || []).map((member: any) => ({
         id: member.id,
         family_id: member.family_id,
@@ -488,20 +532,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         can_share_doctor_brief: member.can_share_doctor_brief,
         can_view_location_history: member.can_view_location_history,
       })));
+      const initialStore = Object.fromEntries(
+        parents.map((parent) => [parent.id, emptyParentData(parent)]),
+      ) as Record<string, ParentData>;
+
       setCurrentUser({ ...profile, role: members.find((member) => member.user_id === profile.id)?.role || "family_member" });
       setFamilyMembers(members);
-      setDataStore(nextStore);
-      setActiveParentId((current) => nextStore[current] ? current : parents[0]?.id || "");
-      setHasCompletedOnboarding(parents.length > 0);
+      setDataStore(initialStore);
+      setActiveParentId((current) => initialStore[current] ? current : parents[0]?.id || "");
+      onboardingCompletionUserIdRef.current = ownerUserId;
+      setOnboardingCompletionUserId(ownerUserId);
+      setHasCompletedOnboardingState(true);
+      setActiveScreen((current) => current === "onboarding" ? "tabs" : current);
       setDataError(null);
+      setDataLoading(false);
       reconciliationPendingRef.current = false;
+
+      const unavailableDomains = new Set<string>();
+      // Load one parent's domains at a time and only three domains concurrently.
+      // This prevents large care circles from exhausting mobile/network resources.
+      const entries: (readonly [string, ParentData])[] = [];
+      for (const parent of parents) {
+        if (!isCurrentRefresh()) return;
+        const domainNames = ["medicines", "appointments", "documents", "timeline", "measurements", "visits", "tasks", "expenses", "insurance", "dose history"] as const;
+        const domainLoaders = [
+          () => apiClient.listMedicines(parent.id),
+          () => apiClient.listAppointments(parent.id),
+          () => apiClient.listDocuments(parent.id),
+          () => apiClient.listTimeline(parent.id),
+          () => apiClient.listMeasurements(parent.id),
+          () => apiClient.listLocationVisits(parent.id),
+          () => apiClient.listTasks(parent.id),
+          () => apiClient.listExpenses(parent.id),
+          () => apiClient.listInsurance(parent.id),
+          () => apiClient.listDoseHistory(parent.id),
+        ];
+        const results: PromiseSettledResult<any[]>[] = [];
+        for (let start = 0; start < domainLoaders.length; start += 3) {
+          if (!isCurrentRefresh()) return;
+          results.push(...await Promise.allSettled(
+            domainLoaders.slice(start, start + 3).map((load) => load()),
+          ));
+        }
+        const domainData = results.map((result, index) => {
+          if (result.status === "fulfilled") return result.value;
+          unavailableDomains.add(domainNames[index]);
+          return [];
+        });
+        const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs] = domainData;
+        const entry = [parent.id, { profile: parent, medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs }] as const;
+        entries.push(entry);
+        if (isCurrentRefresh()) {
+          setDataStore((current) => ({ ...current, [parent.id]: entry[1] }));
+          setHydratedParentIds((current) => new Set(current).add(parent.id));
+        }
+      }
+      if (!isCurrentRefresh()) return;
+      const nextStore = Object.fromEntries(entries) as Record<string, ParentData>;
+      setDataStore(nextStore);
+      setHydratedParentIds(new Set(entries.map(([parentId]) => parentId)));
+      const today = new Date().toDateString();
+      setDosesTakenToday(Object.fromEntries(entries.flatMap(([, data]) => data.doseLogs
+        .filter((log) => log.status === "taken" && new Date(log.recorded_at || log.scheduled_time).toDateString() === today)
+        .map((log) => [log.medicine_id, true]))));
+      setActiveParentId((current) => nextStore[current] ? current : parents[0]?.id || "");
       if (unavailableDomains.size > 0) {
         setDataWarning(`${unavailableDomains.size} care ${unavailableDomains.size === 1 ? "service is" : "services are"} temporarily unavailable. Your available live records are still shown.`);
       }
     } catch (error) {
-      setDataError(error instanceof Error ? error.message : "Could not verify your account and care circle.");
+      if (isCurrentRefresh()) {
+        setDataError(error instanceof Error ? error.message : "Could not verify your account and care circle.");
+      }
     } finally {
-      setDataLoading(false);
+      if (generation === refreshGenerationRef.current) setDataLoading(false);
     }
   }, []);
 
@@ -511,192 +614,162 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (!runtimeReady) return;
-    const locationTimer = setTimeout(() => void refreshLocation(), 0);
     const dataTimer = setTimeout(() => void refreshData(), 0);
-    return () => { clearTimeout(locationTimer); clearTimeout(dataTimer); };
+    return () => clearTimeout(dataTimer);
   }, [runtimeReady, authVersion, refreshData]);
 
   const toggleSeniorMode = () => setSeniorMode((prev) => !prev);
 
-  const updateActiveParentProfile = (updated: Partial<ParentProfile>) => {
-    setDataStore((prev) => {
-      const current = prev[activeParentId];
-      if (!current) return prev;
-      return {
-        ...prev,
-        [activeParentId]: {
-          ...current,
-          profile: {
-            ...current.profile,
-            ...updated,
-          },
-        },
-      };
+  const updateParentData = useCallback((parentId: string, update: (current: ParentData) => ParentData) => {
+    if (!parentId) return;
+    setDataStore((previous) => {
+      const current = previous[parentId];
+      return current ? { ...previous, [parentId]: update(current) } : previous;
     });
+  }, []);
 
-    void syncMutation(`/parents/${activeParentId}`, "PATCH", updated, {
-      label: `Update ${currentData.profile.full_name || "parent"} profile`,
+  const updateActiveParentProfile = (updated: Partial<ParentProfile>) => {
+    const parentId = activeParentId;
+    const parentData = dataStore[parentId];
+    if (!parentData) return;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      profile: { ...current.profile, ...updated },
+    }));
+
+    void syncMutation(`/parents/${parentId}`, "PATCH", updated, {
+      label: `Update ${parentData.profile.full_name || "parent"} profile`,
       resourceType: "parent profile",
-      resourceId: activeParentId,
-      expectedVersion: currentData.profile.updated_at,
+      resourceId: parentId,
+      expectedVersion: parentData.profile.updated_at,
+      parentId,
     });
   };
 
   const markDoseTaken = (medicineId: string) => {
-    const willBeTaken = !dosesTakenToday[medicineId];
+    if (dosesTakenToday[medicineId]) return;
     const medicine = currentData.medicines.find((item) => item.id === medicineId);
     setDosesTakenToday((prev) => ({
       ...prev,
-      [medicineId]: willBeTaken,
+      [medicineId]: true,
     }));
-    void syncMutation(`/medicines/${medicineId}/doses`, "POST", { status: willBeTaken ? "taken" : "missed" }, {
-      label: `${willBeTaken ? "Record" : "Undo"} ${medicine?.name || "medicine"} dose`,
+    void syncMutation(`/medicines/${medicineId}/doses`, "POST", { status: "taken" }, {
+      label: `Record ${medicine?.name || "medicine"} dose`,
       resourceType: "dose",
       resourceId: medicineId,
+      parentId: activeParentId,
     });
   };
 
   const addDocument = (doc: MedicalDocument) => {
-    setDataStore((prev) => {
-      const existing = prev[activeParentId].documents;
+    const parentId = doc.parent_id;
+    updateParentData(parentId, (current) => {
+      const existing = current.documents;
       const documents = existing.some((item) => item.id === doc.id)
         ? existing.map((item) => item.id === doc.id ? doc : item)
         : [doc, ...existing];
-      return { ...prev, [activeParentId]: { ...prev[activeParentId], documents } };
+      return { ...current, documents };
     });
   };
 
   const deleteDocument = (docId: string) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        documents: prev[activeParentId].documents.filter((d) => d.id !== docId),
-      },
-    }));
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({ ...current, documents: current.documents.filter((d) => d.id !== docId) }));
     const document = currentData.documents.find((item) => item.id === docId);
     void syncMutation(`/documents/${docId}`, "DELETE", undefined, {
       label: `Archive ${document?.title || "medical document"}`,
       resourceType: "document",
       resourceId: docId,
       expectedVersion: document?.updated_at,
+      parentId,
     });
   };
 
   const addAppointment = (app: Appointment) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        appointments: [app, ...prev[activeParentId].appointments],
-      },
-    }));
-    void syncMutation("/appointments", "POST", { ...app, family_id: currentData.profile.family_id }, {
+    const parentId = app.parent_id;
+    updateParentData(parentId, (current) => ({ ...current, appointments: [app, ...current.appointments] }));
+    void syncMutation("/appointments", "POST", { ...app, family_id: dataStore[parentId]?.profile.family_id }, {
       label: `Schedule appointment with ${app.doctor_name}`,
       resourceType: "appointment",
       resourceId: app.id,
+      parentId,
     });
   };
 
   const deleteAppointment = (appId: string) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        appointments: prev[activeParentId].appointments.filter((a) => a.id !== appId),
-      },
-    }));
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({ ...current, appointments: current.appointments.filter((a) => a.id !== appId) }));
     const appointment = currentData.appointments.find((item) => item.id === appId);
     void syncMutation(`/appointments/${appId}`, "PATCH", { status: "cancelled" }, {
       label: `Cancel ${appointment?.doctor_name || "doctor"} appointment`,
       resourceType: "appointment",
       resourceId: appId,
       expectedVersion: appointment?.updated_at,
+      parentId,
     });
   };
 
   const addMedicine = (med: MedicineSchedule) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        medicines: [med, ...prev[activeParentId].medicines],
-      },
-    }));
-    void syncMutation("/medicines", "POST", { ...med, family_id: currentData.profile.family_id }, {
+    const parentId = med.parent_id;
+    updateParentData(parentId, (current) => ({ ...current, medicines: [med, ...current.medicines] }));
+    void syncMutation("/medicines", "POST", { ...med, family_id: dataStore[parentId]?.profile.family_id }, {
       label: `Add ${med.name}`,
       resourceType: "medicine",
       resourceId: med.id,
+      parentId,
     });
   };
 
   const deleteMedicine = (medId: string) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        medicines: prev[activeParentId].medicines.filter((m) => m.id !== medId),
-      },
-    }));
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({ ...current, medicines: current.medicines.filter((m) => m.id !== medId) }));
     const medicine = currentData.medicines.find((item) => item.id === medId);
     void syncMutation(`/medicines/${medId}`, "PATCH", { is_active: false }, {
       label: `Stop ${medicine?.name || "medicine"}`,
       resourceType: "medicine",
       resourceId: medId,
       expectedVersion: medicine?.updated_at,
+      parentId,
     });
   };
 
   // Care Tasks Management
   const addTask = (task: CareTask) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        tasks: [task, ...prev[activeParentId].tasks],
-      },
-    }));
+    const parentId = task.parent_id;
+    updateParentData(parentId, (current) => ({ ...current, tasks: [task, ...current.tasks] }));
 
     void syncMutation("/tasks", "POST", task, {
       label: `Create task: ${task.title}`,
       resourceType: "task",
       resourceId: task.id,
+      parentId,
     });
   };
 
   const toggleTaskCompleted = (taskId: string) => {
+    const parentId = activeParentId;
     const task = currentData.tasks.find((item) => item.id === taskId);
     if (!task) return;
     const nextStatus = task.status === "completed" ? "pending" : "completed";
-    setDataStore((prev) => {
-      const currentTasks = prev[activeParentId].tasks;
+    updateParentData(parentId, (current) => {
+      const currentTasks = current.tasks;
       const updatedTasks = currentTasks.map((item) => item.id === taskId
         ? { ...item, status: nextStatus as CareTask["status"] }
         : item);
-      return {
-        ...prev,
-        [activeParentId]: {
-          ...prev[activeParentId],
-          tasks: updatedTasks,
-        },
-      };
+      return { ...current, tasks: updatedTasks };
     });
     void syncMutation(`/tasks/${taskId}`, "PATCH", { status: nextStatus }, {
       label: `${nextStatus === "completed" ? "Complete" : "Reopen"} task: ${task.title}`,
       resourceType: "task",
       resourceId: taskId,
       expectedVersion: task.updated_at,
+      parentId,
     });
   };
 
   const deleteTask = (taskId: string) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        tasks: prev[activeParentId].tasks.filter((t) => t.id !== taskId),
-      },
-    }));
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({ ...current, tasks: current.tasks.filter((t) => t.id !== taskId) }));
 
     const task = currentData.tasks.find((item) => item.id === taskId);
     void syncMutation(`/tasks/${taskId}`, "DELETE", undefined, {
@@ -704,47 +777,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       resourceType: "task",
       resourceId: taskId,
       expectedVersion: task?.updated_at,
+      parentId,
     });
   };
 
   // Expenses & Insurance Management
   const addExpense = (expense: HealthcareExpense) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        expenses: [expense, ...prev[activeParentId].expenses],
-      },
-    }));
+    const parentId = expense.parent_id;
+    updateParentData(parentId, (current) => ({ ...current, expenses: [expense, ...current.expenses] }));
 
     void syncMutation("/expenses", "POST", expense, {
       label: `Add expense: ${expense.title}`,
       resourceType: "expense",
       resourceId: expense.id,
+      parentId,
     });
   };
 
   const addInsurance = (policy: InsurancePolicy) => {
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        insurance: [policy, ...prev[activeParentId].insurance],
-      },
-    }));
+    const parentId = policy.parent_id;
+    updateParentData(parentId, (current) => ({ ...current, insurance: [policy, ...current.insurance] }));
 
     void syncMutation("/expenses/insurance", "POST", policy, {
       label: `Add ${policy.provider} policy`,
       resourceType: "insurance",
       resourceId: policy.id,
+      parentId,
     });
   };
 
   // Family Members & Caregiver Management
   const logNewMeasurement = (vitalType: any, val: number, valSec?: number, notes?: string) => {
+    const parentId = activeParentId;
     const newMeasurement: HealthMeasurement = {
       id: Crypto.randomUUID(),
-      parent_id: activeParentId,
+      parent_id: parentId,
       vital_type: vitalType,
       value_numeric: val,
       value_secondary: valSec,
@@ -752,16 +819,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       recorded_at: "Just now",
       notes,
     };
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        measurements: [newMeasurement, ...prev[activeParentId].measurements],
-      },
-    }));
+    updateParentData(parentId, (current) => ({ ...current, measurements: [newMeasurement, ...current.measurements] }));
 
     void syncMutation("/measurements", "POST", {
-      parent_id: activeParentId,
+      parent_id: parentId,
       vital_type: vitalType,
       value_numeric: val,
       value_secondary: valSec,
@@ -771,10 +832,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       label: `Record ${vitalType.replace(/_/g, " ")}`,
       resourceType: "measurement",
       resourceId: newMeasurement.id,
+      parentId,
     });
   };
 
   const recordNewVisit = (placeName: string, category: any, address: string) => {
+    const parentId = activeParentId;
     const coordinates = userLocation || (
       currentData.profile.latitude != null && currentData.profile.longitude != null
         ? { latitude: currentData.profile.latitude, longitude: currentData.profile.longitude }
@@ -783,7 +846,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!coordinates) return;
     const newVisit: LocationVisit = {
       id: Crypto.randomUUID(),
-      parent_id: activeParentId,
+      parent_id: parentId,
       place_name: placeName,
       category,
       address,
@@ -792,15 +855,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       visited_at: "Today, confirmed",
       notes: "Checked in via ParentPulse",
     };
-    setDataStore((prev) => ({
-      ...prev,
-      [activeParentId]: {
-        ...prev[activeParentId],
-        visits: [newVisit, ...prev[activeParentId].visits],
-      },
-    }));
+    updateParentData(parentId, (current) => ({ ...current, visits: [newVisit, ...current.visits] }));
 
-    void syncMutation(`/parents/${activeParentId}/locations/visits`, "POST", {
+    void syncMutation(`/parents/${parentId}/locations/visits`, "POST", {
+      parent_id: parentId,
       place_name: placeName,
       category,
       address,
@@ -811,6 +869,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       label: `Check in at ${placeName}`,
       resourceType: "visit",
       resourceId: newVisit.id,
+      parentId,
     });
   };
 
@@ -830,8 +889,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     setActiveParentId(newProfile.id);
-    setHasCompletedOnboarding(true);
-    setActiveScreen("tabs");
     await refreshData();
 
     return newProfile;

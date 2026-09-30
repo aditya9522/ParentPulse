@@ -1,7 +1,7 @@
 # backend/app/schemas/ai.py
 import uuid
 from typing import List, Optional, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AIChatRequest(BaseModel):
@@ -19,7 +19,7 @@ class AISourceCitation(BaseModel):
 
 class AIChatResponse(BaseModel):
     answer: str
-    citations: List[AISourceCitation] = []
+    citations: List[AISourceCitation] = Field(default_factory=list)
     confidence: float = 0.95
     disclaimer: str = (
         "ParentPulse organizes and summarizes your stored health records. "
@@ -32,6 +32,6 @@ class DocumentExtractionResult(BaseModel):
     doctor_name: Optional[str] = None
     hospital_name: Optional[str] = None
     document_date: Optional[str] = None
-    extracted_fields: dict[str, Any] = {}
+    extracted_fields: dict[str, Any] = Field(default_factory=dict)
     summary: str
-    suggested_timeline_events: List[dict[str, Any]] = []
+    suggested_timeline_events: List[dict[str, Any]] = Field(default_factory=list)

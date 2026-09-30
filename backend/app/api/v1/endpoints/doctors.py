@@ -26,7 +26,9 @@ async def register_doctor(
         phone_number=data.phone_number,
         email=data.email,
         address=data.address,
-        is_verified=True,
+        # Directory verification is an administrative trust decision. A signed-in
+        # user may submit a provider, but cannot self-assert verification.
+        is_verified=False,
     )
     session.add(doctor)
     await session.flush()
@@ -38,7 +40,7 @@ async def list_verified_doctors(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Doctor).order_by(Doctor.name.asc())
+    stmt = select(Doctor).where(Doctor.is_verified.is_(True)).order_by(Doctor.name.asc())
     res = await session.execute(stmt)
     doctors = list(res.scalars().all())
     return build_response([DoctorResponse.model_validate(d) for d in doctors])

@@ -16,14 +16,14 @@ class NotificationService:
         title: str,
         body: str,
         notification_type: str,
-        payload: dict[str, Any] = {},
+        payload: dict[str, Any] | None = None,
     ) -> Notification:
         notif = Notification(
             user_id=user_id,
             title=title,
             body=body,
             notification_type=notification_type,
-            payload=payload,
+            payload=payload or {},
         )
         self.session.add(notif)
         await self.session.flush()

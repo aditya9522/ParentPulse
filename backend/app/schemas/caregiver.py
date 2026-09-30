@@ -2,13 +2,13 @@
 import uuid
 from datetime import datetime
 from typing import Optional, Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CaregiverCreate(BaseModel):
     parent_id: uuid.UUID
     user_id: uuid.UUID
-    permissions: dict[str, Any] = {}
+    permissions: dict[str, Any] = Field(default_factory=dict)
     notes: Optional[str] = None
 
 

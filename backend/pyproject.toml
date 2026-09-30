@@ -45,3 +45,7 @@ target-version = "py312"
 # FastAPI's dependency/parameter declarations intentionally call Depends,
 # Header, Form, and related factories in function defaults.
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# SQLAlchemy resolves these quoted relationship targets through its model registry.
+"app/models/*.py" = ["F821"]

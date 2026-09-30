@@ -1,7 +1,7 @@
 # backend/app/schemas/sharing.py
 import uuid
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import List, Any
 from pydantic import BaseModel, ConfigDict
 from app.core.constants import ShareScope
 

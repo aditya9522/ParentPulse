@@ -8,6 +8,8 @@ from app.schemas.common import ApiResponse
 from app.helpers.response_builder import build_response
 from app.crud.documents import DocumentRepository
 from app.crud.medicines import MedicineRepository
+from app.core.exceptions import AuthorizationError
+from app.core.permissions import verify_parent_access
 
 router = APIRouter(prefix="/search", tags=["Universal Search"])
 
@@ -20,6 +22,9 @@ async def search_health_records(
 ):
     results = []
     if query_body.parent_id:
+        parent, _ = await verify_parent_access(session, current_user.id, query_body.parent_id)
+        if parent.family_id != query_body.family_id:
+            raise AuthorizationError("The search family does not match the selected parent.")
         doc_repo = DocumentRepository(session)
         docs = await doc_repo.search_documents(query_body.parent_id, query_body.query)
         for d in docs:
