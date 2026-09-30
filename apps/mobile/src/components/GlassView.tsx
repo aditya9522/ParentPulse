@@ -3,7 +3,6 @@ import React from "react";
 import { View, StyleSheet, ViewStyle, StyleProp, Platform } from "react-native";
 import { BlurView } from "expo-blur";
 import { Glass, BorderRadius } from "../theme";
-import { useGlassBlurTarget } from "./GlassBlurProvider";
 
 interface GlassViewProps {
   children?: React.ReactNode;
@@ -21,7 +20,6 @@ export const GlassView: React.FC<GlassViewProps> = ({
   variant = "card",
 }) => {
   const glassStyle = Glass[variant] || Glass.card;
-  const blurTarget = useGlassBlurTarget();
 
   const webGlassStyle: any =
     Platform.OS === "web"
@@ -37,8 +35,7 @@ export const GlassView: React.FC<GlassViewProps> = ({
         <BlurView
           intensity={intensity}
           tint={tint}
-          blurTarget={blurTarget ?? undefined}
-          blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : "none"}
+          blurMethod={Platform.OS === "android" ? "none" : undefined}
           style={[StyleSheet.absoluteFill, styles.blurView]}
         />
       )}

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Image, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "../context/AppContext";
@@ -29,9 +29,9 @@ export const Header: React.FC = () => {
 
   const topInset = Platform.select({
     web: 6,
-    ios: Math.max(insets.top, 16),
-    android: (StatusBar.currentHeight || insets.top || 0) > 0 ? (StatusBar.currentHeight || insets.top || 0) : 10,
-    default: 6,
+    ios: Math.max(insets.top, 12),
+    android: Math.max(insets.top, 8),
+    default: 8,
   });
 
   return (
@@ -44,7 +44,11 @@ export const Header: React.FC = () => {
           activeOpacity={0.8}
         >
           <View style={styles.logoBadge}>
-            <Ionicons name="pulse" size={22} color="#FFFFFF" />
+            <Image
+              source={require("../../assets/icon.png")}
+              style={styles.logoImage}
+              resizeMode="cover"
+            />
           </View>
           <View>
             <Text style={styles.brandTitle}>ParentPulse</Text>
@@ -282,11 +286,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primaryDark,
-    justifyContent: "center",
-    alignItems: "center",
+    overflow: "hidden",
     marginRight: Spacing.sm,
     ...Shadows.glowTeal,
+  },
+  logoImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: BorderRadius.md,
   },
   brandTitle: {
     fontSize: Typography.sizes.md,

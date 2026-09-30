@@ -784,13 +784,27 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.primaryActionBtn, styles.flexButton, Shadows.glowTeal]}
+              style={[
+                styles.primaryActionBtn,
+                styles.flexButton,
+                Shadows.glowTeal,
+                isSyncing && styles.primaryActionBtnDisabled,
+              ]}
               onPress={handleCreateProfile}
               disabled={isSyncing}
               activeOpacity={0.85}
             >
-              <Text style={styles.primaryActionBtnText}>Create Care Circle</Text>
-              <Ionicons name="cloud-upload" size={18} color="#FFFFFF" />
+              {isSyncing ? (
+                <>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <Text style={styles.primaryActionBtnText}>Creating Care Circle...</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.primaryActionBtnText}>Create Care Circle</Text>
+                  <Ionicons name="cloud-upload" size={18} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -1279,6 +1293,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryDark,
     paddingVertical: 14,
     borderRadius: BorderRadius.lg,
+  },
+  primaryActionBtnDisabled: {
+    opacity: 0.75,
   },
   primaryActionBtnText: {
     fontSize: Typography.sizes.md,

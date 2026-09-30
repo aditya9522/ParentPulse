@@ -1,12 +1,14 @@
 import { Platform } from "react-native";
 import { isExpoGo } from "./runtimeEnvironment";
 
-const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
-const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
+const DEFAULT_GOOGLE_WEB_CLIENT_ID = "223764189423-hkom0u7r9bln715susj8g2orn1hqcdet.apps.googleusercontent.com";
+const DEFAULT_GOOGLE_IOS_CLIENT_ID = "223764189423-n8f4lptdqi3h8crbj4dq2478k4le01a5.apps.googleusercontent.com";
+
+const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() || DEFAULT_GOOGLE_WEB_CLIENT_ID;
+const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() || DEFAULT_GOOGLE_IOS_CLIENT_ID;
 
 export const isGoogleAuthConfigured = Boolean(
   webClientId &&
-  iosClientId &&
   Platform.OS !== "web" &&
   !isExpoGo,
 );

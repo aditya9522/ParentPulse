@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useRef } from "react";
 import { View } from "react-native";
-import { BlurTargetView } from "expo-blur";
 
 type BlurTargetRef = React.RefObject<View | null>;
 
@@ -13,9 +12,9 @@ export const GlassBlurProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   return (
     <GlassBlurTargetContext.Provider value={blurTarget}>
-      <BlurTargetView ref={blurTarget} style={{ flex: 1 }}>
+      <View ref={blurTarget} style={{ flex: 1 }}>
         {children}
-      </BlurTargetView>
+      </View>
     </GlassBlurTargetContext.Provider>
   );
 };

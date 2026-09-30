@@ -99,6 +99,17 @@ const emptyParentData = (profile: ParentProfile = EMPTY_PARENT_PROFILE): ParentD
   doseLogs: [],
 });
 
+const normalizeParentProfile = (p: any): ParentProfile => ({
+  ...EMPTY_PARENT_PROFILE,
+  ...p,
+  allergies: Array.isArray(p?.allergies) ? p.allergies : [],
+  chronic_conditions: Array.isArray(p?.chronic_conditions) ? p.chronic_conditions : [],
+  disabilities: Array.isArray(p?.disabilities) ? p.disabilities : [],
+  surgeries: Array.isArray(p?.surgeries) ? p.surgeries : [],
+  emergency_contacts: Array.isArray(p?.emergency_contacts) ? p.emergency_contacts : [],
+  primary_doctors: Array.isArray(p?.primary_doctors) ? p.primary_doctors : [],
+});
+
 const EMPTY_CURRENT_USER: UserProfile = {
   id: "",
   email: "",
@@ -113,7 +124,7 @@ interface AppContextType {
   dataLoading: boolean;
   dataError: string | null;
   dataWarning: string | null;
-  refreshData: () => Promise<void>;
+  refreshData: (options?: { silent?: boolean; preserveScreen?: boolean }) => Promise<void>;
   syncQueue: QueuedMutation[];
   syncBusy: boolean;
   syncCenterVisible: boolean;
@@ -223,9 +234,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [allQueuedMutations, setAllQueuedMutations] = useState<QueuedMutation[]>([]);
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncCenterVisible, setSyncCenterVisible] = useState(false);
-  const refreshDataRef = useRef<() => Promise<void>>(async () => undefined);
+  const refreshDataRef = useRef<(options?: { silent?: boolean; preserveScreen?: boolean }) => Promise<void>>(async () => undefined);
+  const activeScreenRef = useRef<ActiveScreen>(activeScreen);
   const reconciliationPendingRef = useRef(false);
   const refreshGenerationRef = useRef(0);
+
+  useEffect(() => {
+    activeScreenRef.current = activeScreen;
+  }, [activeScreen]);
 
   // Per-parent data cache
   const [dataStore, setDataStore] = useState<Record<string, ParentData>>({});
@@ -469,7 +485,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (options?: { silent?: boolean; preserveScreen?: boolean }) => {
     const generation = ++refreshGenerationRef.current;
     const ownerUserId = apiClient.getAuthenticatedUserId();
     const isCurrentRefresh = () => (
@@ -492,7 +508,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       reconciliationPendingRef.current = false;
       return;
     }
-    setDataLoading(true);
+    if (!options?.silent) {
+      setDataLoading(true);
+    }
     setDataWarning(null);
     try {
       const [profile, families] = await Promise.all([apiClient.getCurrentUser(), apiClient.listFamilies()]);
@@ -515,6 +533,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const parents = (await Promise.all(families.map((family) => apiClient.listFamilyParents(family.id)))).flat();
       if (!isCurrentRefresh()) return;
+      const normalizedParents = parents.map(normalizeParentProfile);
       const members: FamilyMemberItem[] = families.flatMap((family) => (family.members || []).map((member: any) => ({
         id: member.id,
         family_id: member.family_id,
@@ -533,19 +552,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         can_view_location_history: member.can_view_location_history,
       })));
       const initialStore = Object.fromEntries(
-        parents.map((parent) => [parent.id, emptyParentData(parent)]),
+        normalizedParents.map((parent) => [parent.id, emptyParentData(parent)]),
       ) as Record<string, ParentData>;
 
       setCurrentUser({ ...profile, role: members.find((member) => member.user_id === profile.id)?.role || "family_member" });
       setFamilyMembers(members);
       setDataStore(initialStore);
-      setActiveParentId((current) => initialStore[current] ? current : parents[0]?.id || "");
-      onboardingCompletionUserIdRef.current = ownerUserId;
-      setOnboardingCompletionUserId(ownerUserId);
-      setHasCompletedOnboardingState(true);
-      setActiveScreen((current) => current === "onboarding" ? "tabs" : current);
+      setActiveParentId((current) => initialStore[current] ? current : normalizedParents[0]?.id || "");
+      if (!options?.preserveScreen && activeScreenRef.current !== "onboarding") {
+        onboardingCompletionUserIdRef.current = ownerUserId;
+        setOnboardingCompletionUserId(ownerUserId);
+        setHasCompletedOnboardingState(true);
+        setActiveScreen((current) => current === "onboarding" ? "tabs" : current);
+      }
       setDataError(null);
-      setDataLoading(false);
+      if (!options?.silent) {
+        setDataLoading(false);
+      }
       reconciliationPendingRef.current = false;
 
       const unavailableDomains = new Set<string>();
@@ -580,7 +603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return [];
         });
         const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs] = domainData;
-        const entry = [parent.id, { profile: parent, medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs }] as const;
+        const entry = [parent.id, { profile: normalizeParentProfile(parent), medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs }] as const;
         entries.push(entry);
         if (isCurrentRefresh()) {
           setDataStore((current) => ({ ...current, [parent.id]: entry[1] }));
@@ -604,7 +627,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setDataError(error instanceof Error ? error.message : "Could not verify your account and care circle.");
       }
     } finally {
-      if (generation === refreshGenerationRef.current) setDataLoading(false);
+      if (generation === refreshGenerationRef.current && !options?.silent) setDataLoading(false);
     }
   }, []);
 
@@ -881,17 +904,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const family = await apiClient.createFamily(familyName);
     if (!family?.id) throw new Error("The server did not create the family.");
     const newProfile = await apiClient.createParentProfile({ ...parentData, family_id: family.id });
-    const newEntry = emptyParentData(newProfile);
+    const normalized = normalizeParentProfile(newProfile);
+    const newEntry = emptyParentData(normalized);
 
     setDataStore((prev) => ({
       ...prev,
-      [newProfile.id]: newEntry,
+      [normalized.id]: newEntry,
     }));
 
-    setActiveParentId(newProfile.id);
-    await refreshData();
+    setActiveParentId(normalized.id);
+    await refreshData({ silent: true, preserveScreen: true });
 
-    return newProfile;
+    return normalized;
   };
 
   return (

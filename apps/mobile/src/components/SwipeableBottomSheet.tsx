@@ -15,7 +15,6 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BlurView } from "expo-blur";
-import { useGlassBlurTarget } from "./GlassBlurProvider";
 
 interface SwipeableBottomSheetProps {
   visible: boolean;
@@ -39,7 +38,6 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   const translateY = useRef(new Animated.Value(900)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isDismissing = useRef(false);
-  const blurTarget = useGlassBlurTarget();
 
   useEffect(() => {
     if (visible) {
@@ -170,8 +168,7 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
             <BlurView
               intensity={78}
               tint="light"
-              blurTarget={blurTarget ?? undefined}
-              blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : "none"}
+              blurMethod={Platform.OS === "android" ? "none" : undefined}
               pointerEvents="none"
               style={StyleSheet.absoluteFill}
             />

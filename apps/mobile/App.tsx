@@ -107,7 +107,7 @@ const MainApp: React.FC = () => {
     }).start();
   }, [dockEntrance]);
 
-  if (!runtimeReady || (dataLoading && parentList.length === 0 && !dataError)) {
+  if (!runtimeReady || (dataLoading && parentList.length === 0 && !dataError && activeScreen !== "onboarding")) {
     return <View style={[styles.stateScreen, { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xl }]}><StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" /><AmbientBackground /><View style={styles.stateCard}><ActivityIndicator size="large" color={Colors.primaryDark} /><Text style={styles.stateTitle}>Loading secure care data</Text><Text style={styles.stateCopy}>Connecting to ParentPulse and verifying your care circle.</Text></View></View>;
   }
 

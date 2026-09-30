@@ -25,64 +25,68 @@ export async function syncCareReminders(
   appointments: Appointment[],
   requestPermission = false,
 ): Promise<void> {
-  const Notifications = await getNotifications();
-  if (!Notifications) return;
-  const permission = await Notifications.getPermissionsAsync();
-  const status = permission.status === "granted" || !requestPermission
-    ? permission.status
-    : (await Notifications.requestPermissionsAsync()).status;
-  if (status !== "granted") return;
+  try {
+    const Notifications = await getNotifications();
+    if (!Notifications) return;
+    const permission = await Notifications.getPermissionsAsync();
+    const status = permission.status === "granted" || !requestPermission
+      ? permission.status
+      : (await Notifications.requestPermissionsAsync()).status;
+    if (status !== "granted") return;
 
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-      name: "Care reminders",
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 180, 120, 180],
-      lightColor: "#0D9488",
-    });
-  }
-
-  const previousIds: string[] = JSON.parse((await AsyncStorage.getItem(IDS_KEY)) || "[]");
-  await Promise.all(previousIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
-  const nextIds: string[] = [];
-
-  for (const medicine of medicines.filter((item) => item.is_active)) {
-    for (const time of medicine.schedule_times) {
-      const clock = parseClock(time);
-      if (!clock) continue;
-      const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `Time for ${medicine.name}`,
-          body: `${medicine.dosage} · ${medicine.instructions.replaceAll("_", " ")}`,
-          sound: "default",
-          data: { type: "medicine", medicineId: medicine.id, parentId: medicine.parent_id },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, ...clock, channelId: CHANNEL_ID },
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
+        name: "Care reminders",
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 180, 120, 180],
+        lightColor: "#0D9488",
       });
-      nextIds.push(id);
     }
-  }
 
-  const now = Date.now();
-  for (const appointment of appointments.filter((item) => item.status === "upcoming")) {
-    const appointmentAt = new Date(appointment.appointment_date).getTime();
-    for (const leadMs of [24 * 60 * 60 * 1000, 2 * 60 * 60 * 1000]) {
-      const reminderAt = appointmentAt - leadMs;
-      if (!Number.isFinite(reminderAt) || reminderAt <= now) continue;
-      const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: leadMs > 3 * 60 * 60 * 1000 ? "Appointment tomorrow" : "Appointment in 2 hours",
-          body: `${appointment.doctor_name} · ${appointment.hospital_clinic_name}`,
-          sound: "default",
-          data: { type: "appointment", appointmentId: appointment.id, parentId: appointment.parent_id },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: reminderAt, channelId: CHANNEL_ID },
-      });
-      nextIds.push(id);
+    const previousIds: string[] = JSON.parse((await AsyncStorage.getItem(IDS_KEY)) || "[]");
+    await Promise.all(previousIds.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+    const nextIds: string[] = [];
+
+    for (const medicine of medicines.filter((item) => item.is_active)) {
+      for (const time of medicine.schedule_times) {
+        const clock = parseClock(time);
+        if (!clock) continue;
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `Time for ${medicine.name}`,
+            body: `${medicine.dosage} · ${medicine.instructions.replaceAll("_", " ")}`,
+            sound: "default",
+            data: { type: "medicine", medicineId: medicine.id, parentId: medicine.parent_id },
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, ...clock, channelId: CHANNEL_ID },
+        });
+        nextIds.push(id);
+      }
     }
-  }
 
-  await AsyncStorage.setItem(IDS_KEY, JSON.stringify(nextIds));
+    const now = Date.now();
+    for (const appointment of appointments.filter((item) => item.status === "upcoming")) {
+      const appointmentAt = new Date(appointment.appointment_date).getTime();
+      for (const leadMs of [24 * 60 * 60 * 1000, 2 * 60 * 60 * 1000]) {
+        const reminderAt = appointmentAt - leadMs;
+        if (!Number.isFinite(reminderAt) || reminderAt <= now) continue;
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: leadMs > 3 * 60 * 60 * 1000 ? "Appointment tomorrow" : "Appointment in 2 hours",
+            body: `${appointment.doctor_name} · ${appointment.hospital_clinic_name}`,
+            sound: "default",
+            data: { type: "appointment", appointmentId: appointment.id, parentId: appointment.parent_id },
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: reminderAt, channelId: CHANNEL_ID },
+        });
+        nextIds.push(id);
+      }
+    }
+
+    await AsyncStorage.setItem(IDS_KEY, JSON.stringify(nextIds));
+  } catch (error) {
+    console.warn("Failed to synchronize care reminders:", error);
+  }
 }
 
 export async function registerRemotePushDevice(): Promise<boolean> {
