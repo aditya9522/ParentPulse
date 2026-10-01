@@ -1,6 +1,8 @@
 // apps/mobile/src/api/client.ts
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+import * as FileSystem from "expo-file-system/legacy";
+import { FileSystemUploadType } from "expo-file-system/legacy";
 import { sessionStore, StoredSession } from "../services/session";
 import { clearGoogleSession } from "../services/googleAuth";
 import { QueuedMutation } from "../services/mutationQueue";
@@ -32,8 +34,8 @@ const API_URL = configuredApiUrl || (__DEV__
     default: `http://${getDevApiHost()}:8000/api/v1`,
   })!
   : (() => {
-      throw new Error("EXPO_PUBLIC_API_URL is required in production builds.");
-    })());
+    throw new Error("EXPO_PUBLIC_API_URL is required in production builds.");
+  })());
 
 export class ApiError extends Error {
   constructor(
@@ -145,27 +147,44 @@ class ApiClient {
     if (authenticated && this.session?.expiresAt && this.session.expiresAt <= Date.now() + 30_000) {
       await this.refreshSession();
     }
-    const isMultipart = typeof FormData !== "undefined" && options.body instanceof FormData;
+    const isMultipart = Boolean(
+      options.body &&
+      (
+        (typeof FormData !== "undefined" && options.body instanceof FormData) ||
+        (typeof options.body === "object" && options.body !== null && ("_parts" in (options.body as any) || (options.body as any).constructor?.name === "FormData"))
+      )
+    );
     const headers: Record<string, string> = {
-      ...(!isMultipart ? { "Content-Type": "application/json" } : {}),
       ...((options.headers || {}) as Record<string, string>),
     };
+    if (!isMultipart) {
+      if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    } else {
+      delete headers["Content-Type"];
+    }
     if (authenticated) {
       if (!this.session?.accessToken) throw new Error("Authentication required");
       headers.Authorization = `Bearer ${this.session.accessToken}`;
     }
 
+    const isUpload = isMultipart || endpoint.includes("/upload") || endpoint.includes("/avatar");
+    const timeoutMs = isUpload ? 90_000 : 45_000;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45_000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
     try {
       response = await fetch(url, { ...options, headers, signal: controller.signal });
-    } catch {
+    } catch (err) {
+      if (__DEV__) {
+        console.warn(`Fetch error for ${endpoint}:`, err);
+      }
       const timedOut = controller.signal.aborted;
       throw new ApiError(
         timedOut
           ? "The secure service took too long to respond. Please try again."
-          : "Could not reach the secure service. Check your connection and try again.",
+          : (err instanceof Error && !err.message.includes("Network request failed")
+              ? err.message
+              : "Could not reach the secure service. Check your connection and try again."),
         null,
         endpoint,
         timedOut ? "REQUEST_TIMEOUT" : "NETWORK_UNAVAILABLE",
@@ -312,6 +331,59 @@ class ApiClient {
     doctorName?: string;
     hospitalName?: string;
   }): Promise<MedicalDocument> {
+    if (this.session?.expiresAt && this.session.expiresAt <= Date.now() + 30_000) {
+      await this.refreshSession();
+    }
+    if (!this.session?.accessToken) throw new Error("Authentication required");
+
+    const safeFilename = input.filename || `medical-document-${Date.now()}.jpg`;
+    const safeMimeType = input.mimeType || (safeFilename.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+    const url = `${this.baseUrl}/documents/upload`;
+
+    if (Platform.OS !== "web") {
+      try {
+        const uploadResult = await FileSystem.uploadAsync(url, input.uri, {
+          httpMethod: "POST",
+          uploadType: FileSystemUploadType.MULTIPART,
+          fieldName: "file",
+          mimeType: safeMimeType,
+          headers: {
+            Authorization: `Bearer ${this.session.accessToken}`,
+          },
+          parameters: {
+            parent_id: input.parentId,
+            family_id: input.familyId,
+            title: input.title,
+            document_type: input.documentType,
+            document_date: input.documentDate,
+            ...(input.doctorName ? { doctor_name: input.doctorName } : {}),
+            ...(input.hospitalName ? { hospital_name: input.hospitalName } : {}),
+          },
+        });
+
+        if (uploadResult.status >= 200 && uploadResult.status < 300) {
+          const json = JSON.parse(uploadResult.body);
+          return json.data;
+        }
+
+        let errorDetail = `Upload failed (${uploadResult.status})`;
+        try {
+          const errorJson = JSON.parse(uploadResult.body);
+          errorDetail = errorJson?.error?.message || errorJson?.detail || errorJson?.message || errorDetail;
+        } catch {}
+        throw new ApiError(errorDetail, uploadResult.status, "/documents/upload");
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+        console.warn("Native document upload error:", err);
+        throw new ApiError(
+          err instanceof Error ? err.message : "Could not reach the secure service. Check your connection and try again.",
+          null,
+          "/documents/upload",
+        );
+      }
+    }
+
+    // Web fallback
     const form = new FormData();
     form.append("parent_id", input.parentId);
     form.append("family_id", input.familyId);
@@ -320,13 +392,80 @@ class ApiClient {
     form.append("document_date", input.documentDate);
     if (input.doctorName) form.append("doctor_name", input.doctorName);
     if (input.hospitalName) form.append("hospital_name", input.hospitalName);
-    if (Platform.OS === "web") {
-      const blob = await (await fetch(input.uri)).blob();
-      (form as any).append("file", blob, input.filename);
-    } else {
-      (form as any).append("file", { uri: input.uri, name: input.filename, type: input.mimeType });
-    }
+    const blob = await (await fetch(input.uri)).blob();
+    form.append("file", blob, safeFilename);
     return this.request<MedicalDocument>("/documents/upload", { method: "POST", body: form });
+  }
+
+  async uploadAvatar(uri: string, filename = "avatar.jpg", mimeType = "image/jpeg"): Promise<UserProfile> {
+    if (this.session?.expiresAt && this.session.expiresAt <= Date.now() + 30_000) {
+      await this.refreshSession();
+    }
+    if (!this.session?.accessToken) throw new Error("Authentication required");
+
+    const url = `${this.baseUrl}/users/me/avatar`;
+    if (Platform.OS !== "web") {
+      try {
+        const uploadResult = await FileSystem.uploadAsync(url, uri, {
+          httpMethod: "POST",
+          uploadType: FileSystemUploadType.MULTIPART,
+          fieldName: "file",
+          mimeType,
+          headers: {
+            Authorization: `Bearer ${this.session.accessToken}`,
+          },
+        });
+
+        if (uploadResult.status >= 200 && uploadResult.status < 300) {
+          const json = JSON.parse(uploadResult.body);
+          return json.data;
+        }
+
+        let errorDetail = `Avatar upload failed (${uploadResult.status})`;
+        try {
+          const errorJson = JSON.parse(uploadResult.body);
+          errorDetail = errorJson?.error?.message || errorJson?.detail || errorJson?.message || errorDetail;
+        } catch {}
+        throw new ApiError(errorDetail, uploadResult.status, "/users/me/avatar");
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+        console.warn("Native avatar upload error:", err);
+        throw new ApiError(
+          err instanceof Error ? err.message : "Could not reach the secure service. Check your connection and try again.",
+          null,
+          "/users/me/avatar",
+        );
+      }
+    }
+
+    const form = new FormData();
+    const blob = await (await fetch(uri)).blob();
+    form.append("file", blob, filename);
+    return this.request<UserProfile>("/users/me/avatar", { method: "POST", body: form });
+  }
+
+  async updateUserProfile(data: Partial<UserProfile>): Promise<UserProfile> {
+    return this.request<UserProfile>("/users/me", { method: "PATCH", body: JSON.stringify(data) });
+  }
+
+  async deleteMeasurement(measurementId: string): Promise<void> {
+    return this.request<void>(`/measurements/${measurementId}`, { method: "DELETE" });
+  }
+
+  async listDoctors(): Promise<any[]> {
+    return this.request<any[]>("/doctors");
+  }
+
+  async registerDoctor(data: any): Promise<any> {
+    return this.request<any>("/doctors", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async updateDoctor(doctorId: string, data: any): Promise<any> {
+    return this.request<any>(`/doctors/${doctorId}`, { method: "PATCH", body: JSON.stringify(data) });
+  }
+
+  async deleteDoctor(doctorId: string): Promise<void> {
+    return this.request<void>(`/doctors/${doctorId}`, { method: "DELETE" });
   }
 
   async getDocument(documentId: string): Promise<MedicalDocument> {
@@ -486,6 +625,19 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  async deleteExpense(expenseId: string): Promise<void> {
+    return this.request<void>(`/expenses/${expenseId}`, { method: "DELETE" });
+  }
+
+  async deleteInsurance(policyId: string): Promise<void> {
+    return this.request<void>(`/expenses/insurance/${policyId}`, { method: "DELETE" });
+  }
+
+  async deleteTimeline(eventId: string): Promise<void> {
+    return this.request<void>(`/timeline/${eventId}`, { method: "DELETE" });
+  }
+
 
   // Authentication
   async loginWithEmail(email: string, password: string) {

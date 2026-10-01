@@ -12,7 +12,9 @@ import {
   ActivityIndicator,
   Animated,
   PanResponder,
+  Modal,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppAlert as Alert } from "../services/appAlert";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
@@ -35,10 +37,16 @@ import {
   ZoomOut,
   ChevronUp,
   ChevronDown,
+  Maximize2,
+  Minimize2,
+  SlidersHorizontal,
+  Filter,
+  Check,
+  X,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
 import { HealthcarePlace, PlaceCategory } from "../types";
-import { Colors, Typography, Spacing, Shadows, Glass } from "../theme";
+import { Colors, Typography, Spacing, Shadows, Glass, BorderRadius } from "../theme";
 import { GlassView } from "../components/GlassView";
 import { apiClient } from "../api/client";
 
@@ -66,36 +74,54 @@ export const MapsScreen: React.FC = () => {
   const [placesLoading, setPlacesLoading] = useState(false);
   const [placesError, setPlacesError] = useState<string | null>(null);
 
-  // 3-Tier Drawer state: "expanded" (72%) | "half" (44%) | "collapsed" (docked pill)
-  const [sheetState, setSheetState] = useState<"expanded" | "half" | "collapsed">("half");
+  const insets = useSafeAreaInsets();
+  const [filterMenuVisible, setFilterMenuVisible] = useState(false);
 
-  // Swipe-to-dismiss animation for bottom sheet
+  // 3-Tier Drawer state: "expanded" (78%) | "half" (46%) | "collapsed" (docked pill)
+  const [sheetState, setSheetState] = useState<"expanded" | "half" | "collapsed">("half");
+  const sheetStateRef = useRef<"expanded" | "half" | "collapsed">("half");
+  sheetStateRef.current = sheetState;
+
+  // Bidirectional swipe animation for top notch and drawer
   const sheetTranslateY = useRef(new Animated.Value(0)).current;
   const sheetPanResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onStartShouldSetPanResponderCapture: () => false,
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 6 && Math.abs(gs.dy) > Math.abs(gs.dx),
-      onMoveShouldSetPanResponderCapture: (_, gs) => gs.dy > 10 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dy) > 8 && Math.abs(gs.dy) > Math.abs(gs.dx),
       onPanResponderMove: (_, gs) => {
-        if (gs.dy > 0) sheetTranslateY.setValue(gs.dy);
+        sheetTranslateY.setValue(gs.dy);
       },
       onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 50 || gs.vy > 0.4) {
-          // A deliberate downward swipe always dismisses the map drawer.
+        const current = sheetStateRef.current;
+        if (gs.dy < -40 || gs.vy < -0.35) {
+          // Swiping UP: expands half -> expanded
           try {
-            if (Platform.OS !== "web") {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
+            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           } catch {}
-          Animated.timing(sheetTranslateY, {
-            toValue: 400,
-            duration: 180,
-            useNativeDriver: true,
-          }).start(() => {
-            setSheetState("collapsed");
-            sheetTranslateY.setValue(0);
-          });
+          Animated.spring(sheetTranslateY, { toValue: 0, friction: 8, tension: 60, useNativeDriver: true }).start();
+          if (current === "half" || current === "collapsed") {
+            setSheetState("expanded");
+          }
+        } else if (gs.dy > 40 || gs.vy > 0.35) {
+          // Swiping DOWN: shrinks expanded -> half, or half -> collapsed
+          try {
+            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          } catch {}
+          if (current === "expanded") {
+            Animated.spring(sheetTranslateY, { toValue: 0, friction: 8, tension: 60, useNativeDriver: true }).start();
+            setSheetState("half");
+          } else {
+            Animated.timing(sheetTranslateY, {
+              toValue: 400,
+              duration: 180,
+              useNativeDriver: true,
+            }).start(() => {
+              setSheetState("collapsed");
+              sheetTranslateY.setValue(0);
+            });
+          }
         } else {
           // Snap back
           Animated.spring(sheetTranslateY, {
@@ -153,6 +179,9 @@ export const MapsScreen: React.FC = () => {
       bg: "#E0F2FE",
     },
   ];
+
+  const activeCat = categories.find((c) => c.id === selectedCategory) || categories[0];
+  const ActiveCategoryIcon = activeCat.icon;
 
   useEffect(() => {
     const latitude = userLocation?.latitude ?? activeParent.latitude;
@@ -305,74 +334,49 @@ export const MapsScreen: React.FC = () => {
             </View>
           )}
 
-          {/* Floating Top Layers (Categories & Radius Filter) */}
-          <View style={styles.floatingTopLayer}>
-            {/* Category Filter Pills */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoryScroll}
+          {/* Floating Top Layer: Single Applied Filter Pill */}
+          <View style={styles.floatingTopLayer} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.appliedFilterPill}
+              onPress={() => {
+                triggerHaptic();
+                setFilterMenuVisible(true);
+              }}
+              activeOpacity={0.85}
+              accessibilityLabel="Change nearby healthcare filter"
             >
-              {categories.map((c) => {
-                const IconComp = c.icon;
-                const isSelected = selectedCategory === c.id;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.catPill, isSelected && styles.catPillActive]}
-                    onPress={() => {
-                      triggerHaptic();
-                      setSelectedCategory(c.id);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <View
-                      style={[
-                        styles.catIconBox,
-                        { backgroundColor: isSelected ? c.color : c.bg },
-                      ]}
-                    >
-                      <IconComp size={15} color={isSelected ? "#FFFFFF" : c.color} />
-                    </View>
-                    <Text style={[styles.catText, isSelected && styles.catTextActive]}>
-                      {isHindi ? c.hindiLabel : c.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* Distance Filter Chips */}
-            <View style={styles.radiusRowFloating}>
-              <Text style={styles.radiusLabelFloating}>{isHindi ? "दायरा:" : "Radius:"}</Text>
-              {[2, 5, 10, 20].map((dist) => (
-                <TouchableOpacity
-                  key={dist}
-                  style={[
-                    styles.radiusChipFloating,
-                    maxDistanceKm === dist && styles.radiusChipFloatingActive,
-                  ]}
-                  onPress={() => {
-                    triggerHaptic();
-                    setMaxDistanceKm(dist);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text
-                    style={[
-                      styles.radiusChipTextFloating,
-                      maxDistanceKm === dist && styles.radiusChipTextFloatingActive,
-                    ]}
-                  >
-                    {"< " + dist + " km"}
+              <GlassView variant="pill" style={styles.appliedFilterGlass}>
+                <View style={styles.appliedFilterInner}>
+                  <View style={[styles.appliedFilterIconCircle, { backgroundColor: activeCat.color }]}>
+                    <ActiveCategoryIcon size={13} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.appliedFilterTitle}>
+                    {isHindi ? activeCat.hindiLabel : activeCat.label}
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  <View style={styles.appliedFilterDot} />
+                  <Text style={styles.appliedFilterRadius}>
+                    {"< " + maxDistanceKm + " km"}
+                  </Text>
+                  <SlidersHorizontal size={12} color={Colors.primaryDark} style={{ marginLeft: 2 }} />
+                </View>
+              </GlassView>
+            </TouchableOpacity>
           </View>
 
-          {/* Overlaid Interactive Controls Dock (Zoom, Satellite, Locate) */}
+          {/* Overlaid Interactive Controls Dock (Filter on top of Zoom In, Zoom Out, Satellite, Locate) */}
           <View style={styles.mapControlsDock}>
+            <TouchableOpacity
+              style={[styles.mapCtrlBtn, styles.mapCtrlBtnFilter]}
+              onPress={() => {
+                triggerHaptic();
+                setFilterMenuVisible(true);
+              }}
+              activeOpacity={0.8}
+              accessibilityLabel="Nearby healthcare filters"
+            >
+              <SlidersHorizontal size={18} color={Colors.primaryDark} />
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.mapCtrlBtn} onPress={() => handleZoom(1)} activeOpacity={0.8}>
               <ZoomIn size={18} color={Colors.textPrimary} />
             </TouchableOpacity>
@@ -409,7 +413,7 @@ export const MapsScreen: React.FC = () => {
           {/* Bottom Sliding Drawer or Minimized Floating Dock */}
           {sheetState === "collapsed" ? (
             <TouchableOpacity
-              style={styles.sheetCollapsedPill}
+              style={[styles.sheetCollapsedPill, { bottom: (insets.bottom || 16) + 82 }]}
               onPress={() => {
                 triggerHaptic();
                 setSheetState("half");
@@ -439,48 +443,21 @@ export const MapsScreen: React.FC = () => {
                 { transform: [{ translateY: sheetTranslateY }] },
               ]}
             >
-              {/* Swipe Drag Header (Supports Swiping Down to Dismiss/Minimize) */}
-              <View {...sheetPanResponder.panHandlers} style={styles.sheetHandleTouch}>
-                <View style={styles.sheetHandleBar} />
-              </View>
-
-              <View style={styles.sheetHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sheetTitle}>
-                    {currentPlaces.length} {isHindi ? "नज़दीकी केंद्र उपलब्ध" : "Healthcare places nearby"}
-                  </Text>
-                  <Text style={styles.sheetSub}>
-                    {selectedCategory.toUpperCase()} • {maxDistanceKm}km radius
-                  </Text>
+              {/* Swipe Drag Header: User can swipe up or down */}
+              <View {...sheetPanResponder.panHandlers}>
+                <View style={styles.sheetHandleTouch}>
+                  <View style={styles.sheetHandleBar} />
                 </View>
 
-                <View style={styles.sheetHeaderActions}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      triggerHaptic();
-                      setSheetState(sheetState === "expanded" ? "half" : "expanded");
-                    }}
-                    style={styles.expandToggleBtn}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.expandToggleText}>
-                      {sheetState === "expanded"
-                        ? (isHindi ? "छोटा करें" : "Half")
-                        : (isHindi ? "विस्तार" : "Expand")}
+                <View style={styles.sheetHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sheetTitle}>
+                      {currentPlaces.length} {isHindi ? "नज़दीकी केंद्र उपलब्ध" : "Healthcare places nearby"}
                     </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => {
-                      triggerHaptic();
-                      setSheetState("collapsed");
-                    }}
-                    style={styles.sheetCloseBtn}
-                    activeOpacity={0.8}
-                    accessibilityLabel="Close Drawer"
-                  >
-                    <ChevronDown size={18} color={Colors.textSecondary} />
-                  </TouchableOpacity>
+                    <Text style={styles.sheetSub}>
+                      {(isHindi ? activeCat.hindiLabel : activeCat.label)} • {"< " + maxDistanceKm + " km"}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
@@ -599,6 +576,106 @@ export const MapsScreen: React.FC = () => {
           ))}
         </ScrollView>
       )}
+
+      {/* Interactive Radius & Category Filter Modal */}
+      <Modal
+        visible={filterMenuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFilterMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.filterModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setFilterMenuVisible(false)}
+        >
+          <View style={styles.filterModalCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.filterModalHeader}>
+              <View style={styles.filterModalIconCircle}>
+                <SlidersHorizontal size={18} color={Colors.primaryDark} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.filterModalTitle}>
+                  {isHindi ? "नज़दीकी केंद्र फ़िल्टर" : "Nearby Healthcare Filters"}
+                </Text>
+                <Text style={styles.filterModalSubtitle}>
+                  {isHindi ? "दूरी और श्रेणी चुनें" : "Select search radius and facility category"}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setFilterMenuVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Radius Options */}
+            <Text style={styles.filterSectionLabel}>
+              {isHindi ? "खोज दायरा (रेडियस)" : "Search Radius"}
+            </Text>
+            <View style={styles.radiusModalRow}>
+              {[2, 5, 10, 25].map((km) => (
+                <TouchableOpacity
+                  key={km}
+                  style={[styles.radiusModalChip, maxDistanceKm === km && styles.radiusModalChipActive]}
+                  onPress={() => {
+                    triggerHaptic();
+                    setMaxDistanceKm(km);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.radiusModalChipText, maxDistanceKm === km && styles.radiusModalChipTextActive]}>
+                    {km} km
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Category Options */}
+            <Text style={styles.filterSectionLabel}>
+              {isHindi ? "केंद्र का प्रकार" : "Facility Category"}
+            </Text>
+            <View style={styles.categoryModalGrid}>
+              {[
+                { id: "hospital", label: isHindi ? "अस्पताल" : "Hospitals", icon: Hospital },
+                { id: "pharmacy", label: isHindi ? "फ़ार्मेसी" : "Pharmacies", icon: Pill },
+                { id: "laboratory", label: isHindi ? "लैब / जांच" : "Diagnostics", icon: FlaskConical },
+                { id: "doctor", label: isHindi ? "क्लीनिक / डॉक्टर" : "Clinics", icon: Stethoscope },
+                { id: "emergency", label: isHindi ? "आपातकालीन" : "Emergency Care", icon: Hospital },
+              ].map((cat) => {
+                const isSelected = selectedCategory === cat.id;
+                const CatIcon = cat.icon;
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.categoryModalItem, isSelected && styles.categoryModalItemActive]}
+                    onPress={() => {
+                      triggerHaptic();
+                      setSelectedCategory(cat.id as PlaceCategory);
+                      setFilterMenuVisible(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <CatIcon size={16} color={isSelected ? Colors.primaryDark : Colors.textSecondary} />
+                    <Text style={[styles.categoryModalText, isSelected && styles.categoryModalTextActive]}>
+                      {cat.label}
+                    </Text>
+                    {isSelected && <Check size={14} color={Colors.primaryDark} style={{ marginLeft: "auto" }} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.filterApplyBtn}
+              onPress={() => setFilterMenuVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.filterApplyBtnText}>
+                {isHindi ? "लागू करें" : "Apply Filters"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -683,54 +760,55 @@ const styles = StyleSheet.create({
   },
   floatingTopLayer: {
     position: "absolute",
-    top: 8,
-    left: 0,
-    right: 0,
+    top: 10,
+    left: 12,
     zIndex: 15,
   },
-  categoryScroll: {
-    paddingHorizontal: Spacing.md,
-    gap: 8,
+  appliedFilterPill: {
+    borderRadius: 20,
+    overflow: "hidden",
+    ...Shadows.card,
   },
-  radiusRowFloating: {
+  appliedFilterGlass: {
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 1)",
+  },
+  appliedFilterInner: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    paddingTop: 6,
-    gap: 6,
-  },
-  radiusLabelFloating: {
-    fontSize: 11,
-    color: "#FFFFFF",
-    fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  radiusChipFloating: {
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
+    paddingVertical: 5,
     paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.95)",
+    gap: 7,
   },
-  radiusChipFloatingActive: {
-    backgroundColor: Colors.primaryDark,
-    borderColor: Colors.primaryDark,
+  appliedFilterIconCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  radiusChipTextFloating: {
-    fontSize: 10,
-    color: Colors.textSecondary,
+  appliedFilterTitle: {
+    fontSize: 12,
     fontWeight: "700",
+    color: Colors.textPrimary,
   },
-  radiusChipTextFloatingActive: {
-    color: "#FFFFFF",
+  appliedFilterDot: {
+    width: 3.5,
+    height: 3.5,
+    borderRadius: 2,
+    backgroundColor: Colors.textMuted,
+  },
+  appliedFilterRadius: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: Colors.primaryDark,
   },
   mapControlsDock: {
     position: "absolute",
     right: 12,
-    top: 85,
+    top: 68,
     backgroundColor: "rgba(255, 255, 255, 0.92)",
     borderRadius: 16,
     padding: 4,
@@ -748,13 +826,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  mapCtrlBtnFilter: {
+    backgroundColor: Colors.primaryLight,
+  },
   mapCtrlBtnActive: {
     backgroundColor: Colors.primaryLight,
   },
   parentGpsHud: {
     position: "absolute",
     left: 12,
-    top: 85,
+    top: 54,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(15, 23, 42, 0.85)",
@@ -802,12 +883,141 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sheetCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(241, 245, 249, 0.9)",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(241, 245, 249, 0.95)",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.8)",
+  },
+  sheetIconActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(13, 148, 136, 0.2)",
+  },
+  filterModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: Spacing.lg,
+  },
+  filterModalCard: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#FFFFFF",
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...Shadows.cardElevated,
+  },
+  filterModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: Spacing.md,
+  },
+  filterModalIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterModalTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  filterModalSubtitle: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  filterSectionLabel: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textSecondary,
+    marginBottom: 8,
+    marginTop: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  radiusModalRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: Spacing.xs,
+  },
+  radiusModalChip: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: BorderRadius.md,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radiusModalChipActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  radiusModalChipText: {
+    fontSize: 12,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.textSecondary,
+  },
+  radiusModalChipTextActive: {
+    color: Colors.primaryDark,
+    fontWeight: Typography.weights.bold,
+  },
+  categoryModalGrid: {
+    gap: 6,
+    marginBottom: Spacing.md,
+  },
+  categoryModalItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.md,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  categoryModalItemActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  categoryModalText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: Typography.weights.medium,
+  },
+  categoryModalTextActive: {
+    color: Colors.primaryDark,
+    fontWeight: Typography.weights.bold,
+  },
+  filterApplyBtn: {
+    backgroundColor: Colors.primaryDark,
+    borderRadius: BorderRadius.md,
+    paddingVertical: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: Spacing.xs,
+  },
+  filterApplyBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: Typography.weights.bold,
   },
   sheetCollapsedPill: {
     position: "absolute",

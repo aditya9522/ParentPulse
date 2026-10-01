@@ -1,50 +1,81 @@
-// apps/mobile/src/components/AmbientBackground.tsx
 import React from "react";
 import { View, StyleSheet, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useApp } from "../context/AppContext";
 
 const { width, height } = Dimensions.get("window");
 
 export const AmbientBackground: React.FC = () => {
+  const { themeMode } = useApp();
+
+  const isDark = themeMode === "dark";
+  const isAmber = themeMode === "amber";
+
+  const canvasBg = isDark ? "#090D16" : isAmber ? "#FDFBF7" : "#F8FAFC";
+
+  const topRightColors = isDark
+    ? (["rgba(20, 184, 166, 0.28)", "rgba(20, 184, 166, 0.0)"] as const)
+    : isAmber
+    ? (["rgba(217, 119, 6, 0.20)", "rgba(217, 119, 6, 0.0)"] as const)
+    : (["rgba(13, 148, 136, 0.16)", "rgba(13, 148, 136, 0.0)"] as const);
+
+  const midLeftColors = isDark
+    ? (["rgba(129, 140, 248, 0.22)", "rgba(129, 140, 248, 0.0)"] as const)
+    : isAmber
+    ? (["rgba(234, 88, 12, 0.16)", "rgba(234, 88, 12, 0.0)"] as const)
+    : (["rgba(139, 92, 246, 0.12)", "rgba(139, 92, 246, 0.0)"] as const);
+
+  const bottomRightColors = isDark
+    ? (["rgba(56, 189, 248, 0.22)", "rgba(56, 189, 248, 0.0)"] as const)
+    : isAmber
+    ? (["rgba(245, 158, 11, 0.18)", "rgba(245, 158, 11, 0.0)"] as const)
+    : (["rgba(2, 132, 199, 0.14)", "rgba(2, 132, 199, 0.0)"] as const);
+
+  const topLeftColors = isDark
+    ? (["rgba(167, 139, 250, 0.18)", "rgba(167, 139, 250, 0.0)"] as const)
+    : isAmber
+    ? (["rgba(251, 191, 36, 0.16)", "rgba(251, 191, 36, 0.0)"] as const)
+    : (["rgba(245, 158, 11, 0.08)", "rgba(245, 158, 11, 0.0)"] as const);
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {/* Base Canvas */}
-      <View style={styles.baseCanvas} />
+      <View style={[styles.baseCanvas, { backgroundColor: canvasBg }]} />
 
-      {/* Top Right Luminous Teal Glow Orb */}
+      {/* Top Right Luminous Glow Orb */}
       <View style={styles.topRightOrb}>
         <LinearGradient
-          colors={["rgba(13, 148, 136, 0.16)", "rgba(13, 148, 136, 0.0)"]}
+          colors={topRightColors}
           style={styles.orbGradient}
           start={{ x: 0.5, y: 0.5 }}
           end={{ x: 1, y: 1 }}
         />
       </View>
 
-      {/* Mid Left Violet Glow Orb */}
+      {/* Mid Left Glow Orb */}
       <View style={styles.midLeftOrb}>
         <LinearGradient
-          colors={["rgba(139, 92, 246, 0.12)", "rgba(139, 92, 246, 0.0)"]}
+          colors={midLeftColors}
           style={styles.orbGradient}
           start={{ x: 0.5, y: 0.5 }}
           end={{ x: 1, y: 1 }}
         />
       </View>
 
-      {/* Bottom Right Soft Sky Blue Glow Orb */}
+      {/* Bottom Right Glow Orb */}
       <View style={styles.bottomRightOrb}>
         <LinearGradient
-          colors={["rgba(2, 132, 199, 0.14)", "rgba(2, 132, 199, 0.0)"]}
+          colors={bottomRightColors}
           style={styles.orbGradient}
           start={{ x: 0.5, y: 0.5 }}
           end={{ x: 1, y: 1 }}
         />
       </View>
 
-      {/* Top Left Subtle Amber/Coral Warmth */}
+      {/* Top Left Subtle Glow Orb */}
       <View style={styles.topLeftOrb}>
         <LinearGradient
-          colors={["rgba(245, 158, 11, 0.08)", "rgba(245, 158, 11, 0.0)"]}
+          colors={topLeftColors}
           style={styles.orbGradient}
           start={{ x: 0.5, y: 0.5 }}
           end={{ x: 1, y: 1 }}
@@ -53,6 +84,7 @@ export const AmbientBackground: React.FC = () => {
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   baseCanvas: {

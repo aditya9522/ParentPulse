@@ -1,5 +1,4 @@
-// apps/mobile/src/components/AiAssistantModal.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   Modal,
   View,
@@ -16,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { isExpoGo } from "../services/runtimeEnvironment";
+import { isSpeechRecognitionAvailable, loadSpeechRecognitionModule } from "../services/speechRuntime";
 import * as Crypto from "expo-crypto";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -43,6 +42,90 @@ interface Message {
   citations?: string[];
 }
 
+const renderInlineMarkdown = (text: string, baseStyle: any) => {
+  if (!text.includes("**")) {
+    return <Text style={baseStyle}>{text}</Text>;
+  }
+  const chunks = text.split("**");
+  return (
+    <Text style={baseStyle}>
+      {chunks.map((chunk, index) => {
+        if (index % 2 === 1) {
+          return (
+            <Text key={index} style={{ fontWeight: "800", color: "#1E1B4B" }}>
+              {chunk}
+            </Text>
+          );
+        }
+        return chunk;
+      })}
+    </Text>
+  );
+};
+
+const renderRichAiContent = (rawText: string, isSenior: boolean) => {
+  const baseTextStyle = isSenior ? styles.seniorMsgText : styles.msgTextAi;
+  const lines = rawText.split("\n");
+
+  return (
+    <View style={styles.richAiContainer}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <View key={idx} style={{ height: 4 }} />;
+        }
+
+        // Heading lines: ### Title, ## Title, or # Title
+        if (trimmed.startsWith("### ") || trimmed.startsWith("## ") || trimmed.startsWith("# ")) {
+          const headingText = trimmed.replace(/^#+\s*/, "");
+          return (
+            <View key={idx} style={styles.mdHeadingRow}>
+              <View style={styles.mdHeadingAccent} />
+              {renderInlineMarkdown(headingText, [styles.mdHeadingText, isSenior && { fontSize: 17 }])}
+            </View>
+          );
+        }
+
+        // Bullet point lines: * text, - text, or • text
+        if (trimmed.startsWith("* ") || trimmed.startsWith("- ") || trimmed.startsWith("• ")) {
+          const bulletContent = trimmed.replace(/^[\*\-•]\s*/, "");
+          return (
+            <View key={idx} style={styles.mdBulletRow}>
+              <View style={styles.mdBulletDot} />
+              <View style={{ flex: 1 }}>
+                {renderInlineMarkdown(bulletContent, baseTextStyle)}
+              </View>
+            </View>
+          );
+        }
+
+        // Numbered list lines: 1. text, 2. text
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+        if (numMatch) {
+          const [, num, numContent] = numMatch;
+          return (
+            <View key={idx} style={styles.mdNumberRow}>
+              <View style={styles.mdNumberBadge}>
+                <Text style={styles.mdNumberBadgeText}>{num}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                {renderInlineMarkdown(numContent, baseTextStyle)}
+              </View>
+            </View>
+          );
+        }
+
+        // Standard paragraph
+        return (
+          <View key={idx} style={styles.mdParagraphRow}>
+            {renderInlineMarkdown(trimmed, baseTextStyle)}
+          </View>
+        );
+      })}
+    </View>
+  );
+};
+
 export const AiAssistantModal: React.FC = () => {
   const {
     activeParent,
@@ -58,6 +141,7 @@ export const AiAssistantModal: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceConsentGranted, setVoiceConsentGranted] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "m_0",
@@ -67,6 +151,10 @@ export const AiAssistantModal: React.FC = () => {
         : `Hello! I am ParentPulse AI. I can answer questions grounded in ${activeParent.full_name}'s medical records, medicines, and consultation history.`,
     },
   ]);
+
+  useEffect(() => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  }, [messages, loading]);
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -99,12 +187,12 @@ export const AiAssistantModal: React.FC = () => {
   }, [aiAssistantModalVisible]);
 
   useEffect(() => {
-    if (isExpoGo) return;
+    if (!isSpeechRecognitionAvailable()) return;
     let active = true;
     const subscriptions: { remove: () => void }[] = [];
-    void import("expo-speech-recognition")
-      .then(({ ExpoSpeechRecognitionModule }) => {
-        if (!active) return;
+    void loadSpeechRecognitionModule()
+      .then((ExpoSpeechRecognitionModule) => {
+        if (!active || !ExpoSpeechRecognitionModule) return;
         subscriptions.push(
           ExpoSpeechRecognitionModule.addListener("start", () => setIsRecording(true)),
           ExpoSpeechRecognitionModule.addListener("end", () => setIsRecording(false)),
@@ -137,11 +225,11 @@ export const AiAssistantModal: React.FC = () => {
 
   const beginVoiceRecognition = async () => {
     try {
-      if (isExpoGo) {
+      if (!isSpeechRecognitionAvailable()) {
         throw new Error("Voice input requires the ParentPulse development or store build. Typed questions still work in Expo Go.");
       }
-      const { ExpoSpeechRecognitionModule } = await import("expo-speech-recognition");
-      if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
+      const ExpoSpeechRecognitionModule = await loadSpeechRecognitionModule();
+      if (!ExpoSpeechRecognitionModule || !ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
         throw new Error("Speech recognition is not available on this device.");
       }
       const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
@@ -220,30 +308,35 @@ export const AiAssistantModal: React.FC = () => {
   const stopVoiceRecording = async () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     setIsRecording(false);
+    if (!isSpeechRecognitionAvailable()) return;
 
-    const { ExpoSpeechRecognitionModule } = await import("expo-speech-recognition");
-    ExpoSpeechRecognitionModule.stop();
+    try {
+      const ExpoSpeechRecognitionModule = await loadSpeechRecognitionModule();
+      ExpoSpeechRecognitionModule?.stop();
+    } catch { }
   };
 
   const closeAssistant = () => {
-    void import("expo-speech-recognition")
-      .then(({ ExpoSpeechRecognitionModule }) => ExpoSpeechRecognitionModule.abort())
-      .catch(() => undefined);
+    if (isSpeechRecognitionAvailable()) {
+      void loadSpeechRecognitionModule()
+        .then((ExpoSpeechRecognitionModule) => ExpoSpeechRecognitionModule?.abort())
+        .catch(() => undefined);
+    }
     setIsRecording(false);
     setAiAssistantModalVisible(false);
   };
 
   const quickQuestions = isHindi
     ? [
-        `${activeParent.full_name.split(" ")[0]} सुबह कौन सी दवाएं लेते हैं?`,
-        `नवीनतम ब्लड शुगर टेस्ट परिणाम दिखाएं।`,
-        `अगला डॉक्टर परामर्श कब है?`,
-      ]
+      `${activeParent.full_name.split(" ")[0]} सुबह कौन सी दवाएं लेते हैं?`,
+      `नवीनतम ब्लड शुगर टेस्ट परिणाम दिखाएं।`,
+      `अगला डॉक्टर परामर्श कब है?`,
+    ]
     : [
-        `What medicines does ${activeParent.full_name.split(" ")[0]} take in morning?`,
-        `Show latest blood test results.`,
-        `When is the next cardiology appointment?`,
-      ];
+      `What medicines does ${activeParent.full_name.split(" ")[0]} take in morning?`,
+      `Show latest blood test results.`,
+      `When is the next cardiology appointment?`,
+    ];
 
   const handleSend = async (queryText?: string) => {
     const q = queryText || inputQuery;
@@ -360,151 +453,160 @@ export const AiAssistantModal: React.FC = () => {
         {/* Chat Thread and Input in KeyboardAvoidingView */}
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
         >
           {/* Message Thread */}
-          <ScrollView contentContainerStyle={styles.chatArea} showsVerticalScrollIndicator={false}>
-          {messages.map((m) => (
-            <View
-              key={m.id}
-              style={[
-                styles.bubbleWrapper,
-                m.sender === "user" ? styles.wrapperUser : styles.wrapperAi,
-              ]}
-            >
-              {m.sender === "ai" && (
-                <View style={styles.senderAvatar}>
-                  <Bot size={15} color="#7C3AED" />
-                </View>
-              )}
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.chatArea}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {messages.map((m) => (
               <View
+                key={m.id}
                 style={[
-                  styles.bubble,
-                  m.sender === "user" ? styles.bubbleUser : styles.bubbleAi,
-                  seniorMode && styles.seniorBubble,
+                  styles.bubbleWrapper,
+                  m.sender === "user" ? styles.wrapperUser : styles.wrapperAi,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.msgText,
-                    m.sender === "user" ? styles.msgTextUser : styles.msgTextAi,
-                    seniorMode && styles.seniorMsgText,
-                  ]}
-                >
-                  {m.text}
-                </Text>
-                {m.citations && m.citations.length > 0 && (
-                  <View style={styles.citationBox}>
-                    <Text style={styles.citationLabel}>
-                      {isHindi ? "सत्यापित स्रोत:" : "Grounded Medical Sources:"}
-                    </Text>
-                    <View style={styles.citationList}>
-                      {m.citations.map((c, idx) => (
-                        <View key={idx} style={styles.citationChip}>
-                          <FileCheck2 size={11} color={Colors.primaryDark} />
-                          <Text style={styles.citationItem}>{c}</Text>
-                        </View>
-                      ))}
-                    </View>
+                {m.sender === "ai" && (
+                  <View style={styles.senderAvatar}>
+                    <Bot size={15} color="#7C3AED" />
                   </View>
                 )}
+                <View
+                  style={[
+                    styles.bubble,
+                    m.sender === "user" ? styles.bubbleUser : styles.bubbleAi,
+                    seniorMode && styles.seniorBubble,
+                  ]}
+                >
+                  {m.sender === "user" ? (
+                    <Text
+                      style={[
+                        styles.msgText,
+                        styles.msgTextUser,
+                        seniorMode && styles.seniorMsgText,
+                      ]}
+                    >
+                      {m.text}
+                    </Text>
+                  ) : (
+                    renderRichAiContent(m.text, seniorMode)
+                  )}
+                  {m.citations && m.citations.length > 0 && (
+                    <View style={styles.citationBox}>
+                      <Text style={styles.citationLabel}>
+                        {isHindi ? "सत्यापित स्रोत:" : "Grounded Medical Sources:"}
+                      </Text>
+                      <View style={styles.citationList}>
+                        {m.citations.map((c, idx) => (
+                          <View key={idx} style={styles.citationChip}>
+                            <FileCheck2 size={11} color={Colors.primaryDark} />
+                            <Text style={styles.citationItem}>{c}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </View>
               </View>
+            ))}
+            {loading && (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator color="#7C3AED" size="small" />
+                <Text style={styles.loadingText}>
+                  {isHindi
+                    ? "सत्यापित मेडिकल रिकॉर्ड्स का विश्लेषण किया जा रहा है..."
+                    : "Retrieving verified records via Gemini..."}
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          {/* Suggested Quick Prompt Chips */}
+          <View style={styles.quickPromptContainer}>
+            <View style={styles.quickPromptHeader}>
+              <Lightbulb size={13} color="#7C3AED" />
+              <Text style={styles.quickPromptTitle}>
+                {isHindi ? "सुझाए गए प्रश्न" : "Suggested Prompts"}
+              </Text>
             </View>
-          ))}
-          {loading && (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator color="#7C3AED" size="small" />
-              <Text style={styles.loadingText}>
-                {isHindi
-                  ? "सत्यापित मेडिकल रिकॉर्ड्स का विश्लेषण किया जा रहा है..."
-                  : "Retrieving verified records via Gemini..."}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {quickQuestions.map((q, i) => (
+                <TouchableOpacity
+                  key={i}
+                  style={styles.promptChip}
+                  onPress={() => handleSend(q)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.promptText}>“{q}”</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Live Listening Banner if recording */}
+          {isRecording && (
+            <View style={styles.listeningBanner}>
+              <View style={styles.recordingPulseDot} />
+              <Text style={styles.listeningText}>
+                {isHindi ? "सुन रहा है… पूरा होने पर माइक फिर दबाएं। ऑडियो सेव नहीं होता।" : "Listening… Tap the mic when finished. Audio is not saved."}
               </Text>
             </View>
           )}
-        </ScrollView>
 
-        {/* Suggested Quick Prompt Chips */}
-        <View style={styles.quickPromptContainer}>
-          <View style={styles.quickPromptHeader}>
-            <Lightbulb size={13} color="#7C3AED" />
-            <Text style={styles.quickPromptTitle}>
-              {isHindi ? "सुझाए गए प्रश्न" : "Suggested Prompts"}
-            </Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            {quickQuestions.map((q, i) => (
-              <TouchableOpacity
-                key={i}
-                style={styles.promptChip}
-                onPress={() => handleSend(q)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.promptText}>“{q}”</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
+          {/* Input Bar with Mic and Send Buttons */}
+          <View style={styles.inputBar}>
+            {/* Real Microphone Voice Button */}
+            <TouchableOpacity
+              style={[styles.micBtn, isRecording && styles.micBtnActive]}
+              onPress={isRecording ? stopVoiceRecording : startVoiceRecording}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? "Stop voice input" : "Start voice input"}
+              accessibilityState={{ selected: isRecording }}
+            >
+              {isRecording ? (
+                <Radio size={18} color="#FFFFFF" />
+              ) : (
+                <Mic size={18} color={Colors.primaryDark} />
+              )}
+            </TouchableOpacity>
 
-        {/* Live Listening Banner if recording */}
-        {isRecording && (
-          <View style={styles.listeningBanner}>
-            <View style={styles.recordingPulseDot} />
-            <Text style={styles.listeningText}>
-              {isHindi ? "सुन रहा है… पूरा होने पर माइक फिर दबाएं। ऑडियो सेव नहीं होता।" : "Listening… Tap the mic when finished. Audio is not saved."}
-            </Text>
-          </View>
-        )}
-
-        {/* Input Bar with Mic and Send Buttons */}
-        <View style={styles.inputBar}>
-          {/* Real Microphone Voice Button */}
-          <TouchableOpacity
-            style={[styles.micBtn, isRecording && styles.micBtnActive]}
-            onPress={isRecording ? stopVoiceRecording : startVoiceRecording}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={isRecording ? "Stop voice input" : "Start voice input"}
-            accessibilityState={{ selected: isRecording }}
-          >
-            {isRecording ? (
-              <Radio size={18} color="#FFFFFF" />
-            ) : (
-              <Mic size={18} color={Colors.primaryDark} />
-            )}
-          </TouchableOpacity>
-
-          <TextInput
-            style={[styles.input, seniorMode && styles.seniorInput]}
-            placeholder={
-              isRecording
-                ? (isHindi ? "बोलिए..." : "Listening...")
-                : (isHindi
+            <TextInput
+              style={[styles.input, seniorMode && styles.seniorInput]}
+              placeholder={
+                isRecording
+                  ? (isHindi ? "बोलिए..." : "Listening...")
+                  : (isHindi
                     ? `${activeParent.full_name.split(" ")[0]} के बारे में पूछें या बोलें...`
                     : `Ask about ${activeParent.full_name.split(" ")[0]}'s records...`)
-            }
-            placeholderTextColor={isRecording ? "#EF4444" : Colors.textMuted}
-            value={inputQuery}
-            onChangeText={setInputQuery}
-            onSubmitEditing={() => handleSend()}
-          />
+              }
+              placeholderTextColor={isRecording ? "#EF4444" : Colors.textMuted}
+              value={inputQuery}
+              onChangeText={setInputQuery}
+              onSubmitEditing={() => handleSend()}
+            />
 
-          <TouchableOpacity
-            style={[styles.sendBtn, !inputQuery.trim() && styles.sendBtnDisabled]}
-            disabled={!inputQuery.trim() || loading}
-            onPress={() => handleSend()}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={inputQuery.trim() ? ["#4F46E5", "#7C3AED"] : ["#CBD5E1", "#94A3B8"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.sendGradient}
+            <TouchableOpacity
+              style={[styles.sendBtn, !inputQuery.trim() && styles.sendBtnDisabled]}
+              disabled={!inputQuery.trim() || loading}
+              onPress={() => handleSend()}
+              activeOpacity={0.85}
             >
-              <Send size={16} color="#FFFFFF" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+              <LinearGradient
+                colors={inputQuery.trim() ? ["#4F46E5", "#7C3AED"] : ["#CBD5E1", "#94A3B8"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.sendGradient}
+              >
+                <Send size={16} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -616,11 +718,12 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 4,
   },
   bubbleAi: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
     borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.95)",
-    ...Shadows.card,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.9)",
+    ...Shadows.subtle,
+    elevation: 0,
   },
   msgText: {
     fontSize: 14,
@@ -636,6 +739,70 @@ const styles = StyleSheet.create({
   },
   msgTextAi: {
     color: Colors.textPrimary,
+  },
+  richAiContainer: {
+    gap: 4,
+  },
+  mdHeadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  mdHeadingAccent: {
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+    backgroundColor: "#7C3AED",
+  },
+  mdHeadingText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1E1B4B",
+  },
+  mdBulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingLeft: 2,
+    marginVertical: 1,
+    gap: 8,
+  },
+  mdBulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#7C3AED",
+    marginTop: 7,
+  },
+  mdBulletText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.textPrimary,
+  },
+  mdNumberRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginVertical: 2,
+    gap: 8,
+  },
+  mdNumberBadge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#EDE9FE",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+    paddingHorizontal: 4,
+  },
+  mdNumberBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#7C3AED",
+  },
+  mdParagraphRow: {
+    marginVertical: 1,
   },
   citationBox: {
     marginTop: Spacing.sm,
@@ -672,11 +839,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     padding: Spacing.md,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
     borderRadius: 14,
     alignSelf: "flex-start",
     borderWidth: 1,
-    borderColor: "#E9D5FF",
+    borderColor: "rgba(233, 213, 255, 0.9)",
   },
   loadingText: {
     fontSize: 12,
@@ -686,9 +853,9 @@ const styles = StyleSheet.create({
   quickPromptContainer: {
     paddingHorizontal: Spacing.md,
     paddingVertical: 8,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: "rgba(255, 255, 255, 0.85)",
   },
   quickPromptHeader: {
     flexDirection: "row",
@@ -717,17 +884,17 @@ const styles = StyleSheet.create({
   inputBar: {
     flexDirection: "row",
     padding: Spacing.md,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
     borderTopWidth: 1,
-    borderTopColor: "rgba(226, 232, 240, 0.8)",
+    borderTopColor: "rgba(255, 255, 255, 0.85)",
     alignItems: "center",
     gap: 8,
   },
   input: {
     flex: 1,
-    backgroundColor: "rgba(241, 245, 249, 0.85)",
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.85)",
+    borderColor: "rgba(255, 255, 255, 0.9)",
     borderRadius: 14,
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,

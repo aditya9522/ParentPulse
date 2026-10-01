@@ -69,6 +69,24 @@ export const VitalBadge: React.FC<{ measurement: HealthMeasurement }> = ({ measu
     return `${measurement.value_numeric}`;
   };
 
+  const formatFriendlyTime = (raw?: string) => {
+    if (!raw) return language === "hi" ? "हाल ही में" : "Recent";
+    if (raw === "Just now") return language === "hi" ? "अभी" : "Just now";
+    const ts = Date.parse(raw);
+    if (isNaN(ts)) return raw;
+    const d = new Date(ts);
+    const now = new Date();
+    const diffMin = Math.floor((now.getTime() - d.getTime()) / (1000 * 60));
+    if (diffMin < 2) return language === "hi" ? "अभी" : "Just now";
+    if (diffMin < 60) return language === "hi" ? `${diffMin} मि पहले` : `${diffMin}m ago`;
+    const diffHrs = Math.floor(diffMin / 60);
+    if (diffHrs < 24 && d.getDate() === now.getDate()) {
+      return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+    if (diffHrs < 48) return language === "hi" ? "कल" : "Yesterday";
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
+
   return (
     <View style={styles.card}>
       {/* Top Icon & Status Row */}
@@ -99,7 +117,7 @@ export const VitalBadge: React.FC<{ measurement: HealthMeasurement }> = ({ measu
 
       <View style={styles.timeRow}>
         <Clock size={11} color={Colors.textSubtle} />
-        <Text style={styles.recordedTime}>{measurement.recorded_at}</Text>
+        <Text style={styles.recordedTime}>{formatFriendlyTime(measurement.recorded_at)}</Text>
       </View>
     </View>
   );
@@ -107,7 +125,7 @@ export const VitalBadge: React.FC<{ measurement: HealthMeasurement }> = ({ measu
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    backgroundColor: "rgba(255, 255, 255, 0.65)",
     padding: Spacing.md,
     borderRadius: BorderRadius.xl,
     borderWidth: 1.2,
@@ -120,7 +138,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 10,
-    elevation: 2,
+    elevation: 0,
   },
   topRow: {
     flexDirection: "row",

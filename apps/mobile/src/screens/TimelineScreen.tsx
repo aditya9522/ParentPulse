@@ -70,7 +70,7 @@ export const TimelineScreen: React.FC = () => {
           onPress={() => {
             try {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            } catch {}
+            } catch { }
             setDoctorShareModalVisible(true);
           }}
           activeOpacity={0.8}
@@ -101,7 +101,7 @@ export const TimelineScreen: React.FC = () => {
                 onPress={() => {
                   try {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  } catch {}
+                  } catch { }
                   setSelectedFilter(f.id);
                 }}
               >
@@ -121,70 +121,89 @@ export const TimelineScreen: React.FC = () => {
           <Text style={{ fontWeight: "700", color: Colors.textPrimary }}>{activeParent.full_name}</Text>
         </Text>
 
-        {filteredEvents.map((event, index) => {
-          const isLast = index === filteredEvents.length - 1;
-          const cfg = getEventConfig(event.event_type);
-          const IconComp = cfg.icon;
-
-          const dateStr = new Date(event.event_date).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          });
-
-          return (
-            <View key={event.id} style={styles.eventRow}>
-              {/* Left Vertical Spine & Stem Node */}
-              <View style={styles.leftCol}>
-                <View style={[styles.iconCircle, { backgroundColor: cfg.bg }, Shadows.subtle]}>
-                  <IconComp size={18} color={cfg.color} strokeWidth={2.2} />
-                </View>
-                {!isLast && <View style={styles.verticalLine} />}
-              </View>
-
-              {/* Right Event Detail Card */}
-              <View style={[styles.card, Shadows.card]}>
-                <View style={styles.cardHeader}>
-                  <View style={[styles.eventTypePill, { backgroundColor: cfg.bg }]}>
-                    <Text style={[styles.eventTypeText, { color: cfg.color }]}>{cfg.label}</Text>
-                  </View>
-                  <View style={styles.dateRow}>
-                    <Calendar size={12} color={Colors.textMuted} />
-                    <Text style={styles.eventDate}>{dateStr}</Text>
-                  </View>
-                </View>
-
-                <Text style={[styles.eventTitle, seniorMode && styles.seniorEventTitle]}>
-                  {event.title}
-                </Text>
-
-                <Text style={styles.eventDesc}>{event.description}</Text>
-
-                {/* Metadata Tags */}
-                <View style={styles.metaRow}>
-                  {event.doctor_name && (
-                    <View style={styles.metaBadge}>
-                      <User size={12} color={Colors.textSecondary} />
-                      <Text style={styles.metaBadgeText}>{event.doctor_name}</Text>
-                    </View>
-                  )}
-                  {event.facility_name && (
-                    <View style={styles.metaBadge}>
-                      <Building2 size={12} color={Colors.textSecondary} />
-                      <Text style={styles.metaBadgeText}>{event.facility_name}</Text>
-                    </View>
-                  )}
-                  {event.document_id && (
-                    <View style={[styles.metaBadge, { backgroundColor: Colors.primaryLight + "60" }]}>
-                      <Paperclip size={11} color={Colors.primaryDeep} />
-                      <Text style={[styles.metaBadgeText, { color: Colors.primaryDeep }]}>Report Attached</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
+        {filteredEvents.length === 0 ? (
+          <View style={styles.emptyStateContainer}>
+            <View style={styles.emptyIconBox}>
+              <Calendar size={36} color={Colors.primaryDark} />
             </View>
-          );
-        })}
+            <Text style={styles.emptyTitle}>
+              {language === "hi" ? "कोई घटना या माइलस्टोन नहीं" : "No Health Milestones Recorded"}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {language === "hi"
+                ? `${activeParent.full_name} के लिए डॉक्टर परामर्श, जांच रिपोर्ट और दवा परिवर्तन यहाँ कालानुक्रमिक रूप से प्रदर्शित होंगे।`
+                : `Doctor visits, clinical tests, surgical procedures, and prescription changes for ${activeParent.full_name} will automatically assemble into this clinical timeline.`}
+            </Text>
+          </View>
+        ) : (
+          filteredEvents.map((event, index) => {
+            const isLast = index === filteredEvents.length - 1;
+            const cfg = getEventConfig(event.event_type);
+            const IconComp = cfg.icon;
+
+            const parsedTs = Date.parse(event.event_date);
+            const dateStr = isNaN(parsedTs)
+              ? (event.event_date || "Recent")
+              : new Date(parsedTs).toLocaleDateString(language === "hi" ? "hi-IN" : "en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                });
+
+            return (
+              <View key={event.id} style={styles.eventRow}>
+                {/* Left Vertical Spine & Stem Node */}
+                <View style={styles.leftCol}>
+                  <View style={[styles.iconCircle, { backgroundColor: cfg.bg }, Shadows.subtle]}>
+                    <IconComp size={18} color={cfg.color} strokeWidth={2.2} />
+                  </View>
+                  {!isLast && <View style={styles.verticalLine} />}
+                </View>
+
+                {/* Right Event Detail Card */}
+                <View style={[styles.card, Shadows.card]}>
+                  <View style={styles.cardHeader}>
+                    <View style={[styles.eventTypePill, { backgroundColor: cfg.bg }]}>
+                      <Text style={[styles.eventTypeText, { color: cfg.color }]}>{cfg.label}</Text>
+                    </View>
+                    <View style={styles.dateRow}>
+                      <Calendar size={12} color={Colors.textMuted} />
+                      <Text style={styles.eventDate}>{dateStr}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.eventTitle, seniorMode && styles.seniorEventTitle]}>
+                    {event.title}
+                  </Text>
+
+                  <Text style={styles.eventDesc}>{event.description}</Text>
+
+                  {/* Metadata Tags */}
+                  <View style={styles.metaRow}>
+                    {event.doctor_name && (
+                      <View style={styles.metaBadge}>
+                        <User size={12} color={Colors.textSecondary} />
+                        <Text style={styles.metaBadgeText}>{event.doctor_name}</Text>
+                      </View>
+                    )}
+                    {event.facility_name && (
+                      <View style={styles.metaBadge}>
+                        <Building2 size={12} color={Colors.textSecondary} />
+                        <Text style={styles.metaBadgeText}>{event.facility_name}</Text>
+                      </View>
+                    )}
+                    {event.document_id && (
+                      <View style={[styles.metaBadge, { backgroundColor: Colors.primaryLight + "60" }]}>
+                        <Paperclip size={11} color={Colors.primaryDeep} />
+                        <Text style={[styles.metaBadgeText, { color: Colors.primaryDeep }]}>Report Attached</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -354,5 +373,38 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: Typography.weights.semibold,
     color: Colors.textSecondary,
+  },
+  emptyStateContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 50,
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: "#FFFFFF",
+    borderRadius: BorderRadius.xl,
+    marginVertical: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyIconBox: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
   },
 });

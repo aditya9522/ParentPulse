@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 
 interface SwipeableBottomSheetProps {
   visible: boolean;
@@ -32,7 +33,7 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   children,
   maxHeight = "90%",
   containerStyle,
-  grabHandleColor = "#94A3B8",
+  grabHandleColor = "rgba(148, 163, 184, 0.7)",
   testID,
 }) => {
   const translateY = useRef(new Animated.Value(900)).current;
@@ -166,13 +167,20 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
         >
           {Platform.OS !== "web" && (
             <BlurView
-              intensity={78}
+              intensity={Platform.OS === "android" ? 50 : 85}
               tint="light"
-              blurMethod={Platform.OS === "android" ? "none" : undefined}
+              blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined}
               pointerEvents="none"
               style={StyleSheet.absoluteFill}
             />
           )}
+          <LinearGradient
+            colors={["rgba(255, 255, 255, 0.45)", "rgba(255, 255, 255, 0.18)"]}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
+            pointerEvents="none"
+          />
           {/* Top Swiping Zone with Grab Handle (Supports Dragging Down to Close) */}
           <View {...panResponder.panHandlers} style={styles.swipeDragZone}>
             <View style={[styles.grabHandle, { backgroundColor: grabHandleColor }]} />
@@ -195,34 +203,35 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   backdropTint: {
-    backgroundColor: "rgba(15, 23, 42, 0.58)",
+    backgroundColor: "rgba(15, 23, 42, 0.52)",
   },
   dismissArea: {
     flex: 1,
   },
   halfSheetContainer: {
-    backgroundColor: "rgba(248, 250, 252, 0.94)",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.9)",
+    borderWidth: 1.5,
+    borderBottomWidth: 0,
+    borderColor: "rgba(255, 255, 255, 0.92)",
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.12,
     shadowRadius: 24,
-    elevation: 20,
+    elevation: 0,
   },
   swipeDragZone: {
     width: "100%",
-    minHeight: 30,
+    minHeight: 28,
     paddingTop: 8,
-    paddingBottom: 7,
+    paddingBottom: 6,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(241, 245, 249, 0.6)",
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(226, 232, 240, 0.8)",
+    borderBottomColor: "rgba(255, 255, 255, 0.6)",
   },
   grabHandle: {
     width: 48,

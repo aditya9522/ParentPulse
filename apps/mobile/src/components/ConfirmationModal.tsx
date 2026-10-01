@@ -106,13 +106,14 @@ const styles = StyleSheet.create({
   dialogBox: {
     width: "100%",
     maxWidth: 380,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    backgroundColor: "rgba(255, 255, 255, 0.88)",
     borderRadius: 24,
     borderWidth: 1.5,
     borderColor: "rgba(255, 255, 255, 0.95)",
     padding: Spacing.xl,
     alignItems: "center",
     ...Shadows.cardElevated,
+    elevation: 0,
   },
   iconCircle: {
     width: 56,

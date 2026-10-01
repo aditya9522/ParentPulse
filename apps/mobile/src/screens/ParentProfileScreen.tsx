@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   FileText,
   Share2,
+  Trash2,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -68,6 +69,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
 
   // Add Doctor Modal State
   const [addDocModalVisible, setAddDocModalVisible] = useState(false);
+  const [editingDocIndex, setEditingDocIndex] = useState<number | null>(null);
   const [docName, setDocName] = useState("");
   const [docSpecialty, setDocSpecialty] = useState("");
   const [docClinic, setDocClinic] = useState("");
@@ -137,25 +139,72 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
     setAddContactModalVisible(false);
   };
 
-  const handleAddDoctor = () => {
+  const handleEditDoctor = (index: number) => {
+    const doc = activeParent.primary_doctors[index];
+    if (!doc) return;
+    triggerHaptic();
+    setDocName(doc.name);
+    setDocSpecialty(doc.specialty);
+    setDocClinic(doc.hospital_or_clinic);
+    setDocPhone(doc.phone_number);
+    setEditingDocIndex(index);
+    setAddDocModalVisible(true);
+  };
+
+  const handleDeleteDoctor = (index: number) => {
+    const doc = activeParent.primary_doctors[index];
+    if (!doc) return;
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      isHindi ? "डॉक्टर हटाएं?" : "Remove Doctor?",
+      isHindi
+        ? `क्या आप ${doc.name} को डॉक्टर सूची से हटाना चाहते हैं?`
+        : `Are you sure you want to remove Dr. ${doc.name} from the primary doctors list?`,
+      [
+        { text: isHindi ? "रद्द करें" : "Cancel", style: "cancel" },
+        {
+          text: isHindi ? "हटाएं" : "Remove",
+          style: "destructive",
+          onPress: () => {
+            const doctors = [...activeParent.primary_doctors];
+            doctors.splice(index, 1);
+            updateActiveParentProfile({ primary_doctors: doctors });
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSaveDoctor = () => {
     if (!docName.trim() || !docSpecialty.trim()) {
-      Alert.alert(isHindi ? "विवरण आवश्यक है" : "Details Required", isHindi ? "कृपया डॉक्टर का नाम और विशेषता दर्ज करें।" : "Please enter doctor name and specialty.");
+      Alert.alert(
+        isHindi ? "विवरण आवश्यक है" : "Details Required",
+        isHindi ? "कृपया डॉक्टर का नाम और विशेषता दर्ज करें।" : "Please enter doctor name and specialty."
+      );
       return;
     }
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const newDoc: PrimaryDoctor = {
+    const doctorObj: PrimaryDoctor = {
       name: docName.trim(),
       specialty: docSpecialty.trim(),
       hospital_or_clinic: docClinic.trim() || "Clinic",
       phone_number: docPhone.trim() || "+91 98000 00000",
     };
 
-    updateActiveParentProfile({ primary_doctors: [...activeParent.primary_doctors, newDoc] });
+    const doctors = [...activeParent.primary_doctors];
+    if (editingDocIndex !== null && editingDocIndex >= 0 && editingDocIndex < doctors.length) {
+      doctors[editingDocIndex] = doctorObj;
+    } else {
+      doctors.push(doctorObj);
+    }
+
+    updateActiveParentProfile({ primary_doctors: doctors });
     setDocName("");
     setDocSpecialty("");
     setDocClinic("");
     setDocPhone("");
+    setEditingDocIndex(null);
     setAddDocModalVisible(false);
   };
 
@@ -421,6 +470,11 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
               style={styles.addSmallBtn}
               onPress={() => {
                 triggerHaptic();
+                setDocName("");
+                setDocSpecialty("");
+                setDocClinic("");
+                setDocPhone("");
+                setEditingDocIndex(null);
                 setAddDocModalVisible(true);
               }}
               activeOpacity={0.8}
@@ -442,14 +496,35 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
                 <Text style={styles.docFacility}>{doc.hospital_or_clinic}</Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.docCallBtn}
-                onPress={() => Linking.openURL(`tel:${doc.phone_number.replace(/\s+/g, "")}`)}
-                activeOpacity={0.7}
-              >
-                <Phone size={14} color={Colors.primaryDark} />
-                <Text style={styles.docCallBtnText}>{isHindi ? "कॉल" : "Call"}</Text>
-              </TouchableOpacity>
+              <View style={styles.docActionsCol}>
+                <TouchableOpacity
+                  style={styles.docCallBtn}
+                  onPress={() => Linking.openURL(`tel:${doc.phone_number.replace(/\s+/g, "")}`)}
+                  activeOpacity={0.7}
+                >
+                  <Phone size={13} color={Colors.primaryDark} />
+                  <Text style={styles.docCallBtnText}>{isHindi ? "कॉल" : "Call"}</Text>
+                </TouchableOpacity>
+
+                <View style={styles.docCardIconsRow}>
+                  <TouchableOpacity
+                    style={styles.docIconBtn}
+                    onPress={() => handleEditDoctor(idx)}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Edit Doctor"
+                  >
+                    <Edit3 size={13} color={Colors.primaryDark} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.docIconBtnDanger}
+                    onPress={() => handleDeleteDoctor(idx)}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Delete Doctor"
+                  >
+                    <Trash2 size={13} color={Colors.emergencyDark} />
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           ))}
         </View>
@@ -522,6 +597,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
               value={allergiesText}
               onChangeText={setAllergiesText}
               placeholder="Penicillin, Sulfa drugs, Aspirin"
+              placeholderTextColor={Colors.textMuted}
             />
 
             <Text style={styles.inputLabel}>{isHindi ? "पुरानी बीमारियाँ (अल्पविराम से अलग करें)" : "Chronic Conditions (comma-separated)"}</Text>
@@ -530,6 +606,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
               value={conditionsText}
               onChangeText={setConditionsText}
               placeholder="Type 2 Diabetes, Hypertension, Osteoarthritis"
+              placeholderTextColor={Colors.textMuted}
             />
 
             <Text style={styles.inputLabel}>{isHindi ? "महत्वपूर्ण मेडिकल नोट्स" : "Clinical Notes & Alerts"}</Text>
@@ -539,6 +616,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
               onChangeText={setNotes}
               multiline
               placeholder="Add special medical instructions..."
+              placeholderTextColor={Colors.textMuted}
             />
 
             <TouchableOpacity style={styles.saveBtn} onPress={handleSaveProfile} activeOpacity={0.8}>
@@ -577,6 +655,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <TextInput
               style={styles.textInput}
               placeholder="e.g. Daughter (Bangalore), Son, Neighbor"
+              placeholderTextColor={Colors.textMuted}
               value={contactRelation}
               onChangeText={setContactRelation}
             />
@@ -585,6 +664,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <TextInput
               style={styles.textInput}
               placeholder="+91 98765 43210"
+              placeholderTextColor={Colors.textMuted}
               value={contactPhone}
               onChangeText={setContactPhone}
               keyboardType="phone-pad"
@@ -611,16 +691,26 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
         </View>
       </SwipeableBottomSheet>
 
-      {/* Add Primary Doctor Modal */}
+      {/* Add / Edit Primary Doctor Modal */}
       <SwipeableBottomSheet
         visible={addDocModalVisible}
-        onClose={() => setAddDocModalVisible(false)}
+        onClose={() => {
+          setAddDocModalVisible(false);
+          setEditingDocIndex(null);
+        }}
         maxHeight="92%"
       >
         <View style={styles.sheetInnerPadding}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{isHindi ? "डॉक्टर विवरण जोड़ें" : "Add Primary Doctor"}</Text>
-            <TouchableOpacity onPress={() => setAddDocModalVisible(false)}>
+            <Text style={styles.modalTitle}>
+              {editingDocIndex !== null
+                ? (isHindi ? "डॉक्टर विवरण संपादित करें" : "Edit Primary Doctor")
+                : (isHindi ? "डॉक्टर विवरण जोड़ें" : "Add Primary Doctor")}
+            </Text>
+            <TouchableOpacity onPress={() => {
+              setAddDocModalVisible(false);
+              setEditingDocIndex(null);
+            }}>
               <X size={20} color={Colors.textMuted} />
             </TouchableOpacity>
           </View>
@@ -630,6 +720,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <TextInput
               style={styles.textInput}
               placeholder="Doctor's full name"
+              placeholderTextColor={Colors.textMuted}
               value={docName}
               onChangeText={setDocName}
             />
@@ -638,6 +729,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <TextInput
               style={styles.textInput}
               placeholder="e.g. Cardiology, Endocrinology, Orthopedic"
+              placeholderTextColor={Colors.textMuted}
               value={docSpecialty}
               onChangeText={setDocSpecialty}
             />
@@ -646,6 +738,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <TextInput
               style={styles.textInput}
               placeholder="e.g. Fortis Memorial Research Institute"
+              placeholderTextColor={Colors.textMuted}
               value={docClinic}
               onChangeText={setDocClinic}
             />
@@ -654,14 +747,19 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <TextInput
               style={styles.textInput}
               placeholder="+91 98223 34455"
+              placeholderTextColor={Colors.textMuted}
               value={docPhone}
               onChangeText={setDocPhone}
               keyboardType="phone-pad"
             />
 
-            <TouchableOpacity style={styles.saveBtn} onPress={handleAddDoctor} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDoctor} activeOpacity={0.8}>
               <LinearGradient colors={Gradients.primary} style={styles.btnGradient}>
-                <Text style={styles.btnGradientText}>{isHindi ? "डॉक्टर सहेजें" : "Save Doctor"}</Text>
+                <Text style={styles.btnGradientText}>
+                  {editingDocIndex !== null
+                    ? (isHindi ? "अपडेट करें" : "Update Doctor")
+                    : (isHindi ? "डॉक्टर सहेजें" : "Save Doctor")}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
           </ScrollView>
@@ -1086,6 +1184,31 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.xs,
     fontWeight: Typography.weights.bold,
     color: Colors.primaryDark,
+  },
+  docActionsCol: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  docCardIconsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  docIconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  docIconBtnDanger: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.emergencyLight,
+    justifyContent: "center",
+    alignItems: "center",
   },
   actionButtonsRow: {
     gap: 8,

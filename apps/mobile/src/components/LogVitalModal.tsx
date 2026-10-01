@@ -199,7 +199,12 @@ export const LogVitalModal: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 60 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          >
             {/* Form Inputs with Steppers */}
             {selectedType === "blood_pressure" && (
               <View>
@@ -222,6 +227,7 @@ export const LogVitalModal: React.FC = () => {
                         value={systolic}
                         onChangeText={setSystolic}
                         placeholder="120"
+                        placeholderTextColor={Colors.textMuted}
                       />
                       <TouchableOpacity
                         style={styles.stepBtn}
@@ -252,6 +258,7 @@ export const LogVitalModal: React.FC = () => {
                         value={diastolic}
                         onChangeText={setDiastolic}
                         placeholder="80"
+                        placeholderTextColor={Colors.textMuted}
                       />
                       <TouchableOpacity
                         style={styles.stepBtn}
@@ -294,6 +301,7 @@ export const LogVitalModal: React.FC = () => {
                       value={bloodSugar}
                       onChangeText={setBloodSugar}
                       placeholder="100"
+                      placeholderTextColor={Colors.textMuted}
                     />
                     <TouchableOpacity
                       style={styles.stepBtn}
@@ -334,6 +342,7 @@ export const LogVitalModal: React.FC = () => {
                       value={heartRate}
                       onChangeText={setHeartRate}
                       placeholder="72"
+                      placeholderTextColor={Colors.textMuted}
                     />
                     <TouchableOpacity
                       style={styles.stepBtn}
@@ -401,7 +410,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalBox: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "transparent",
     paddingHorizontal: Spacing.xl,
     paddingTop: 4,
     paddingBottom: 40,
@@ -426,7 +435,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "rgba(241, 245, 249, 0.8)",
+    backgroundColor: "rgba(255, 255, 255, 0.75)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.9)",
     alignItems: "center",
@@ -434,9 +443,9 @@ const styles = StyleSheet.create({
   },
   tabsRow: {
     flexDirection: "row",
-    backgroundColor: "rgba(226, 232, 240, 0.7)",
+    backgroundColor: "rgba(226, 232, 240, 0.6)",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
+    borderColor: "rgba(255, 255, 255, 0.75)",
     padding: 3,
     borderRadius: 12,
     gap: 4,
@@ -452,10 +461,11 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tabActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 1)",
-    ...Shadows.card,
+    ...Shadows.subtle,
+    elevation: 0,
   },
   tabText: {
     fontSize: 12,
@@ -474,12 +484,14 @@ const styles = StyleSheet.create({
   },
   inputCard: {
     flex: 1,
-    backgroundColor: "rgba(248, 250, 252, 0.75)",
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.9)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.85)",
     padding: Spacing.md,
     marginBottom: Spacing.sm,
+    ...Shadows.subtle,
+    elevation: 0,
   },
   slash: {
     fontSize: 28,
@@ -504,12 +516,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadows.card,
+    borderColor: "rgba(255, 255, 255, 0.95)",
+    ...Shadows.subtle,
+    elevation: 0,
   },
   numInput: {
     fontSize: 22,
@@ -524,12 +537,12 @@ const styles = StyleSheet.create({
   refBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F0FDFA",
+    backgroundColor: "rgba(240, 253, 250, 0.75)",
     paddingHorizontal: Spacing.md,
     paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#CCFBF1",
+    borderColor: "rgba(204, 251, 241, 0.9)",
     gap: 6,
     marginBottom: Spacing.md,
   },
@@ -543,10 +556,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   textInput: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.85)",
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
     fontSize: 13,

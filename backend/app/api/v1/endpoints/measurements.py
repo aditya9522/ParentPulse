@@ -54,3 +54,20 @@ async def list_parent_measurements(
     res = await session.execute(stmt)
     records = list(res.scalars().all())
     return build_response([MeasurementResponse.model_validate(m) for m in records])
+
+
+@router.delete("/{measurement_id}", status_code=204)
+async def delete_measurement(
+    measurement_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    stmt = select(Measurement).where(Measurement.id == measurement_id)
+    res = await session.execute(stmt)
+    measurement = res.scalar_one_or_none()
+    if not measurement:
+        return None
+    await verify_parent_access(session, current_user.id, measurement.parent_id)
+    await session.delete(measurement)
+    await session.flush()
+    return None

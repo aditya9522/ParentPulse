@@ -66,17 +66,25 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
   const SPARKLINE_DATA = Object.fromEntries(Object.entries(vitalDefinitions).map(([key, definition]) => {
     const records = measurements
       .filter((item) => item.vital_type === definition.type)
-      .sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at))
+      .sort((a, b) => {
+        const ta = Date.parse(a.recorded_at);
+        const tb = Date.parse(b.recorded_at);
+        return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb);
+      })
       .slice(-7);
     const maximum = Math.max(...records.map((item) => item.value_numeric), 1);
     return [key, {
       title: `${definition.title} · Recent records`,
       unit: definition.unit,
-      days: records.map((item) => ({
-        day: new Date(item.recorded_at).toLocaleDateString(undefined, { weekday: "short" }),
-        val: `${item.value_numeric}${item.value_secondary != null ? `/${item.value_secondary}` : ""}`,
-        height: Math.max(12, Math.round((item.value_numeric / maximum) * 100)),
-      })),
+      days: records.map((item) => {
+        const parsed = Date.parse(item.recorded_at);
+        const date = isNaN(parsed) ? new Date() : new Date(parsed);
+        return {
+          day: date.toLocaleDateString(undefined, { weekday: "short" }),
+          val: `${item.value_numeric}${item.value_secondary != null ? `/${item.value_secondary}` : ""}`,
+          height: Math.max(12, Math.round((item.value_numeric / maximum) * 100)),
+        };
+      }),
     }];
   })) as Record<"bp" | "sugar" | "pulse", { title: string; unit: string; days: { day: string; val: string; height: number }[] }>;
   const selectedSeries = SPARKLINE_DATA[selectedVitalTab];
@@ -417,11 +425,21 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               <View style={styles.apptScheduleBar}>
                 <View style={styles.scheduleItem}>
                   <Ionicons name="calendar-outline" size={14} color={Colors.primaryDeep} />
-                  <Text style={styles.scheduleItemText}>Mon, Oct 5 • 10:30 AM</Text>
+                  <Text style={styles.scheduleItemText}>
+                    {(() => {
+                      const ts = Date.parse(nextAppointment.appointment_date);
+                      if (isNaN(ts)) return nextAppointment.appointment_date || "Upcoming";
+                      const d = new Date(ts);
+                      return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) +
+                        " • " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+                    })()}
+                  </Text>
                 </View>
                 <View style={styles.scheduleItem}>
                   <Ionicons name="location-outline" size={14} color={Colors.secondaryDark} />
-                  <Text style={styles.scheduleItemText}>Sector 44, Gurugram</Text>
+                  <Text style={styles.scheduleItemText} numberOfLines={1}>
+                    {nextAppointment.hospital_clinic_name || activeParent.address || "Clinic"}
+                  </Text>
                 </View>
               </View>
 
@@ -820,18 +838,18 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   appointmentCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    backgroundColor: "rgba(255, 255, 255, 0.68)",
     padding: Spacing.md,
     borderRadius: BorderRadius.xl,
     borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.9)",
+    borderColor: "rgba(255, 255, 255, 0.85)",
     position: "relative",
     overflow: "hidden",
     shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
-    elevation: 4,
+    elevation: 0,
   },
   apptTop: {
     flexDirection: "row",
@@ -971,11 +989,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   docPreviewCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    backgroundColor: "rgba(255, 255, 255, 0.68)",
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.9)",
+    borderColor: "rgba(255, 255, 255, 0.85)",
     flexDirection: "row",
     alignItems: "flex-start",
     marginBottom: Spacing.sm,
@@ -983,7 +1001,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 12,
-    elevation: 3,
+    elevation: 0,
   },
   docIconBox: {
     width: 42,
@@ -1080,12 +1098,12 @@ const styles = StyleSheet.create({
   },
   vitalTabBtn: {
     flex: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    backgroundColor: "rgba(255, 255, 255, 0.65)",
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: "rgba(255, 255, 255, 0.8)",
     alignItems: "center",
   },
   vitalTabBtnActive: {
@@ -1111,12 +1129,14 @@ const styles = StyleSheet.create({
     color: Colors.primaryDeep,
   },
   sparklineCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "rgba(255, 255, 255, 0.68)",
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.95)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.85)",
+    ...Shadows.subtle,
+    elevation: 0,
   },
   sparklineHeader: {
     flexDirection: "row",
@@ -1183,16 +1203,17 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
   },
   taskItemCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    backgroundColor: "rgba(255, 255, 255, 0.68)",
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.85)",
     ...Shadows.subtle,
+    elevation: 0,
   },
   taskItemCardCompleted: {
     backgroundColor: "rgba(240, 253, 250, 0.85)",

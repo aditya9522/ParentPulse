@@ -8,6 +8,7 @@ import {
   Platform,
   Animated,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -39,6 +40,7 @@ import { SyncCenterModal } from "./src/components/SyncCenterModal";
 import { BrandLaunchScreen } from "./src/components/BrandLaunchScreen";
 import { AppErrorBoundary } from "./src/components/AppErrorBoundary";
 import { EmptyCareHubScreen } from "./src/screens/EmptyCareHubScreen";
+import { QuickUtilitiesMenu } from "./src/components/QuickUtilitiesMenu";
 import * as SplashScreen from "expo-splash-screen";
 import { isExpoGo } from "./src/services/runtimeEnvironment";
 import { apiClient } from "./src/api/client";
@@ -73,6 +75,8 @@ const MainApp: React.FC = () => {
   const {
     seniorMode,
     language,
+    themeMode,
+    isDark,
     scannerModalVisible,
     setScannerModalVisible,
     scannerMode,
@@ -107,24 +111,30 @@ const MainApp: React.FC = () => {
     }).start();
   }, [dockEntrance]);
 
+  const appBgColor = isDark ? "#090D16" : themeMode === "amber" ? "#FDFBF7" : "#F8FAFC";
+
   if (!runtimeReady || (dataLoading && parentList.length === 0 && !dataError && activeScreen !== "onboarding")) {
-    return <View style={[styles.stateScreen, { paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xl }]}><StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" /><AmbientBackground /><View style={styles.stateCard}><ActivityIndicator size="large" color={Colors.primaryDark} /><Text style={styles.stateTitle}>Loading secure care data</Text><Text style={styles.stateCopy}>Connecting to ParentPulse and verifying your care circle.</Text></View></View>;
+    return <View style={[styles.stateScreen, { backgroundColor: appBgColor, paddingTop: insets.top + Spacing.xl, paddingBottom: insets.bottom + Spacing.xl }]}><StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor="transparent" translucent={Platform.OS === "android"} /><AmbientBackground /><View style={styles.stateCard}><ActivityIndicator size="large" color={Colors.primaryDark} /><Text style={styles.stateTitle}>Loading secure care data</Text><Text style={styles.stateCopy}>Connecting to ParentPulse and verifying your care circle.</Text></View></View>;
   }
 
   if (!isAuthenticated) {
-    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><View style={styles.stateIcon}><Ionicons name="shield-checkmark" size={31} color="#FFFFFF" /></View><Text style={styles.stateEyebrow}>PRIVATE FAMILY HEALTH</Text><Text style={styles.stateTitle}>Your real care data, securely connected</Text><Text style={styles.stateCopy}>Sign in to load your family profiles, medicines, records, appointments, tasks, and alerts from the production service.</Text><TouchableOpacity style={styles.stateAction} onPress={() => setAuthModalVisible(true)}><Text style={styles.stateActionText}>Sign in or create account</Text><Ionicons name="arrow-forward" size={18} color="#FFFFFF" /></TouchableOpacity></View><AuthModal /></View>;
+    return <View style={[styles.stateScreen, { backgroundColor: appBgColor }]}><StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor="transparent" translucent={Platform.OS === "android"} /><AmbientBackground /><View style={styles.stateCard}><View style={styles.stateIcon}><Ionicons name="shield-checkmark" size={31} color="#FFFFFF" /></View><Text style={styles.stateEyebrow}>PRIVATE FAMILY HEALTH</Text><Text style={styles.stateTitle}>Your real care data, securely connected</Text><Text style={styles.stateCopy}>Sign in to load your family profiles, medicines, records, appointments, tasks, and alerts from the production service.</Text><TouchableOpacity style={styles.stateAction} onPress={() => setAuthModalVisible(true)}><Text style={styles.stateActionText}>Sign in or create account</Text><Ionicons name="arrow-forward" size={18} color="#FFFFFF" /></TouchableOpacity></View><AuthModal /></View>;
   }
 
   if (dataError && parentList.length === 0) {
-    return <View style={styles.stateScreen}><AmbientBackground /><View style={styles.stateCard}><Ionicons name="cloud-offline-outline" size={34} color="#B45309" /><Text style={styles.stateTitle}>We couldn’t connect your care data</Text><Text style={styles.stateCopy}>{dataError}</Text><TouchableOpacity disabled={dataLoading} style={[styles.stateAction, dataLoading && styles.stateActionDisabled]} onPress={() => void refreshData()}>{dataLoading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.stateActionText}>Reconnect securely</Text><Ionicons name="refresh" size={18} color="#FFFFFF" /></>}</TouchableOpacity><TouchableOpacity style={styles.stateSecondaryAction} onPress={() => void apiClient.signOut()}><Text style={styles.stateSecondaryActionText}>Sign in with another account</Text></TouchableOpacity></View></View>;
+    return <View style={[styles.stateScreen, { backgroundColor: appBgColor }]}><StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor="transparent" translucent={Platform.OS === "android"} /><AmbientBackground /><View style={styles.stateCard}><Ionicons name="cloud-offline-outline" size={34} color="#B45309" /><Text style={styles.stateTitle}>We couldn’t connect your care data</Text><Text style={styles.stateCopy}>{dataError}</Text><TouchableOpacity disabled={dataLoading} style={[styles.stateAction, dataLoading && styles.stateActionDisabled]} onPress={() => void refreshData()}>{dataLoading ? <ActivityIndicator color="#FFFFFF" /> : <><Text style={styles.stateActionText}>Reconnect securely</Text><Ionicons name="refresh" size={18} color="#FFFFFF" /></>}</TouchableOpacity><TouchableOpacity style={styles.stateSecondaryAction} onPress={() => void apiClient.signOut()}><Text style={styles.stateSecondaryActionText}>Sign in with another account</Text></TouchableOpacity></View></View>;
   }
 
   const showOnboarding = activeScreen === "onboarding" || (!hasCompletedOnboarding && parentList.length === 0);
   const showEmptyCareHub = !showOnboarding && parentList.length === 0;
 
   return (
-    <View style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <View style={[styles.safeArea, { backgroundColor: appBgColor }]}>
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor="transparent"
+        translucent={Platform.OS === "android"}
+      />
 
       {/* Luminous Ambient Background for Glassmorphism */}
       <AmbientBackground />
@@ -224,6 +234,9 @@ const MainApp: React.FC = () => {
         </Animated.View>
       )}
 
+      {/* Quick Utilities Floating Menu (Bottom Right) */}
+      {!showOnboarding && !showEmptyCareHub && <QuickUtilitiesMenu />}
+
       {/* Global Interactive Feature Modals */}
       {!showOnboarding && !showEmptyCareHub && <><EmergencyCenterModal />
       <SecureDoctorShareModal />
@@ -253,7 +266,11 @@ const MainApp: React.FC = () => {
           });
         }}
         onScanQrCode={(code) => {
-          console.log("QR Code scanned:", code);
+          if (code.startsWith("http://") || code.startsWith("https://")) {
+            Linking.canOpenURL(code).then((supported) => {
+              if (supported) Linking.openURL(code);
+            });
+          }
         }}
       /></>}
     </View>
@@ -313,12 +330,11 @@ const styles = StyleSheet.create({
     elevation: 30,
   },
   bottomBarContainer: {
-    borderRadius: 24,
+    borderRadius: 26,
     paddingVertical: 6,
     paddingHorizontal: 6,
-    borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.9)",
     minHeight: 62,
+    backgroundColor: "transparent",
   },
   seniorBottomBarContainer: {
     paddingVertical: 10,

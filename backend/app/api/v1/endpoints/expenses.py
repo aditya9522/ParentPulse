@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db, get_parent_access_context
-from app.core.exceptions import AuthorizationError
+from app.core.exceptions import AuthorizationError, ResourceNotFoundError
 from app.core.permissions import verify_parent_access
 from app.helpers.response_builder import build_response
 from app.models.expense import HealthcareExpense, InsurancePolicy
@@ -94,3 +94,38 @@ async def create_insurance(
     session.add(item)
     await session.flush()
     return build_response(InsurancePolicyResponse.model_validate(item))
+
+
+@router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_expense(
+    expense_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    expense = (
+        await session.execute(select(HealthcareExpense).where(HealthcareExpense.id == expense_id))
+    ).scalar_one_or_none()
+    if not expense:
+        raise ResourceNotFoundError("HealthcareExpense", expense_id)
+    await verify_parent_access(session, current_user.id, expense.parent_id)
+    await session.delete(expense)
+    await session.flush()
+    return None
+
+
+@router.delete("/insurance/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_insurance(
+    policy_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    policy = (
+        await session.execute(select(InsurancePolicy).where(InsurancePolicy.id == policy_id))
+    ).scalar_one_or_none()
+    if not policy:
+        raise ResourceNotFoundError("InsurancePolicy", policy_id)
+    await verify_parent_access(session, current_user.id, policy.parent_id)
+    await session.delete(policy)
+    await session.flush()
+    return None
+

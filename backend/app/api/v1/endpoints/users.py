@@ -27,6 +27,11 @@ from app.services.account_control_service import (
     get_auth_methods,
 )
 
+import uuid
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from app.clients.supabase import get_supabase_client, upload_storage_object
+from app.core.config import get_settings
+
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
@@ -43,6 +48,37 @@ async def update_my_profile(
 ):
     repo = UserRepository(session)
     updated = await repo.update(current_user.id, **data.model_dump(exclude_unset=True))
+    return build_response(UserResponse.model_validate(updated))
+
+
+@router.post("/me/avatar", response_model=ApiResponse[UserResponse])
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    mime_type = (file.content_type or "").lower()
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Avatar must be a JPEG, PNG, or WebP image.")
+    content = await file.read(5 * 1024 * 1024 + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded avatar is empty.")
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Avatar exceeds the 5 MB limit.")
+
+    ext = "jpg" if "jpeg" in mime_type else "png" if "png" in mime_type else "webp"
+    path = f"{current_user.id}/avatar-{uuid.uuid4().hex[:8]}.{ext}"
+    try:
+        await upload_storage_object("avatars", path, content, mime_type)
+        settings = get_settings()
+        avatar_url = f"{settings.supabase_url}/storage/v1/object/public/avatars/{path}"
+    except Exception:
+        # Fallback to data URI if storage fails
+        import base64
+        avatar_url = f"data:{mime_type};base64,{base64.b64encode(content).decode('ascii')}"
+
+    repo = UserRepository(session)
+    updated = await repo.update(current_user.id, avatar_url=avatar_url)
     return build_response(UserResponse.model_validate(updated))
 
 

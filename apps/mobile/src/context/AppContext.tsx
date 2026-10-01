@@ -17,6 +17,7 @@ import {
   MedicineDoseLog,
   FamilyMemberItem,
   UserProfile,
+  PrimaryDoctor,
 } from "../types";
 import { apiClient } from "../api/client";
 import { syncCareReminders } from "../services/reminders";
@@ -31,6 +32,7 @@ import {
   subscribeToMutationQueue,
 } from "../services/mutationQueue";
 import { getNotifications } from "../services/notificationRuntime";
+import { AppThemeMode, applyTheme, currentThemeMode } from "../theme";
 
 export type SupportedLanguage =
   | "en"
@@ -141,6 +143,9 @@ interface AppContextType {
   toggleSeniorMode: () => void;
   language: SupportedLanguage;
   setLanguage: (lang: SupportedLanguage) => void;
+  themeMode: AppThemeMode;
+  setThemeMode: (mode: AppThemeMode) => void;
+  isDark: boolean;
 
   // Active Screen Routing ("tabs", "family", "profile", "expenses", "settings", "report", "onboarding")
   activeScreen: ActiveScreen;
@@ -191,6 +196,17 @@ interface AppContextType {
   userLocation: { latitude: number; longitude: number } | null;
   refreshLocation: () => Promise<void>;
 
+  deleteMeasurement: (id: string) => void;
+  deleteExpense: (id: string) => void;
+  deleteInsurance: (id: string) => void;
+  addDoctor: (doc: PrimaryDoctor) => void;
+  updateDoctor: (index: number, updated: PrimaryDoctor) => void;
+  deleteDoctor: (index: number) => void;
+  addTimelineEvent: (event: TimelineEvent) => void;
+  deleteTimelineEvent: (id: string) => void;
+  updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
+  updateUserAvatar: (uri: string, filename?: string, mimeType?: string) => Promise<void>;
+
   logNewMeasurement: (vitalType: any, val: number, valSec?: number, notes?: string) => void;
   recordNewVisit: (placeName: string, category: any, address: string) => void;
 
@@ -213,9 +229,21 @@ interface AppContextType {
   setReportModalVisible: (v: boolean) => void;
 }
 
+const mergeById = <T extends { id?: string }>(cached: T[] = [], incoming: T[] = []): T[] => {
+  const map = new Map<string, T>();
+  (cached || []).forEach((item) => {
+    if (item && item.id) map.set(item.id, item);
+  });
+  (incoming || []).forEach((item) => {
+    if (item && item.id) map.set(item.id, item);
+  });
+  return Array.from(map.values());
+};
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const APP_STATE_KEY = "parentpulse.app-state.v2";
+const DATA_STORE_KEY = "parentpulse.datastore.v2";
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [runtimeReady, setRuntimeReady] = useState(false);
@@ -224,6 +252,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeParentId, setActiveParentId] = useState<string>("");
   const [seniorMode, setSeniorMode] = useState<boolean>(false);
   const [language, setLanguage] = useState<SupportedLanguage>("en");
+  const [themeMode, setThemeModeState] = useState<AppThemeMode>(currentThemeMode);
+
+  const setThemeMode = useCallback((mode: AppThemeMode) => {
+    setThemeModeState(mode);
+    applyTheme(mode);
+    void AsyncStorage.setItem("@parentpulse_theme_mode", mode);
+  }, []);
   const [activeScreen, setActiveScreen] = useState<ActiveScreen>("tabs");
   const [hasCompletedOnboarding, setHasCompletedOnboardingState] = useState<boolean>(false);
   const [onboardingCompletionUserId, setOnboardingCompletionUserId] = useState<string | null>(null);
@@ -310,9 +345,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSyncBusy(true);
     try {
       const result = await drainMutationQueue(ownerUserId, (operation) => apiClient.executeQueuedMutation(operation));
-      // Reconcile both accepted and rejected optimistic updates with server truth.
-      if (result.succeeded > 0 || result.blocked > 0) await refreshDataRef.current();
-      if (result.blocked > 0) setSyncCenterVisible(true);
+      // Reconcile optimistic updates with server truth silently in background
+      if (result.succeeded > 0 || result.blocked > 0) await refreshDataRef.current({ silent: true });
     } finally {
       setSyncBusy(false);
     }
@@ -396,11 +430,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAuthVersion((value) => value + 1);
     });
     void (async () => {
-      const [storedState] = await Promise.all([
+      const [storedState, storedDataStore, storedTheme] = await Promise.all([
         AsyncStorage.getItem(APP_STATE_KEY),
+        AsyncStorage.getItem(DATA_STORE_KEY),
+        AsyncStorage.getItem("@parentpulse_theme_mode"),
         apiClient.restoreSession(),
       ]);
       if (!mounted) return;
+      if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "amber") {
+        setThemeModeState(storedTheme);
+        applyTheme(storedTheme);
+      }
+      if (storedDataStore) {
+        try {
+          const parsedDataStore = JSON.parse(storedDataStore);
+          if (parsedDataStore && typeof parsedDataStore === "object" && Object.keys(parsedDataStore).length > 0) {
+            setDataStore(parsedDataStore);
+            setHydratedParentIds(new Set(Object.keys(parsedDataStore)));
+            const firstId = Object.keys(parsedDataStore)[0];
+            if (firstId) setActiveParentId((curr) => curr || firstId);
+          }
+        } catch {
+          // ignore cache read error
+        }
+      }
       setDataLoading(apiClient.isAuthenticated());
       if (storedState) {
         try {
@@ -408,6 +461,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (parsed.activeParentId) setActiveParentId(parsed.activeParentId);
           if (parsed.language) setLanguage(parsed.language);
           if (typeof parsed.seniorMode === "boolean") setSeniorMode(parsed.seniorMode);
+          if (parsed.themeMode === "light" || parsed.themeMode === "dark" || parsed.themeMode === "amber") {
+            setThemeModeState(parsed.themeMode);
+            applyTheme(parsed.themeMode);
+          }
           if (typeof parsed.onboardingCompletionUserId === "string") {
             onboardingCompletionUserIdRef.current = parsed.onboardingCompletionUserId;
             setOnboardingCompletionUserId(parsed.onboardingCompletionUserId);
@@ -435,13 +492,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeParentId,
         language,
         seniorMode,
+        themeMode,
         onboardingCompletionUserId,
       }));
+      void AsyncStorage.setItem("@parentpulse_theme_mode", themeMode);
+      if (Object.keys(dataStore).length > 0) {
+        void AsyncStorage.setItem(DATA_STORE_KEY, JSON.stringify(dataStore));
+      }
     }, 250);
     return () => {
       if (persistTimer.current) clearTimeout(persistTimer.current);
     };
-  }, [runtimeReady, activeParentId, language, seniorMode, onboardingCompletionUserId]);
+  }, [runtimeReady, activeParentId, language, seniorMode, themeMode, onboardingCompletionUserId, dataStore]);
 
   const setHasCompletedOnboarding = useCallback((completed: boolean) => {
     const ownerUserId = completed ? apiClient.getAuthenticatedUserId() : null;
@@ -551,14 +613,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         can_share_doctor_brief: member.can_share_doctor_brief,
         can_view_location_history: member.can_view_location_history,
       })));
-      const initialStore = Object.fromEntries(
-        normalizedParents.map((parent) => [parent.id, emptyParentData(parent)]),
-      ) as Record<string, ParentData>;
-
       setCurrentUser({ ...profile, role: members.find((member) => member.user_id === profile.id)?.role || "family_member" });
       setFamilyMembers(members);
-      setDataStore(initialStore);
-      setActiveParentId((current) => initialStore[current] ? current : normalizedParents[0]?.id || "");
+      setActiveParentId((current) => current || normalizedParents[0]?.id || "");
       if (!options?.preserveScreen && activeScreenRef.current !== "onboarding") {
         onboardingCompletionUserIdRef.current = ownerUserId;
         setOnboardingCompletionUserId(ownerUserId);
@@ -603,16 +660,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return [];
         });
         const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs] = domainData;
-        const entry = [parent.id, { profile: normalizeParentProfile(parent), medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs }] as const;
+        const currentCached = dataStore[parent.id];
+        const mergedData: ParentData = {
+          profile: normalizeParentProfile(parent),
+          medicines: mergeById(currentCached?.medicines, medicines),
+          appointments: mergeById(currentCached?.appointments, appointments),
+          documents: mergeById(currentCached?.documents, documents),
+          timeline: mergeById(currentCached?.timeline, timeline),
+          measurements: mergeById(currentCached?.measurements, measurements),
+          visits: mergeById(currentCached?.visits, visits),
+          tasks: mergeById(currentCached?.tasks, tasks),
+          expenses: mergeById(currentCached?.expenses, expenses),
+          insurance: mergeById(currentCached?.insurance, insurance),
+          doseLogs: mergeById(currentCached?.doseLogs, doseLogs),
+        };
+        const entry = [parent.id, mergedData] as const;
         entries.push(entry);
         if (isCurrentRefresh()) {
-          setDataStore((current) => ({ ...current, [parent.id]: entry[1] }));
+          setDataStore((current) => ({ ...current, [parent.id]: mergedData }));
           setHydratedParentIds((current) => new Set(current).add(parent.id));
         }
       }
       if (!isCurrentRefresh()) return;
       const nextStore = Object.fromEntries(entries) as Record<string, ParentData>;
-      setDataStore(nextStore);
+      setDataStore((prev) => ({ ...prev, ...nextStore }));
       setHydratedParentIds(new Set(entries.map(([parentId]) => parentId)));
       const today = new Date().toDateString();
       setDosesTakenToday(Object.fromEntries(entries.flatMap(([, data]) => data.doseLogs
@@ -832,6 +903,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Family Members & Caregiver Management
   const logNewMeasurement = (vitalType: any, val: number, valSec?: number, notes?: string) => {
     const parentId = activeParentId;
+    const isoNow = new Date().toISOString();
     const newMeasurement: HealthMeasurement = {
       id: Crypto.randomUUID(),
       parent_id: parentId,
@@ -839,7 +911,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value_numeric: val,
       value_secondary: valSec,
       unit: vitalType === "blood_pressure" ? "mmHg" : vitalType === "blood_sugar" ? "mg/dL" : "bpm",
-      recorded_at: "Just now",
+      recorded_at: isoNow,
       notes,
     };
     updateParentData(parentId, (current) => ({ ...current, measurements: [newMeasurement, ...current.measurements] }));
@@ -850,6 +922,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value_numeric: val,
       value_secondary: valSec,
       unit: newMeasurement.unit,
+      recorded_at: isoNow,
       notes,
     }, {
       label: `Record ${vitalType.replace(/_/g, " ")}`,
@@ -918,6 +991,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return normalized;
   };
 
+  const deleteMeasurement = (id: string) => {
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      measurements: current.measurements.filter((m) => m.id !== id),
+    }));
+    void syncMutation(`/measurements/${id}`, "DELETE", undefined, {
+      label: "Delete health measurement",
+      resourceType: "measurement",
+      resourceId: id,
+      parentId,
+    });
+  };
+
+  const deleteExpense = (id: string) => {
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      expenses: current.expenses.filter((e) => e.id !== id),
+    }));
+    void syncMutation(`/expenses/${id}`, "DELETE", undefined, {
+      label: "Delete expense",
+      resourceType: "expense",
+      resourceId: id,
+      parentId,
+    });
+  };
+
+  const deleteInsurance = (id: string) => {
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      insurance: current.insurance.filter((p) => p.id !== id),
+    }));
+    void syncMutation(`/expenses/insurance/${id}`, "DELETE", undefined, {
+      label: "Delete insurance policy",
+      resourceType: "insurance",
+      resourceId: id,
+      parentId,
+    });
+  };
+
+  const addDoctor = (doc: PrimaryDoctor) => {
+    const parentId = activeParentId;
+    const parentData = dataStore[parentId];
+    if (!parentData) return;
+    const doctors = [...(parentData.profile.primary_doctors || []), doc];
+    updateActiveParentProfile({ primary_doctors: doctors });
+  };
+
+  const updateDoctor = (index: number, updated: PrimaryDoctor) => {
+    const parentId = activeParentId;
+    const parentData = dataStore[parentId];
+    if (!parentData) return;
+    const doctors = [...(parentData.profile.primary_doctors || [])];
+    if (index >= 0 && index < doctors.length) {
+      doctors[index] = updated;
+      updateActiveParentProfile({ primary_doctors: doctors });
+    }
+  };
+
+  const deleteDoctor = (index: number) => {
+    const parentId = activeParentId;
+    const parentData = dataStore[parentId];
+    if (!parentData) return;
+    const doctors = [...(parentData.profile.primary_doctors || [])];
+    if (index >= 0 && index < doctors.length) {
+      doctors.splice(index, 1);
+      updateActiveParentProfile({ primary_doctors: doctors });
+    }
+  };
+
+  const addTimelineEvent = (event: TimelineEvent) => {
+    const parentId = event.parent_id;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      timeline: [event, ...current.timeline],
+    }));
+    void syncMutation("/timeline", "POST", event, {
+      label: `Add timeline milestone: ${event.title}`,
+      resourceType: "timeline",
+      resourceId: event.id,
+      parentId,
+    });
+  };
+
+  const deleteTimelineEvent = (id: string) => {
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      timeline: current.timeline.filter((t) => t.id !== id),
+    }));
+    void syncMutation(`/timeline/${id}`, "DELETE", undefined, {
+      label: "Delete timeline milestone",
+      resourceType: "timeline",
+      resourceId: id,
+      parentId,
+    });
+  };
+
+  const updateUserProfile = async (data: Partial<UserProfile>) => {
+    const updated = await apiClient.updateUserProfile(data);
+    setCurrentUser((prev) => ({ ...prev, ...updated }));
+  };
+
+  const updateUserAvatar = async (uri: string, filename?: string, mimeType?: string) => {
+    const updated = await apiClient.uploadAvatar(uri, filename, mimeType);
+    setCurrentUser((prev) => ({ ...prev, ...updated }));
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -942,6 +1125,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleSeniorMode,
         language,
         setLanguage,
+        themeMode,
+        setThemeMode,
+        isDark: themeMode === "dark",
         activeScreen,
         setActiveScreen,
         hasCompletedOnboarding,
@@ -961,20 +1147,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addDocument,
         deleteDocument,
         timeline: currentData.timeline,
+        addTimelineEvent,
+        deleteTimelineEvent,
         measurements: currentData.measurements,
+        logNewMeasurement,
+        deleteMeasurement,
         visits: currentData.visits,
+        recordNewVisit,
         tasks: currentData.tasks,
         addTask,
         toggleTaskCompleted,
         deleteTask,
         expenses: currentData.expenses,
         addExpense,
+        deleteExpense,
         insurance: currentData.insurance,
         addInsurance,
+        deleteInsurance,
+        addDoctor,
+        updateDoctor,
+        deleteDoctor,
         familyMembers,
         currentUser,
-        logNewMeasurement,
-        recordNewVisit,
+        updateUserProfile,
+        updateUserAvatar,
         sosModalVisible,
         setSosModalVisible,
         doctorShareModalVisible,

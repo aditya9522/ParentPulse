@@ -54,7 +54,7 @@ async def upload_storage_object(bucket: str, path: str, content: bytes, mime_typ
         client.storage.from_(bucket).upload(
             path=path,
             file=content,
-            file_options={"content-type": mime_type, "upsert": "false"},
+            file_options={"content-type": mime_type, "upsert": "true"},
         )
 
     await asyncio.to_thread(upload)

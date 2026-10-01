@@ -14,6 +14,7 @@ import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";
 import { LinearGradient } from "expo-linear-gradient";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   Calendar,
   Clock,
@@ -40,10 +41,23 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
   const [doctorName, setDoctorName] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [hospitalName, setHospitalName] = useState("");
-  const [dateStr, setDateStr] = useState("");
-  const [timeStr, setTimeStr] = useState("");
+  const [dateStr, setDateStr] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 10));
+  const [timeStr, setTimeStr] = useState("10:30 AM");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [reason, setReason] = useState("");
   const [address, setAddress] = useState("");
+
+  const formatTime = (date: Date) => {
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutesStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+    const hoursStr = hours < 10 ? `0${hours}` : `${hours}`;
+    return `${hoursStr}:${minutesStr} ${ampm}`;
+  };
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -216,31 +230,56 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
             {/* Date & Time Row */}
             <View style={styles.twoColRow}>
               <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.label}>{isHindi ? "तारीख" : "Date (YYYY-MM-DD)"}</Text>
-                <View style={styles.inputBox}>
-                  <Calendar size={16} color={Colors.textMuted} />
-                  <TextInput
-                    style={styles.textInput}
-                    value={dateStr}
-                    onChangeText={setDateStr}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.textMuted}
+                <Text style={styles.label}>{isHindi ? "परामर्श तिथि" : "Consultation Date"}</Text>
+                <TouchableOpacity
+                  style={styles.pickerBox}
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <Calendar size={16} color={Colors.primary} />
+                  <Text style={styles.pickerBoxText}>{dateStr || "Select Date"}</Text>
+                </TouchableOpacity>
+
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={new Date(dateStr || Date.now())}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={(event, selectedDate) => {
+                      setShowDatePicker(false);
+                      if (selectedDate) {
+                        setDateStr(selectedDate.toISOString().slice(0, 10));
+                      }
+                    }}
                   />
-                </View>
+                )}
               </View>
 
               <View style={[styles.inputGroup, { flex: 1 }]}>
                 <Text style={styles.label}>{isHindi ? "समय" : "Time"}</Text>
-                <View style={styles.inputBox}>
-                  <Clock size={16} color={Colors.textMuted} />
-                  <TextInput
-                    style={styles.textInput}
-                    value={timeStr}
-                    onChangeText={setTimeStr}
-                    placeholder="10:30 AM"
-                    placeholderTextColor={Colors.textMuted}
+                <TouchableOpacity
+                  style={styles.pickerBox}
+                  onPress={() => setShowTimePicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <Clock size={16} color={Colors.secondary} />
+                  <Text style={styles.pickerBoxText}>{timeStr || "Select Time"}</Text>
+                </TouchableOpacity>
+
+                {showTimePicker && (
+                  <DateTimePicker
+                    value={new Date()}
+                    mode="time"
+                    is24Hour={false}
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={(event, selectedDate) => {
+                      setShowTimePicker(false);
+                      if (selectedDate) {
+                        setTimeStr(formatTime(selectedDate));
+                      }
+                    }}
                   />
-                </View>
+                )}
               </View>
             </View>
 
@@ -337,7 +376,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   formContent: {
-    paddingBottom: 20,
+    paddingBottom: 60,
     gap: 14,
   },
   inputGroup: {
@@ -347,6 +386,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: Typography.weights.bold,
     color: Colors.textSecondary,
+  },
+  pickerBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(248, 250, 252, 0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(226, 232, 240, 0.8)",
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    height: 46,
+    gap: 10,
+  },
+  pickerBoxText: {
+    fontSize: 14,
+    color: Colors.textPrimary,
+    fontWeight: Typography.weights.medium,
   },
   inputBox: {
     flexDirection: "row",

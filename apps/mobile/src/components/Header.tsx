@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Image, ScrollView } from "react-native";
+import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "../context/AppContext";
@@ -24,6 +25,8 @@ export const Header: React.FC = () => {
     syncBusy,
     setSyncCenterVisible,
   } = useApp();
+
+  const [parentCardExpanded, setParentCardExpanded] = useState(true);
 
   const isHindi = language === "hi";
 
@@ -60,38 +63,31 @@ export const Header: React.FC = () => {
 
         {/* Global Action Chips */}
         <View style={styles.actionsContainer}>
-          {/* Language Toggle (EN / HI) */}
+          {/* Expand / Collapse Second Top Parent Card Button (Left side of Profile Icon) */}
           <TouchableOpacity
-            style={styles.langBtn}
-            onPress={() => setLanguage(language === "en" ? "hi" : "en")}
-            accessibilityLabel="Switch Language"
+            style={styles.collapseToggleBtn}
+            onPress={() => {
+              if (Platform.OS !== "web") {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }
+              setParentCardExpanded((prev) => !prev);
+            }}
             activeOpacity={0.8}
-          >
-            <Text style={styles.langBtnText}>{language === "en" ? "हिन्दी" : "English"}</Text>
-          </TouchableOpacity>
-
-          {/* Senior Accessibility Mode Toggle */}
-          <TouchableOpacity
-            style={[styles.seniorToggle, seniorMode && styles.seniorToggleActive]}
-            onPress={toggleSeniorMode}
-            accessibilityLabel="Toggle Senior Friendly Accessibility Mode"
-            activeOpacity={0.8}
+            accessibilityLabel={parentCardExpanded ? "Collapse parent profile card" : "Expand parent profile card"}
           >
             <Ionicons
-              name={seniorMode ? "eye" : "eye-outline"}
-              size={15}
-              color={seniorMode ? Colors.primaryDeep : Colors.textMuted}
+              name={parentCardExpanded ? "chevron-up" : "chevron-down"}
+              size={16}
+              color={Colors.primaryDark}
             />
-            <Text style={[styles.seniorToggleText, seniorMode && styles.seniorToggleTextActive]}>
-              {seniorMode ? "Senior On" : "Senior"}
-            </Text>
           </TouchableOpacity>
 
-          {/* User Account / Auth Pill */}
+          {/* User Account / Auth Pill (Profile Icon) */}
           <TouchableOpacity
             style={styles.authPill}
             onPress={() => setAuthModalVisible(true)}
             activeOpacity={0.85}
+            accessibilityLabel="User Account Profile"
           >
             <Ionicons name="person-circle-outline" size={18} color={Colors.primaryDark} />
           </TouchableOpacity>
@@ -109,69 +105,71 @@ export const Header: React.FC = () => {
         </View>
       </View>
 
-      {/* Active Parent Profile Glass Ribbon (Tapping opens Health Profile) */}
-      <TouchableOpacity
-        style={[styles.parentRibbon, Glass.card]}
-        onPress={() => setActiveScreen("profile")}
-        activeOpacity={0.85}
-      >
-        <View style={styles.avatarWrapper}>
-          <Image
-            source={require("../../assets/parent_avatar.jpg")}
-            style={styles.parentAvatarImage}
-            resizeMode="cover"
-          />
-          <View style={styles.activeStatusDot} />
-        </View>
-
-        <View style={styles.parentTextInfo}>
-          <View style={styles.parentNameRow}>
-            <Text style={[styles.parentName, seniorMode && styles.seniorParentName]}>
-              {activeParent.full_name}
-            </Text>
-            <View style={styles.relationChip}>
-              <Text style={styles.relationChipText}>
-                {activeParent.gender === "male"
-                  ? (isHindi ? "पिताजी" : "Father")
-                  : (isHindi ? "माताजी" : "Mother")}
-              </Text>
-            </View>
+      {/* Active Parent Profile Glass Ribbon (Tapping opens Health Profile, Expand/Collapse Toggleable) */}
+      {parentCardExpanded && (
+        <TouchableOpacity
+          style={[styles.parentRibbon, Glass.card]}
+          onPress={() => setActiveScreen("profile")}
+          activeOpacity={0.85}
+        >
+          <View style={styles.avatarWrapper}>
+            <Image
+              source={require("../../assets/parent_avatar.jpg")}
+              style={styles.parentAvatarImage}
+              resizeMode="cover"
+            />
+            <View style={styles.activeStatusDot} />
           </View>
-          <Text style={styles.parentSubDetails}>
-            {isHindi ? "रक्त समूह" : "Blood Group"}: {activeParent.blood_group} • Gurugram, India
-          </Text>
-        </View>
 
-        {/* Quick Header Shortcuts (AI & QR & Report) */}
-        <View style={styles.headerShortcuts}>
-          <TouchableOpacity
-            style={styles.shortcutBtnReport}
-            onPress={() => setReportModalVisible(true)}
-            accessibilityLabel="Monthly Health Summary"
-            activeOpacity={0.8}
-          >
-            <Ionicons name="document-text" size={16} color="#0D9488" />
-          </TouchableOpacity>
+          <View style={styles.parentTextInfo}>
+            <View style={styles.parentNameRow}>
+              <Text style={[styles.parentName, seniorMode && styles.seniorParentName]}>
+                {activeParent.full_name}
+              </Text>
+              <View style={styles.relationChip}>
+                <Text style={styles.relationChipText}>
+                  {activeParent.gender === "male"
+                    ? (isHindi ? "पिताजी" : "Father")
+                    : (isHindi ? "माताजी" : "Mother")}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.parentSubDetails}>
+              {isHindi ? "रक्त समूह" : "Blood Group"}: {activeParent.blood_group} • Gurugram, India
+            </Text>
+          </View>
 
-          <TouchableOpacity
-            style={styles.shortcutBtnAi}
-            onPress={() => setAiAssistantModalVisible(true)}
-            accessibilityLabel="Ask AI Health Assistant"
-            activeOpacity={0.8}
-          >
-            <Ionicons name="sparkles" size={16} color="#7C3AED" />
-          </TouchableOpacity>
+          {/* Quick Header Shortcuts (AI & QR & Report) */}
+          <View style={styles.headerShortcuts}>
+            <TouchableOpacity
+              style={styles.shortcutBtnReport}
+              onPress={() => setReportModalVisible(true)}
+              accessibilityLabel="Monthly Health Summary"
+              activeOpacity={0.8}
+            >
+              <Ionicons name="document-text" size={16} color="#0D9488" />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.shortcutBtnQr}
-            onPress={() => setDoctorShareModalVisible(true)}
-            accessibilityLabel="Doctor Clinical Brief QR"
-            activeOpacity={0.8}
-          >
-            <Ionicons name="qr-code-outline" size={16} color={Colors.secondary} />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.shortcutBtnAi}
+              onPress={() => setAiAssistantModalVisible(true)}
+              accessibilityLabel="Ask AI Health Assistant"
+              activeOpacity={0.8}
+            >
+              <Ionicons name="sparkles" size={16} color="#7C3AED" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.shortcutBtnQr}
+              onPress={() => setDoctorShareModalVisible(true)}
+              accessibilityLabel="Doctor Clinical Brief QR"
+              activeOpacity={0.8}
+            >
+              <Ionicons name="qr-code-outline" size={16} color={Colors.secondary} />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Quick Navigation Drawer Strip */}
       <View style={styles.moduleStrip}>
@@ -348,6 +346,17 @@ const styles = StyleSheet.create({
   },
   seniorToggleTextActive: {
     color: Colors.primaryDeep,
+  },
+  collapseToggleBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 1)",
+    ...Shadows.subtle,
   },
   sosPill: {
     flexDirection: "row",

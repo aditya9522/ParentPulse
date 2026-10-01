@@ -262,6 +262,7 @@ export interface UserProfile {
   role: UserRole;
   phone_number?: string;
   preferred_language: string;
+  avatar_url?: string;
 }
 
 export interface MonthlyHealthSummary {

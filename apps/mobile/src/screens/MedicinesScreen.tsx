@@ -30,7 +30,7 @@ import { MedicineCard } from "../components/MedicineCard";
 import { AddMedicineModal } from "../components/AddMedicineModal";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { MedicineSchedule } from "../types";
-import { Colors, Spacing, Shadows, Gradients, Glass } from "../theme";
+import { Colors, Spacing, Shadows, Gradients, Glass, BorderRadius } from "../theme";
 
 type TimeSlot = "all" | "morning" | "afternoon" | "evening" | "night";
 
@@ -343,6 +343,30 @@ export const MedicinesScreen: React.FC = () => {
               );
             })
           )
+        ) : (activeTab === "today" ? filteredTodayMedicines : medicines).length === 0 ? (
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyIconCircle, { backgroundColor: Colors.primaryLight }]}>
+              <Pill size={34} color={Colors.primaryDark} />
+            </View>
+            <Text style={styles.emptyTitle}>
+              {isHindi
+                ? (activeTab === "today" ? "आज कोई दवा निर्धारित नहीं है" : "कोई दवा नहीं जोड़ी गई")
+                : (activeTab === "today" ? "No Doses Scheduled Today" : "No Medications Added Yet")}
+            </Text>
+            <Text style={styles.emptySub}>
+              {isHindi
+                ? "दैनिक खुराक ट्रैकिंग और समय पर रिमाइंडर्स के लिए नई दवा जोड़ें।"
+                : "Record daily prescriptions, dosage intervals, and refill reminders for your parents."}
+            </Text>
+            <TouchableOpacity
+              style={styles.addMedEmptyBtn}
+              onPress={() => setAddMedicineModalVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Plus size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.addMedEmptyBtnText}>{isHindi ? "दवा जोड़ें" : "Add Medicine"}</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           (activeTab === "today" ? filteredTodayMedicines : medicines).map((med) => (
             <MedicineCard
@@ -663,7 +687,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
     textAlign: "center",
-    maxWidth: 260,
+    maxWidth: 280,
+    lineHeight: 18,
+  },
+  addMedEmptyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.full,
+    marginTop: 16,
+    ...Shadows.glowTeal,
+  },
+  addMedEmptyBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
   adherenceCard: {
     marginTop: Spacing.sm,

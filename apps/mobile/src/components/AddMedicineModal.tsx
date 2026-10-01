@@ -14,8 +14,9 @@ import { AppAlert as Alert } from "../services/appAlert";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";
-import { Pill, X, Plus } from "lucide-react-native";
+import { Pill, X, Plus, Clock } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApp } from "../context/AppContext";
 import { MedicineSchedule } from "../types";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
@@ -32,8 +33,10 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
   const [name, setName] = useState("");
   const [dosage, setDosage] = useState("");
   const [form, setForm] = useState("");
-  const [scheduleTime1, setScheduleTime1] = useState("");
-  const [scheduleTime2, setScheduleTime2] = useState("");
+  const [scheduleTime1, setScheduleTime1] = useState("08:30 AM");
+  const [scheduleTime2, setScheduleTime2] = useState("08:30 PM");
+  const [showPicker1, setShowPicker1] = useState(false);
+  const [showPicker2, setShowPicker2] = useState(false);
   const [instructions, setInstructions] = useState<MedicineSchedule["instructions"]>("after_food");
   const [prescribingDoctor, setPrescribingDoctor] = useState(
     activeParent.primary_doctors[0]?.name || ""
@@ -41,6 +44,17 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
   const [reason, setReason] = useState("");
   const [inventory, setInventory] = useState("");
   const [refillThreshold, setRefillThreshold] = useState("");
+
+  const formatTime = (date: Date) => {
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minutesStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+    const hoursStr = hours < 10 ? `0${hours}` : `${hours}`;
+    return `${hoursStr}:${minutesStr} ${ampm}`;
+  };
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -211,26 +225,61 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
 
             {/* Schedule Times */}
             <Text style={styles.fieldLabel}>
-              {isHindi ? "दवा का समय" : "Schedule Times"}
+              {isHindi ? "दवा का समय (टाइम पिकर से चुनें)" : "Schedule Times (Pick Exact Times)"}
             </Text>
             <View style={styles.twoColRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.inputHint}>{isHindi ? "सुबह / पहली खुराक" : "Morning / 1st Dose"}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={scheduleTime1}
-                  onChangeText={setScheduleTime1}
-                  placeholder="08:30 AM"
-                />
+                <TouchableOpacity
+                  style={styles.timePickerBtn}
+                  onPress={() => setShowPicker1(true)}
+                  activeOpacity={0.8}
+                >
+                  <Clock size={16} color={Colors.primary} />
+                  <Text style={styles.timePickerBtnText}>{scheduleTime1 || "Select Time"}</Text>
+                </TouchableOpacity>
+
+                {showPicker1 && (
+                  <DateTimePicker
+                    value={new Date()}
+                    mode="time"
+                    is24Hour={false}
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={(event, selectedDate) => {
+                      setShowPicker1(false);
+                      if (selectedDate) {
+                        setScheduleTime1(formatTime(selectedDate));
+                      }
+                    }}
+                  />
+                )}
               </View>
+
               <View style={{ flex: 1 }}>
                 <Text style={styles.inputHint}>{isHindi ? "रात / दूसरी खुराक" : "Night / 2nd Dose"}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={scheduleTime2}
-                  onChangeText={setScheduleTime2}
-                  placeholder="08:30 PM"
-                />
+                <TouchableOpacity
+                  style={styles.timePickerBtn}
+                  onPress={() => setShowPicker2(true)}
+                  activeOpacity={0.8}
+                >
+                  <Clock size={16} color={Colors.secondary} />
+                  <Text style={styles.timePickerBtnText}>{scheduleTime2 || "Select Time"}</Text>
+                </TouchableOpacity>
+
+                {showPicker2 && (
+                  <DateTimePicker
+                    value={new Date()}
+                    mode="time"
+                    is24Hour={false}
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={(event, selectedDate) => {
+                      setShowPicker2(false);
+                      if (selectedDate) {
+                        setScheduleTime2(formatTime(selectedDate));
+                      }
+                    }}
+                  />
+                )}
               </View>
             </View>
 
@@ -264,6 +313,8 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
                 <TextInput
                   style={styles.input}
                   keyboardType="numeric"
+                  placeholder="30"
+                  placeholderTextColor={Colors.textMuted}
                   value={inventory}
                   onChangeText={setInventory}
                 />
@@ -273,6 +324,8 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
                 <TextInput
                   style={styles.input}
                   keyboardType="numeric"
+                  placeholder="5"
+                  placeholderTextColor={Colors.textMuted}
                   value={refillThreshold}
                   onChangeText={setRefillThreshold}
                 />
@@ -347,7 +400,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scrollBody: {
-    paddingBottom: Spacing.xl,
+    paddingBottom: 70,
   },
   fieldLabel: {
     fontSize: 12,
@@ -423,5 +476,21 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: Typography.weights.bold,
+  },
+  timePickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(248, 250, 252, 0.9)",
+    borderWidth: 1.2,
+    borderColor: "rgba(226, 232, 240, 0.9)",
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  timePickerBtnText: {
+    fontSize: 14,
+    color: Colors.textPrimary,
+    fontWeight: Typography.weights.medium,
   },
 });

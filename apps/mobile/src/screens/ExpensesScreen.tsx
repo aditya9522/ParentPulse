@@ -23,10 +23,13 @@ import {
   X,
   Phone,
   TrendingUp,
+  Trash2,
+  Calendar as CalendarIcon,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApp } from "../context/AppContext";
 import { HealthcareExpense, InsurancePolicy } from "../types";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass } from "../theme";
@@ -37,8 +40,10 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
     activeParent,
     expenses,
     addExpense,
+    deleteExpense,
     insurance,
     addInsurance,
+    deleteInsurance,
     seniorMode,
     language,
   } = useApp();
@@ -65,6 +70,47 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
   const [insCoverage, setInsCoverage] = useState("1500000");
   const [insExpiry, setInsExpiry] = useState("2027-03-31");
   const [insTpa, setInsTpa] = useState("1800-425-2255");
+  const [showExpiryPicker, setShowExpiryPicker] = useState(false);
+
+  const handleDeleteExpense = (id: string, title: string) => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      isHindi ? "खर्च हटाएं?" : "Delete Expense Record?",
+      isHindi
+        ? `क्या आप निश्चित हैं कि आप "${title}" को हटाना चाहते हैं?`
+        : `Are you sure you want to delete "${title}"? This cannot be undone.`,
+      [
+        { text: isHindi ? "रद्द करें" : "Cancel", style: "cancel" },
+        {
+          text: isHindi ? "हटाएं" : "Delete",
+          style: "destructive",
+          onPress: () => {
+            deleteExpense(id);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteInsurance = (id: string, name: string) => {
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      isHindi ? "पॉलिसी हटाएं?" : "Delete Health Policy?",
+      isHindi
+        ? `क्या आप निश्चित हैं कि आप "${name}" को हटाना चाहते हैं?`
+        : `Are you sure you want to remove "${name}" from active policies?`,
+      [
+        { text: isHindi ? "रद्द करें" : "Cancel", style: "cancel" },
+        {
+          text: isHindi ? "हटाएं" : "Delete",
+          style: "destructive",
+          onPress: () => {
+            deleteInsurance(id);
+          },
+        },
+      ]
+    );
+  };
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -298,40 +344,77 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
             </View>
 
             {/* Expenses List */}
-            {filteredExpenses.map((exp) => (
-              <View key={exp.id} style={[styles.expenseCard, Shadows.card]}>
-                <View style={styles.expenseIconBox}>
-                  {getCategoryIcon(exp.category)}
+            {filteredExpenses.length === 0 ? (
+              <View style={styles.emptyStateBox}>
+                <View style={styles.emptyStateIconCircle}>
+                  <Receipt size={36} color={Colors.primary} />
                 </View>
-
-                <View style={styles.expenseInfo}>
-                  <View style={styles.expenseTitleRow}>
-                    <Text style={styles.expenseTitle} numberOfLines={1}>{exp.title}</Text>
-                    <Text style={styles.expenseAmount}>₹{exp.amount.toLocaleString("en-IN")}</Text>
+                <Text style={styles.emptyStateTitle}>
+                  {isHindi ? "कोई मेडिकल खर्च नहीं मिला" : "No Medical Expenses Logged"}
+                </Text>
+                <Text style={styles.emptyStateSub}>
+                  {isHindi
+                    ? "डॉक्टर परामर्श, दवाओं और लैब टेस्ट के बिल व रसीदें यहाँ दर्ज करें।"
+                    : "Log doctor consultations, prescription receipts, and lab invoices to track health spending."}
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyActionBtn}
+                  onPress={() => {
+                    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+                    setAddExpenseModalVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Plus size={16} color="#FFFFFF" />
+                  <Text style={styles.emptyActionBtnText}>{isHindi ? "पहला बिल जोड़ें" : "Add First Bill"}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              filteredExpenses.map((exp) => (
+                <View key={exp.id} style={[styles.expenseCard, Shadows.card]}>
+                  <View style={styles.expenseIconBox}>
+                    {getCategoryIcon(exp.category)}
                   </View>
 
-                  <Text style={styles.expenseProvider}>
-                    {exp.provider_name ? `${exp.provider_name} • ` : ""}{exp.expense_date}
-                  </Text>
+                  <View style={styles.expenseInfo}>
+                    <View style={styles.expenseTitleRow}>
+                      <Text style={styles.expenseTitle} numberOfLines={1}>{exp.title}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Text style={styles.expenseAmount}>₹{exp.amount.toLocaleString("en-IN")}</Text>
+                        <TouchableOpacity
+                          style={styles.cardDeleteBtn}
+                          onPress={() => handleDeleteExpense(exp.id, exp.title)}
+                          activeOpacity={0.7}
+                          accessibilityLabel="Delete Expense"
+                        >
+                          <Trash2 size={13} color={Colors.emergencyDark} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
 
-                  {exp.notes && (
-                    <Text style={styles.expenseNotes} numberOfLines={2}>
-                      {exp.notes}
+                    <Text style={styles.expenseProvider}>
+                      {exp.provider_name ? `${exp.provider_name} • ` : ""}{exp.expense_date}
                     </Text>
-                  )}
 
-                  <View style={styles.expenseBottomRow}>
-                    <View style={[styles.reimbursedPill, exp.is_reimbursed && styles.reimbursedPillDone]}>
-                      <Text style={[styles.reimbursedPillText, exp.is_reimbursed && styles.reimbursedPillTextDone]}>
-                        {exp.is_reimbursed
-                          ? (isHindi ? "✓ बीमा द्वारा प्रतिपूर्ति" : "✓ Insurance Reimbursed")
-                          : (isHindi ? "लंबित प्रतिपूर्ति" : "Out of Pocket")}
+                    {exp.notes && (
+                      <Text style={styles.expenseNotes} numberOfLines={2}>
+                        {exp.notes}
                       </Text>
+                    )}
+
+                    <View style={styles.expenseBottomRow}>
+                      <View style={[styles.reimbursedPill, exp.is_reimbursed && styles.reimbursedPillDone]}>
+                        <Text style={[styles.reimbursedPillText, exp.is_reimbursed && styles.reimbursedPillTextDone]}>
+                          {exp.is_reimbursed
+                            ? (isHindi ? "✓ बीमा द्वारा प्रतिपूर्ति" : "✓ Insurance Reimbursed")
+                            : (isHindi ? "लंबित प्रतिपूर्ति" : "Out of Pocket")}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
-            ))}
+              ))
+            )}
           </>
         ) : (
           <>
@@ -355,59 +438,96 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               </TouchableOpacity>
             </View>
 
-            {insurance.map((policy) => (
-              <View key={policy.id} style={[styles.insuranceCard, Shadows.card]}>
-                <LinearGradient colors={["#0F766E", "#0369A1"]} style={styles.insCardHeader}>
-                  <View style={styles.insCardHeaderTop}>
-                    <Shield size={20} color="#FFFFFF" />
-                    <View style={styles.activePill}>
-                      <Text style={styles.activePillText}>ACTIVE</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.insProviderName}>{policy.provider}</Text>
-                  <Text style={styles.insPlanName}>{policy.plan_name}</Text>
-                </LinearGradient>
-
-                <View style={styles.insCardBody}>
-                  <View style={styles.insGrid}>
-                    <View style={styles.insGridItem}>
-                      <Text style={styles.insGridLabel}>{isHindi ? "पॉलिसी नंबर" : "Policy Number"}</Text>
-                      <Text style={styles.insGridValue}>{policy.policy_number}</Text>
-                    </View>
-
-                    <View style={styles.insGridItem}>
-                      <Text style={styles.insGridLabel}>{isHindi ? "बीमित राशि" : "Sum Insured"}</Text>
-                      <Text style={styles.insGridValue}>₹{(policy.coverage_amount / 100000).toFixed(1)} Lakhs</Text>
-                    </View>
-
-                    <View style={styles.insGridItem}>
-                      <Text style={styles.insGridLabel}>{isHindi ? "नवीनीकरण तिथि" : "Expiry / Renewal"}</Text>
-                      <Text style={styles.insGridValue}>{policy.expiry_date}</Text>
-                    </View>
-
-                    <View style={styles.insGridItem}>
-                      <Text style={styles.insGridLabel}>{isHindi ? "TPA कैशलेस हेल्प" : "TPA Helpline"}</Text>
-                      <Text style={styles.insGridValue}>{policy.tpa_cashless_helpline || "1800-425-2255"}</Text>
-                    </View>
-                  </View>
-
-                  {policy.notes && (
-                    <Text style={styles.insNotes}>
-                      <Text style={{ fontWeight: "700" }}>Note: </Text>{policy.notes}
-                    </Text>
-                  )}
-
-                  <TouchableOpacity
-                    style={styles.tpaCallBtn}
-                    onPress={() => Linking.openURL(`tel:${(policy.tpa_cashless_helpline || "1800-425-2255").replace(/[^0-9]/g, "")}`)}
-                    activeOpacity={0.8}
-                  >
-                    <Phone size={14} color="#FFFFFF" />
-                    <Text style={styles.tpaCallBtnText}>{isHindi ? "TPA कैशलेस डेस्क को कॉल करें" : "Call TPA Cashless Desk"}</Text>
-                  </TouchableOpacity>
+            {insurance.length === 0 ? (
+              <View style={styles.emptyStateBox}>
+                <View style={styles.emptyStateIconCircle}>
+                  <Shield size={36} color={Colors.secondary} />
                 </View>
+                <Text style={styles.emptyStateTitle}>
+                  {isHindi ? "कोई सक्रिय बीमा पॉलिसी नहीं" : "No Health Insurance Policies"}
+                </Text>
+                <Text style={styles.emptyStateSub}>
+                  {isHindi
+                    ? "कैशलेस अस्पताल प्रवेश और दावा सहायता के लिए पॉलिसी नंबर और TPA हेल्पलाईन दर्ज करें।"
+                    : "Record policy numbers, sum insured, and cashless TPA helplines for instant hospital admission."}
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyActionBtn}
+                  onPress={() => {
+                    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+                    setAddInsModalVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Plus size={16} color="#FFFFFF" />
+                  <Text style={styles.emptyActionBtnText}>{isHindi ? "पॉलिसी जोड़ें" : "Add Health Policy"}</Text>
+                </TouchableOpacity>
               </View>
-            ))}
+            ) : (
+              insurance.map((policy) => (
+                <View key={policy.id} style={[styles.insuranceCard, Shadows.card]}>
+                  <LinearGradient colors={["#0F766E", "#0369A1"]} style={styles.insCardHeader}>
+                    <View style={styles.insCardHeaderTop}>
+                      <Shield size={20} color="#FFFFFF" />
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={styles.activePill}>
+                          <Text style={styles.activePillText}>ACTIVE</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.insDeleteBtn}
+                          onPress={() => handleDeleteInsurance(policy.id, `${policy.provider} - ${policy.plan_name}`)}
+                          activeOpacity={0.7}
+                          accessibilityLabel="Delete Insurance Policy"
+                        >
+                          <Trash2 size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <Text style={styles.insProviderName}>{policy.provider}</Text>
+                    <Text style={styles.insPlanName}>{policy.plan_name}</Text>
+                  </LinearGradient>
+
+                  <View style={styles.insCardBody}>
+                    <View style={styles.insGrid}>
+                      <View style={styles.insGridItem}>
+                        <Text style={styles.insGridLabel}>{isHindi ? "पॉलिसी नंबर" : "Policy Number"}</Text>
+                        <Text style={styles.insGridValue}>{policy.policy_number}</Text>
+                      </View>
+
+                      <View style={styles.insGridItem}>
+                        <Text style={styles.insGridLabel}>{isHindi ? "बीमित राशि" : "Sum Insured"}</Text>
+                        <Text style={styles.insGridValue}>₹{(policy.coverage_amount / 100000).toFixed(1)} Lakhs</Text>
+                      </View>
+
+                      <View style={styles.insGridItem}>
+                        <Text style={styles.insGridLabel}>{isHindi ? "नवीनीकरण तिथि" : "Expiry / Renewal"}</Text>
+                        <Text style={styles.insGridValue}>{policy.expiry_date}</Text>
+                      </View>
+
+                      <View style={styles.insGridItem}>
+                        <Text style={styles.insGridLabel}>{isHindi ? "TPA कैशलेस हेल्प" : "TPA Helpline"}</Text>
+                        <Text style={styles.insGridValue}>{policy.tpa_cashless_helpline || "1800-425-2255"}</Text>
+                      </View>
+                    </View>
+
+                    {policy.notes && (
+                      <Text style={styles.insNotes}>
+                        <Text style={{ fontWeight: "700" }}>Note: </Text>{policy.notes}
+                      </Text>
+                    )}
+
+                    <TouchableOpacity
+                      style={styles.tpaCallBtn}
+                      onPress={() => Linking.openURL(`tel:${(policy.tpa_cashless_helpline || "1800-425-2255").replace(/[^0-9]/g, "")}`)}
+                      activeOpacity={0.8}
+                    >
+                      <Phone size={14} color="#FFFFFF" />
+                      <Text style={styles.tpaCallBtnText}>{isHindi ? "TPA कैशलेस डेस्क को कॉल करें" : "Call TPA Cashless Desk"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
           </>
         )}
       </ScrollView>
@@ -419,81 +539,92 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         maxHeight="90%"
         containerStyle={styles.modalCard}
       >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{isHindi ? "नया मेडिकल खर्च दर्ज करें" : "Log Medical Expense"}</Text>
-              <TouchableOpacity onPress={() => setAddExpenseModalVisible(false)}>
-                <X size={20} color={Colors.textMuted} />
-              </TouchableOpacity>
+        <View style={styles.sheetInnerPadding}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{isHindi ? "नया मेडिकल खर्च दर्ज करें" : "Log Medical Expense"}</Text>
+            <TouchableOpacity onPress={() => setAddExpenseModalVisible(false)}>
+              <X size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 60 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          >
+            <Text style={styles.inputLabel}>{isHindi ? "खर्च शीर्षक *" : "Title *"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g. Dr. Verma Cardiology Consultation"
+              placeholderTextColor="#94A3B8"
+              value={expTitle}
+              onChangeText={setExpTitle}
+            />
+
+            <Text style={styles.inputLabel}>{isHindi ? "राशि (₹) *" : "Amount (INR) *"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="1500"
+              placeholderTextColor="#94A3B8"
+              value={expAmount}
+              onChangeText={setExpAmount}
+              keyboardType="numeric"
+            />
+
+            <Text style={styles.inputLabel}>{isHindi ? "श्रेणी" : "Category"}</Text>
+            <View style={styles.categorySelectorRow}>
+              {(["medicine", "doctor", "lab", "hospital"] as const).map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.catBtn, expCategory === cat && styles.catBtnActive]}
+                  onPress={() => setExpCategory(cat)}
+                >
+                  <Text style={[styles.catBtnText, expCategory === cat && styles.catBtnTextActive]}>
+                    {cat.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
-              <Text style={styles.inputLabel}>{isHindi ? "खर्च शीर्षक *" : "Title *"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g. Dr. Verma Cardiology Consultation"
-                value={expTitle}
-                onChangeText={setExpTitle}
-              />
+            <Text style={styles.inputLabel}>{isHindi ? "अस्पताल / दुकान का नाम" : "Provider / Pharmacy Name"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Provider or pharmacy name"
+              placeholderTextColor="#94A3B8"
+              value={expProvider}
+              onChangeText={setExpProvider}
+            />
 
-              <Text style={styles.inputLabel}>{isHindi ? "राशि (₹) *" : "Amount (INR) *"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="1500"
-                value={expAmount}
-                onChangeText={setExpAmount}
-                keyboardType="numeric"
-              />
+            <Text style={styles.inputLabel}>{isHindi ? "विवरण" : "Notes"}</Text>
+            <TextInput
+              style={[styles.textInput, { height: 60 }]}
+              placeholder="Optional notes..."
+              placeholderTextColor="#94A3B8"
+              value={expNotes}
+              onChangeText={setExpNotes}
+              multiline
+            />
 
-              <Text style={styles.inputLabel}>{isHindi ? "श्रेणी" : "Category"}</Text>
-              <View style={styles.categorySelectorRow}>
-                {(["medicine", "doctor", "lab", "hospital"] as const).map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.catBtn, expCategory === cat && styles.catBtnActive]}
-                    onPress={() => setExpCategory(cat)}
-                  >
-                    <Text style={[styles.catBtnText, expCategory === cat && styles.catBtnTextActive]}>
-                      {cat.toUpperCase()}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={() => setExpReimbursed(!expReimbursed)}
+            >
+              <View style={[styles.checkboxBox, expReimbursed && styles.checkboxBoxChecked]}>
+                {expReimbursed && <CheckCircle2 size={14} color="#FFFFFF" />}
               </View>
+              <Text style={styles.checkboxLabel}>
+                {isHindi ? "बीमा द्वारा दावा/प्रतिपूर्ति प्राप्त" : "Claimed / Reimbursed by Insurance"}
+              </Text>
+            </TouchableOpacity>
 
-              <Text style={styles.inputLabel}>{isHindi ? "अस्पताल / दुकान का नाम" : "Provider / Pharmacy Name"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Provider or pharmacy name"
-                value={expProvider}
-                onChangeText={setExpProvider}
-              />
-
-              <Text style={styles.inputLabel}>{isHindi ? "विवरण" : "Notes"}</Text>
-              <TextInput
-                style={[styles.textInput, { height: 60 }]}
-                placeholder="Optional notes..."
-                value={expNotes}
-                onChangeText={setExpNotes}
-                multiline
-              />
-
-              <TouchableOpacity
-                style={styles.checkboxRow}
-                onPress={() => setExpReimbursed(!expReimbursed)}
-              >
-                <View style={[styles.checkboxBox, expReimbursed && styles.checkboxBoxChecked]}>
-                  {expReimbursed && <CheckCircle2 size={14} color="#FFFFFF" />}
-                </View>
-                <Text style={styles.checkboxLabel}>
-                  {isHindi ? "बीमा द्वारा दावा/प्रतिपूर्ति प्राप्त" : "Claimed / Reimbursed by Insurance"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleCreateExpense} activeOpacity={0.8}>
-                <LinearGradient colors={Gradients.primary} style={styles.submitGradient}>
-                  <Text style={styles.submitText}>{isHindi ? "खर्च सहेजें" : "Save Expense"}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </ScrollView>
+            <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleCreateExpense} activeOpacity={0.8}>
+              <LinearGradient colors={Gradients.primary} style={styles.submitGradient}>
+                <Text style={styles.submitText}>{isHindi ? "खर्च सहेजें" : "Save Expense"}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
       </SwipeableBottomSheet>
 
       {/* Add Insurance Modal */}
@@ -503,70 +634,98 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         maxHeight="90%"
         containerStyle={styles.modalCard}
       >
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{isHindi ? "नई बीमा पॉलिसी जोड़ें" : "Add Health Insurance Policy"}</Text>
-              <TouchableOpacity onPress={() => setAddInsModalVisible(false)}>
-                <X size={20} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
+        <View style={styles.sheetInnerPadding}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{isHindi ? "नई बीमा पॉलिसी जोड़ें" : "Add Health Insurance Policy"}</Text>
+            <TouchableOpacity onPress={() => setAddInsModalVisible(false)}>
+              <X size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}>
-              <Text style={styles.inputLabel}>{isHindi ? "बीमा कंपनी *" : "Insurance Provider *"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g. Star Health / Max Bupa / Care Health"
-                value={insProvider}
-                onChangeText={setInsProvider}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 60 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          >
+            <Text style={styles.inputLabel}>{isHindi ? "बीमा कंपनी *" : "Insurance Provider *"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g. Star Health / Max Bupa / Care Health"
+              placeholderTextColor="#94A3B8"
+              value={insProvider}
+              onChangeText={setInsProvider}
+            />
+
+            <Text style={styles.inputLabel}>{isHindi ? "पॉलिसी नंबर *" : "Policy Number *"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g. SH-SENIOR-98214"
+              placeholderTextColor="#94A3B8"
+              value={insPolicyNum}
+              onChangeText={setInsPolicyNum}
+            />
+
+            <Text style={styles.inputLabel}>{isHindi ? "योजना का नाम" : "Plan Name"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g. Senior Citizen Red Carpet"
+              placeholderTextColor="#94A3B8"
+              value={insPlanName}
+              onChangeText={setInsPlanName}
+            />
+
+            <Text style={styles.inputLabel}>{isHindi ? "बीमित राशि (₹)" : "Sum Insured (INR)"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="1500000"
+              placeholderTextColor="#94A3B8"
+              value={insCoverage}
+              onChangeText={setInsCoverage}
+              keyboardType="numeric"
+            />
+
+            <Text style={styles.inputLabel}>{isHindi ? "समाप्ति / नवीनीकरण तिथि" : "Expiry / Renewal Date"}</Text>
+            <TouchableOpacity
+              style={styles.datePickerBtn}
+              onPress={() => setShowExpiryPicker(true)}
+              activeOpacity={0.8}
+            >
+              <CalendarIcon size={16} color={Colors.primary} />
+              <Text style={styles.datePickerBtnText}>{insExpiry || "Select Date"}</Text>
+            </TouchableOpacity>
+
+            {showExpiryPicker && (
+              <DateTimePicker
+                value={new Date(insExpiry || Date.now())}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event, selectedDate) => {
+                  setShowExpiryPicker(false);
+                  if (selectedDate) {
+                    setInsExpiry(selectedDate.toISOString().slice(0, 10));
+                  }
+                }}
               />
+            )}
 
-              <Text style={styles.inputLabel}>{isHindi ? "पॉलिसी नंबर *" : "Policy Number *"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g. SH-SENIOR-98214"
-                value={insPolicyNum}
-                onChangeText={setInsPolicyNum}
-              />
+            <Text style={styles.inputLabel}>{isHindi ? "TPA कैशलेस हेल्पलाइन" : "TPA Helpline Number"}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="1800-425-2255"
+              placeholderTextColor="#94A3B8"
+              value={insTpa}
+              onChangeText={setInsTpa}
+              keyboardType="phone-pad"
+            />
 
-              <Text style={styles.inputLabel}>{isHindi ? "योजना का नाम" : "Plan Name"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g. Senior Citizen Red Carpet"
-                value={insPlanName}
-                onChangeText={setInsPlanName}
-              />
-
-              <Text style={styles.inputLabel}>{isHindi ? "बीमित राशि (₹)" : "Sum Insured (INR)"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="1500000"
-                value={insCoverage}
-                onChangeText={setInsCoverage}
-                keyboardType="numeric"
-              />
-
-              <Text style={styles.inputLabel}>{isHindi ? "समाप्ति / नवीनीकरण तिथि" : "Expiry Date (YYYY-MM-DD)"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="2027-03-31"
-                value={insExpiry}
-                onChangeText={setInsExpiry}
-              />
-
-              <Text style={styles.inputLabel}>{isHindi ? "TPA कैशलेस हेल्पलाइन" : "TPA Helpline Number"}</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="1800-425-2255"
-                value={insTpa}
-                onChangeText={setInsTpa}
-                keyboardType="phone-pad"
-              />
-
-              <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleCreateInsurance} activeOpacity={0.8}>
-                <LinearGradient colors={Gradients.primary} style={styles.submitGradient}>
-                  <Text style={styles.submitText}>{isHindi ? "पॉलिसी सहेजें" : "Save Insurance Policy"}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </ScrollView>
+            <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleCreateInsurance} activeOpacity={0.8}>
+              <LinearGradient colors={Gradients.primary} style={styles.submitGradient}>
+                <Text style={styles.submitText}>{isHindi ? "पॉलिसी सहेजें" : "Save Insurance Policy"}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
       </SwipeableBottomSheet>
     </View>
   );
@@ -1025,5 +1184,89 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: Typography.sizes.sm,
     fontWeight: Typography.weights.bold,
+  },
+  sheetInnerPadding: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
+  },
+  cardDeleteBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.emergencyLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  insDeleteBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyStateBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: "#FFFFFF",
+    borderRadius: BorderRadius.xl,
+    marginVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyStateIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  emptyStateTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  emptyStateSub: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
+    marginBottom: 18,
+  },
+  emptyActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.full,
+  },
+  emptyActionBtnText: {
+    color: "#FFFFFF",
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+  },
+  datePickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  datePickerBtnText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.textPrimary,
+    fontWeight: Typography.weights.medium,
   },
 });

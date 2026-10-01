@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppAlert as Alert } from "../services/appAlert";
 import { ArrowLeft, ArrowRight, BadgeCheck, Lock, Mail, ShieldCheck, User, X } from "lucide-react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../context/AppContext";
@@ -98,11 +99,11 @@ export const AuthModal: React.FC = () => {
           </LinearGradient>
         </TouchableOpacity>
 
-        {mode !== "forgot" && isGoogleAuthConfigured && (
+        {mode !== "forgot" && (
           <>
             <View style={styles.dividerRow}><View style={styles.dividerLine} /><Text style={styles.dividerText}>OR</Text><View style={styles.dividerLine} /></View>
-            <TouchableOpacity style={styles.googleButton} onPress={() => void continueWithGoogle()} disabled={isLoading} activeOpacity={0.82}>
-              {loadingAction === "google" ? <ActivityIndicator color={Colors.secondaryDark} /> : <BadgeCheck size={19} color={Colors.secondaryDark} />}
+            <TouchableOpacity style={styles.googleButton} onPress={() => void continueWithGoogle()} disabled={isLoading} activeOpacity={0.85}>
+              {loadingAction === "google" ? <ActivityIndicator color="#4285F4" /> : <Ionicons name="logo-google" size={19} color="#EA4335" />}
               <Text style={styles.googleButtonText}>{loadingAction === "google" ? "Verifying with Google…" : "Continue with Google"}</Text>
             </TouchableOpacity>
           </>
@@ -120,14 +121,14 @@ const Field: React.FC<{ icon: React.ReactNode; label: string; children: React.Re
 const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: Spacing.lg, paddingTop: 2 },
   brandIcon: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryDark },
-  iconButton: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.72)", borderWidth: 1, borderColor: Colors.border },
+  iconButton: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.75)", borderWidth: 1, borderColor: "rgba(255,255,255,0.9)" },
   content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Platform.OS === "ios" ? 38 : 24 },
   eyebrow: { fontSize: 10, letterSpacing: 1.5, fontWeight: Typography.weights.extraBold, color: Colors.primaryDark, marginBottom: 6 },
   title: { fontSize: 29, lineHeight: 34, fontWeight: Typography.weights.extraBold, color: Colors.textPrimary },
   subtitle: { fontSize: Typography.sizes.sm, lineHeight: 21, color: Colors.textMuted, marginTop: 8, marginBottom: 18 },
   fieldGroup: { marginTop: 12 },
   label: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.textSecondary, marginBottom: 7 },
-  field: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border, backgroundColor: "rgba(255,255,255,0.78)" },
+  field: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, borderRadius: BorderRadius.lg, borderWidth: 1.2, borderColor: "rgba(255,255,255,0.85)", backgroundColor: "rgba(255,255,255,0.70)" },
   input: { flex: 1, fontSize: Typography.sizes.sm, color: Colors.textPrimary, paddingVertical: 13 },
   forgotButton: { alignSelf: "flex-end", paddingVertical: 10 },
   forgotText: { fontSize: Typography.sizes.xs, fontWeight: Typography.weights.bold, color: Colors.primaryDark },
@@ -137,11 +138,11 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 17 },
   dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: Colors.borderStrong },
   dividerText: { color: Colors.textSubtle, fontSize: 9, fontWeight: Typography.weights.extraBold },
-  googleButton: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 13, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: "#BAE6FD", backgroundColor: "#FFFFFF" },
+  googleButton: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 13, borderRadius: BorderRadius.lg, borderWidth: 1.2, borderColor: "rgba(186,230,253,0.9)", backgroundColor: "rgba(255,255,255,0.85)" },
   googleButtonText: { color: Colors.textPrimary, fontSize: Typography.sizes.sm, fontWeight: Typography.weights.bold },
   switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 18 },
   switchPrompt: { fontSize: Typography.sizes.xs, color: Colors.textMuted },
   switchAction: { fontSize: Typography.sizes.xs, color: Colors.primaryDark, fontWeight: Typography.weights.extraBold },
-  securityNote: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 24, padding: 13, borderRadius: BorderRadius.md, backgroundColor: Colors.primaryFaint, borderWidth: 1, borderColor: Colors.primaryLight },
+  securityNote: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 24, padding: 13, borderRadius: BorderRadius.md, backgroundColor: "rgba(240,253,250,0.75)", borderWidth: 1, borderColor: "rgba(204,251,241,0.9)" },
   securityText: { flex: 1, fontSize: 11, lineHeight: 16, color: Colors.textSecondary },
 });

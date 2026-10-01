@@ -255,7 +255,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
               <Ionicons name="arrow-back" size={20} color={Colors.primaryDark} />
             </TouchableOpacity>
           )}
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={[styles.title, seniorMode && styles.seniorTitle]}>
               {isHindi ? "पारिवारिक देखभाल एवं कार्य" : "Family Care & Tasks"}
             </Text>
@@ -438,7 +438,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
 
             {/* Family Members & Caregiver Team Section */}
             <View style={styles.teamHeaderRow}>
-              <View>
+              <View style={{ flex: 1, paddingRight: Spacing.sm }}>
                 <Text style={styles.teamTitle}>
                   {isHindi ? "देखभाल नेटवर्क" : "Authorized Care Circle"}
                 </Text>
@@ -886,6 +886,8 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: Spacing.sm,
   },
   backButton: {

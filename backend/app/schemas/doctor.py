@@ -14,6 +14,15 @@ class DoctorCreate(BaseModel):
     address: Optional[str] = None
 
 
+class DoctorUpdate(BaseModel):
+    name: Optional[str] = None
+    specialty: Optional[str] = None
+    hospital_or_clinic: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+
+
 class DoctorResponse(BaseModel):
     id: uuid.UUID
     name: str

@@ -48,3 +48,19 @@ async def get_parent_timeline(
     service = TimelineService(session)
     events = await service.list_events(parent_id, event_type)
     return build_response([TimelineEventResponse.model_validate(e) for e in events])
+
+
+@router.delete("/{event_id}", status_code=204)
+async def delete_timeline_event(
+    event_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    event = (await session.execute(select(TimelineEvent).where(TimelineEvent.id == event_id))).scalar_one_or_none()
+    if not event:
+        raise ResourceNotFoundError("TimelineEvent", event_id)
+    await verify_parent_access(session, current_user.id, event.parent_id)
+    await session.delete(event)
+    await session.flush()
+    return None
+

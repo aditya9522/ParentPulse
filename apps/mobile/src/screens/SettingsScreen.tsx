@@ -12,6 +12,8 @@ import {
   Linking,
   Share,
   ActivityIndicator,
+  Image,
+  TextInput,
 } from "react-native";
 import { AppAlert as Alert } from "../services/appAlert";
 import {
@@ -26,17 +28,25 @@ import {
   Bell,
   ShieldCheck,
   Trash2,
+  Camera,
+  User,
+  Edit2,
+  X,
+  Check,
+  Palette,
 } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { useApp , SupportedLanguage } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, AppThemeMode } from "../theme";
 import { registerRemotePushDevice, syncCareReminders } from "../services/reminders";
 import { getNotifications, notificationsAvailable } from "../services/notificationRuntime";
 import { apiClient, ConsentType } from "../api/client";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
+import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 
 const INDIAN_LANGUAGES: { code: SupportedLanguage; label: string; native: string; available: boolean }[] = [
   { code: "en", label: "English", native: "English", available: true },
@@ -51,14 +61,57 @@ const INDIAN_LANGUAGES: { code: SupportedLanguage; label: string; native: string
   { code: "pa", label: "Punjabi", native: "ਪੰਜਾਬੀ", available: false },
 ];
 
+const THEME_OPTIONS: {
+  id: AppThemeMode;
+  name: string;
+  hindiName: string;
+  tagline: string;
+  hindiTagline: string;
+  previewColors: string[];
+  gradient: readonly [string, string];
+}[] = [
+  {
+    id: "light",
+    name: "Serene Emerald",
+    hindiName: "शांत हरा (लाइट)",
+    tagline: "Clinical teal & slate with calming frosted glass",
+    hindiTagline: "ताज़ा हरा और स्लेट फ्रॉस्टेड लुक",
+    previewColors: ["#0D9488", "#0284C7", "#8B5CF6", "#F8FAFC"],
+    gradient: ["#0D9488", "#0F766E"],
+  },
+  {
+    id: "dark",
+    name: "Midnight Obsidian",
+    hindiName: "मध्यरात्रि काला (डार्क)",
+    tagline: "Deep dark mode with neon accents & reduced eye strain",
+    hindiTagline: "गहरा काला व नीयन चमक, आरामदायक दृश्य",
+    previewColors: ["#14B8A6", "#38BDF8", "#A78BFA", "#090D16"],
+    gradient: ["#14B8A6", "#0D9488"],
+  },
+  {
+    id: "amber",
+    name: "Ayurvedic Amber",
+    hindiName: "आयुर्वेदिक अम्बर (वॉर्म)",
+    tagline: "Warm therapeutic gold & restorative ivory tones",
+    hindiTagline: "प्राकृतिक सुनहरी धूप और सुखदायक आभा",
+    previewColors: ["#D97706", "#EA580C", "#7C3AED", "#FFFBEB"],
+    gradient: ["#F59E0B", "#D97706"],
+  },
+];
+
 
 export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const {
     currentUser,
+    updateUserProfile,
+    updateUserAvatar,
     seniorMode,
     toggleSeniorMode,
     language,
     setLanguage,
+    themeMode,
+    setThemeMode,
+    isDark,
     setActiveScreen,
     medicines,
     appointments,
@@ -76,6 +129,83 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
   const [exporting, setExporting] = useState(false);
   const [deleteSheetVisible, setDeleteSheetVisible] = useState(false);
   const closeDeleteSheet = useCallback(() => setDeleteSheetVisible(false), []);
+
+  // Profile Edit State
+  const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
+  const [profileName, setProfileName] = useState(currentUser.full_name || "");
+  const [profilePhone, setProfilePhone] = useState(currentUser.phone_number || "");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const openProfileModal = () => {
+    setProfileName(currentUser.full_name || "");
+    setProfilePhone(currentUser.phone_number || "");
+    setEditProfileModalVisible(true);
+  };
+
+  const handlePickAvatar = async (useCamera = false) => {
+    try {
+      let result;
+      if (useCamera) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission needed", "Camera permission is required to capture a profile picture.");
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.85,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission needed", "Photo library access is required to select a profile picture.");
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.85,
+        });
+      }
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setUploadingAvatar(true);
+        triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+        await updateUserAvatar(asset.uri, asset.fileName || "avatar.jpg", asset.mimeType || "image/jpeg");
+        Alert.alert(isHindi ? "सफल" : "Success", isHindi ? "प्रोफ़ाइल फ़ोटो अपडेट हो गई!" : "Profile photo updated successfully!");
+      }
+    } catch (err: any) {
+      Alert.alert(isHindi ? "त्रुटि" : "Error", err?.message || "Failed to upload profile photo");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profileName.trim()) {
+      Alert.alert(isHindi ? "नाम आवश्यक है" : "Name Required", isHindi ? "कृपया अपना पूरा नाम दर्ज करें।" : "Please enter your full name.");
+      return;
+    }
+    setSavingProfile(true);
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await updateUserProfile({
+        full_name: profileName.trim(),
+        phone_number: profilePhone.trim() || undefined,
+      });
+      setEditProfileModalVisible(false);
+      Alert.alert(isHindi ? "सफल" : "Success", isHindi ? "प्रोफ़ाइल विवरण अपडेट हो गए!" : "Profile details updated successfully!");
+    } catch (err: any) {
+      Alert.alert(isHindi ? "त्रुटि" : "Error", err?.message || "Failed to update profile");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   useEffect(() => {
     void getNotifications().then(async (Notifications) => {
@@ -218,33 +348,155 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         {/* User Account Card */}
         <View style={[styles.sectionCard, Shadows.card]}>
           <View style={styles.userProfileRow}>
-            <View style={styles.userAvatar}>
-              <Text style={styles.userAvatarText}>
-                {currentUser.full_name.slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
+            <TouchableOpacity
+              onPress={openProfileModal}
+              activeOpacity={0.8}
+              style={styles.avatarWrapper}
+            >
+              {currentUser.avatar_url ? (
+                <Image source={{ uri: currentUser.avatar_url }} style={styles.userAvatarImage} />
+              ) : (
+                <View style={styles.userAvatar}>
+                  <Text style={styles.userAvatarText}>
+                    {currentUser.full_name.slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.avatarEditBadge}>
+                {uploadingAvatar ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Camera size={11} color="#FFFFFF" />
+                )}
+              </View>
+            </TouchableOpacity>
 
-            <View style={styles.userInfo}>
-              <Text style={styles.userName}>{currentUser.full_name}</Text>
+            <TouchableOpacity
+              style={styles.userInfo}
+              onPress={openProfileModal}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={styles.userName}>{currentUser.full_name}</Text>
+                <Edit2 size={13} color={Colors.primary} />
+              </View>
               <Text style={styles.userEmail}>{currentUser.email}</Text>
+              {currentUser.phone_number ? (
+                <Text style={styles.userPhone}>{currentUser.phone_number}</Text>
+              ) : null}
               <View style={styles.currentRoleBadge}>
                 <Text style={styles.currentRoleText}>
                   {currentUser.role.replace("_", " ").toUpperCase()}
                 </Text>
               </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.switchAccountBtn}
-              onPress={() => {
-                triggerHaptic();
-                void apiClient.signOut();
-              }}
-              activeOpacity={0.8}
-            >
-              <LogOut size={14} color={Colors.primaryDark} />
-              <Text style={styles.switchAccountBtnText}>{isHindi ? "लॉग आउट" : "Sign out"}</Text>
             </TouchableOpacity>
+
+            <View style={styles.userActionsCol}>
+              <TouchableOpacity
+                style={styles.editProfileBtn}
+                onPress={openProfileModal}
+                activeOpacity={0.8}
+              >
+                <Edit2 size={12} color={Colors.primaryDark} />
+                <Text style={styles.editProfileBtnText}>{isHindi ? "संपादित करें" : "Edit"}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.switchAccountBtn}
+                onPress={() => {
+                  triggerHaptic();
+                  void apiClient.signOut();
+                }}
+                activeOpacity={0.8}
+              >
+                <LogOut size={12} color={Colors.textMuted} />
+                <Text style={styles.switchAccountBtnText}>{isHindi ? "लॉग आउट" : "Sign out"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Theme & Visual Appearance Section */}
+        <View style={[styles.sectionCard, Shadows.card]}>
+          <View style={styles.cardHeaderWithIcon}>
+            <Palette size={18} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionHeaderTitle}>
+                {isHindi ? "ऐप थीम और दृश्य शैली" : "App Theme & Appearance"}
+              </Text>
+              <Text style={styles.sectionHeaderSub}>
+                {isHindi
+                  ? "अपनी पसंद के अनुसार थीम चुनें • पूरे ऐप पर तुरंत लागू होता है"
+                  : "Switch themes to personalize your workspace • applied to the entire app"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.themeOptionsGrid}>
+            {THEME_OPTIONS.map((th) => {
+              const isSelected = themeMode === th.id;
+              return (
+                <TouchableOpacity
+                  key={th.id}
+                  style={[
+                    styles.themeOptionCard,
+                    isSelected && styles.themeOptionCardSelected,
+                  ]}
+                  onPress={() => {
+                    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+                    setThemeMode(th.id);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={th.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.themePreviewBar}
+                  >
+                    <View style={styles.themeSwatchesRow}>
+                      {th.previewColors.map((color, i) => (
+                        <View
+                          key={i}
+                          style={[
+                            styles.themePreviewDot,
+                            { backgroundColor: color },
+                          ]}
+                        />
+                      ))}
+                    </View>
+                    {isSelected && (
+                      <View style={styles.themeCheckBadge}>
+                        <Check size={12} color="#FFFFFF" strokeWidth={3} />
+                      </View>
+                    )}
+                  </LinearGradient>
+
+                  <View style={styles.themeCardContent}>
+                    <View style={styles.themeNameRow}>
+                      <Text
+                        style={[
+                          styles.themeName,
+                          isSelected && styles.themeNameSelected,
+                        ]}
+                      >
+                        {isHindi ? th.hindiName : th.name}
+                      </Text>
+                      {isSelected && (
+                        <View style={styles.activeThemePill}>
+                          <Text style={styles.activeThemePillText}>
+                            {isHindi ? "सक्रिय" : "ACTIVE"}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.themeTagline}>
+                      {isHindi ? th.hindiTagline : th.tagline}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -531,6 +783,137 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         </View>
 
       </ScrollView>
+
+      {/* Edit Profile & Photo Modal */}
+      <SwipeableBottomSheet
+        visible={editProfileModalVisible}
+        onClose={() => setEditProfileModalVisible(false)}
+        maxHeight="90%"
+      >
+        <View style={styles.sheetInnerPadding}>
+          <View style={styles.modalHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <View style={styles.modalHeaderIcon}>
+                <User size={18} color={Colors.primaryDark} />
+              </View>
+              <Text style={styles.modalTitle}>
+                {isHindi ? "प्रोफ़ाइल व फ़ोटो संपादित करें" : "Edit Profile & Photo"}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setEditProfileModalVisible(false)}>
+              <X size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          >
+            {/* Avatar Section with Action Buttons */}
+            <View style={styles.modalAvatarRow}>
+              <View style={styles.modalAvatarWrapper}>
+                {currentUser.avatar_url ? (
+                  <Image source={{ uri: currentUser.avatar_url }} style={styles.modalAvatarImage} />
+                ) : (
+                  <View style={styles.modalAvatarPlaceholder}>
+                    <Text style={styles.modalAvatarText}>
+                      {currentUser.full_name.slice(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                {uploadingAvatar && (
+                  <View style={styles.avatarLoadingOverlay}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.avatarActionsCol}>
+                <Text style={styles.avatarSectionTitle}>
+                  {isHindi ? "प्रोफ़ाइल फ़ोटो" : "Profile Picture"}
+                </Text>
+                <View style={styles.avatarBtnsRow}>
+                  <TouchableOpacity
+                    style={styles.photoChoiceBtn}
+                    onPress={() => handlePickAvatar(false)}
+                    disabled={uploadingAvatar}
+                    activeOpacity={0.8}
+                  >
+                    <User size={14} color={Colors.primaryDark} />
+                    <Text style={styles.photoChoiceBtnText}>{isHindi ? "गैलरी" : "Gallery"}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.photoChoiceBtn}
+                    onPress={() => handlePickAvatar(true)}
+                    disabled={uploadingAvatar}
+                    activeOpacity={0.8}
+                  >
+                    <Camera size={14} color={Colors.primaryDark} />
+                    <Text style={styles.photoChoiceBtnText}>{isHindi ? "कैमरा" : "Camera"}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Full Name */}
+            <Text style={styles.inputLabel}>{isHindi ? "पूरा नाम *" : "Full Name *"}</Text>
+            <TextInput
+              style={styles.textInput}
+              value={profileName}
+              onChangeText={setProfileName}
+              placeholder="Your full name"
+              placeholderTextColor="#94A3B8"
+            />
+
+            {/* Phone Number */}
+            <Text style={styles.inputLabel}>{isHindi ? "फ़ोन नंबर" : "Phone Number"}</Text>
+            <TextInput
+              style={styles.textInput}
+              value={profilePhone}
+              onChangeText={setProfilePhone}
+              placeholder="+91 98765 43210"
+              placeholderTextColor="#94A3B8"
+              keyboardType="phone-pad"
+            />
+
+            {/* Email (Read-Only) */}
+            <Text style={styles.inputLabel}>{isHindi ? "ईमेल पता (अपरिवर्तनीय)" : "Email Address (Read-only)"}</Text>
+            <View style={[styles.textInput, styles.readOnlyInput]}>
+              <Text style={styles.readOnlyText}>{currentUser.email}</Text>
+            </View>
+
+            {/* Role (Read-Only) */}
+            <Text style={styles.inputLabel}>{isHindi ? "खाता प्रकार / भूमिका" : "Account Role"}</Text>
+            <View style={[styles.textInput, styles.readOnlyInput]}>
+              <Text style={styles.readOnlyText}>{currentUser.role.replace("_", " ").toUpperCase()}</Text>
+            </View>
+
+            {/* Save Button */}
+            <TouchableOpacity
+              style={styles.saveProfileBtn}
+              onPress={handleSaveProfile}
+              disabled={savingProfile}
+              activeOpacity={0.85}
+            >
+              <LinearGradient colors={Gradients.primary} style={styles.btnGradient}>
+                {savingProfile ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Check size={16} color="#FFFFFF" />
+                    <Text style={styles.btnGradientText}>
+                      {isHindi ? "प्रोफ़ाइल सहेजें" : "Save Profile Details"}
+                    </Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </SwipeableBottomSheet>
 
       <DeleteAccountSheet visible={deleteSheetVisible} onClose={closeDeleteSheet} />
 
@@ -851,5 +1234,275 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.xs,
     fontWeight: Typography.weights.bold,
     color: "#FFFFFF",
+  },
+  avatarWrapper: {
+    position: "relative",
+    marginRight: 12,
+  },
+  userAvatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    backgroundColor: Colors.primary,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+  },
+  userPhone: {
+    fontSize: Typography.sizes.xxs,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  userActionsCol: {
+    alignItems: "flex-end",
+    gap: 6,
+    marginLeft: 8,
+  },
+  editProfileBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(13, 148, 136, 0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(13, 148, 136, 0.25)",
+  },
+  editProfileBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primaryDark,
+  },
+  sheetInnerPadding: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalHeaderIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  modalAvatarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    backgroundColor: Colors.surfaceAlt,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalAvatarWrapper: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    overflow: "hidden",
+    position: "relative",
+  },
+  modalAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  modalAvatarPlaceholder: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: Colors.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalAvatarText: {
+    fontSize: Typography.sizes.lg,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primaryDeep,
+  },
+  avatarLoadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarActionsCol: {
+    flex: 1,
+  },
+  avatarSectionTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+    marginBottom: 6,
+  },
+  avatarBtnsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  photoChoiceBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  photoChoiceBtnText: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.primaryDark,
+  },
+  inputLabel: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textSecondary,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  textInput: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    fontSize: Typography.sizes.sm,
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  readOnlyInput: {
+    backgroundColor: Colors.surfaceAlt,
+    borderColor: "#E2E8F0",
+  },
+  readOnlyText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.textMuted,
+  },
+  saveProfileBtn: {
+    marginTop: 20,
+    marginBottom: 20,
+    borderRadius: BorderRadius.lg,
+    overflow: "hidden",
+  },
+  btnGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+  },
+  btnGradientText: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.bold,
+    color: "#FFFFFF",
+  },
+  themeOptionsGrid: {
+    gap: 10,
+    marginTop: 6,
+  },
+  themeOptionCard: {
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    overflow: "hidden",
+    ...Shadows.subtle,
+  },
+  themeOptionCardSelected: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
+    ...Shadows.card,
+  },
+  themePreviewBar: {
+    height: 38,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+  },
+  themeSwatchesRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+  themePreviewDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+  },
+  themeCheckBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  themeCardContent: {
+    padding: Spacing.sm,
+    backgroundColor: Colors.surface,
+  },
+  themeNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  themeName: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  themeNameSelected: {
+    color: Colors.primary,
+  },
+  activeThemePill: {
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  activeThemePillText: {
+    fontSize: 9,
+    fontWeight: Typography.weights.extraBold,
+    color: Colors.primaryDeep,
+    letterSpacing: 0.5,
+  },
+  themeTagline: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
 });
