@@ -38,7 +38,7 @@ import {
   UploadCloud,
   Check,
 } from "lucide-react-native";
-import { Colors, Typography, Spacing, BorderRadius, Shadows, Glass } from "../theme";
+import { Colors, Typography, Spacing, BorderRadius, Shadows, createThemedStyles } from "../theme";
 import { useApp } from "../context/AppContext";
 import { apiClient } from "../api/client";
 import { DocumentType } from "../types";
@@ -275,7 +275,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
         >
           <View style={styles.grabHandle} />
 
-          {/* Real Camera Preview */}
+          {/* Real Camera Preview (only when permission granted) */}
           {permission?.granted ? (
             <CameraView
               ref={cameraRef}
@@ -287,19 +287,39 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
               }}
               onBarcodeScanned={activeMode === "qr" && !scannedQrData ? handleBarcodeScanned : undefined}
             />
-          ) : (
+          ) : null}
+
+          {/* No Camera Permission: Centered Permission UI */}
+          {!permission?.granted ? (
             <View style={styles.permissionContainer}>
-              <ScanLine size={48} color={Colors.primary} style={{ marginBottom: Spacing.md }} />
-              <Text style={styles.permissionTitle}>Camera Access Required</Text>
-              <Text style={styles.permissionSub}>
-                ParentPulse uses your camera to scan prescriptions, lab reports, and doctor QR codes.
+              {/* Spacer for topBar overlay */}
+              <View style={{ height: 64 }} />
+
+              {/* Icon glow ring */}
+              <View style={styles.permIconRing}>
+                <View style={styles.permIconInner}>
+                  <ScanLine size={42} color={Colors.primary} />
+                </View>
+              </View>
+
+              <Text style={styles.permissionTitle}>
+                {isHindi ? "\u0915\u0948\u092e\u0930\u093e \u090f\u0915\u094d\u0938\u0947\u0938 \u0906\u0935\u0936\u094d\u092f\u0915" : "Camera Access Needed"}
               </Text>
+              <Text style={styles.permissionSub}>
+                {isHindi
+                  ? "ParentPulse \u0915\u094b \u0928\u0941\u0938\u094d\u0916\u093e, \u0932\u0948\u092c \u0930\u093f\u092a\u094b\u0930\u094d\u091f \u0914\u0930 \u0921\u093e\u0949\u0915\u094d\u091f\u0930 QR \u0938\u094d\u0915\u0948\u0928 \u0915\u0947 \u0932\u093f\u090f \u0915\u0948\u092e\u0930\u093e \u0905\u0928\u0941\u092e\u0924\u093f \u091a\u093e\u0939\u093f\u090f\u0964"
+                  : "ParentPulse uses your camera to scan prescriptions, lab reports, and doctor QR codes securely on-device."}
+              </Text>
+
               <TouchableOpacity
                 style={styles.grantBtn}
                 onPress={() => requestPermission()}
-                activeOpacity={0.8}
+                activeOpacity={0.85}
               >
-                <Text style={styles.grantBtnText}>Allow Camera Permission</Text>
+                <Camera size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.grantBtnText}>
+                  {isHindi ? "\u0915\u0948\u092e\u0930\u093e \u0905\u0928\u0941\u092e\u0924\u093f \u0926\u0947\u0902" : "Allow Camera Access"}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -307,11 +327,15 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
                 onPress={handlePickFromGallery}
                 activeOpacity={0.8}
               >
-                <ImageIcon size={16} color={Colors.primaryDark} style={{ marginRight: 6 }} />
-                <Text style={styles.galleryFallbackText}>Pick Photo from Gallery Instead</Text>
+                <ImageIcon size={15} color={Colors.primary} style={{ marginRight: 7 }} />
+                <Text style={styles.galleryFallbackText}>
+                  {isHindi ? "\u0917\u0948\u0932\u0930\u0940 \u0938\u0947 \u092b\u093c\u094b\u091f\u094b \u091a\u0941\u0928\u0947\u0902" : "Pick from Gallery Instead"}
+                </Text>
               </TouchableOpacity>
+
+              <View style={{ flex: 1 }} />
             </View>
-          )}
+          ) : null}
 
           {/* Top Control Bar with Glassmorphic pill */}
           <View style={[styles.topBar, { top: topOffset }]}>
@@ -598,7 +622,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.7)",
@@ -635,28 +659,53 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: Spacing.xl,
     backgroundColor: "#0F172A",
+    paddingBottom: 40,
+  },
+  permIconRing: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "rgba(20, 184, 166, 0.12)",
+    borderWidth: 1.5,
+    borderColor: "rgba(20, 184, 166, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.lg,
+  },
+  permIconInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "rgba(20, 184, 166, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   permissionTitle: {
-    fontSize: Typography.sizes.lg,
+    fontSize: Typography.sizes.xl,
     fontWeight: Typography.weights.extraBold,
     color: "#FFFFFF",
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
     textAlign: "center",
+    letterSpacing: -0.3,
   },
   permissionSub: {
     fontSize: Typography.sizes.sm,
     color: "#94A3B8",
     textAlign: "center",
-    lineHeight: 20,
-    marginBottom: Spacing.lg,
+    lineHeight: 21,
+    marginBottom: Spacing.xl,
     maxWidth: 280,
   },
   grantBtn: {
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: Colors.primaryDark,
     paddingHorizontal: Spacing.xl,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: BorderRadius.lg,
     marginBottom: Spacing.md,
+    minWidth: 220,
+    justifyContent: "center",
   },
   grantBtnText: {
     color: "#FFFFFF",
@@ -666,13 +715,17 @@ const styles = StyleSheet.create({
   galleryFallbackBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: Spacing.lg,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: BorderRadius.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    minWidth: 220,
   },
   galleryFallbackText: {
-    color: "#FFFFFF",
+    color: "#CBD5E1",
     fontSize: 13,
     fontWeight: Typography.weights.semibold,
   },
@@ -881,7 +934,7 @@ const styles = StyleSheet.create({
   resultCard: {
     width: "100%",
     maxWidth: 420,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     ...Shadows.cardElevated,
@@ -911,11 +964,11 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   qrDataBox: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: Colors.border,
     marginBottom: Spacing.md,
   },
   qrDataText: {
@@ -967,7 +1020,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingTop: Spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
+    borderTopColor: Colors.border,
   },
   scanAgainBtn: {
     flexDirection: "row",
@@ -995,7 +1048,7 @@ const styles = StyleSheet.create({
   docConfirmCard: {
     width: "100%",
     maxWidth: 440,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     ...Shadows.cardElevated,
@@ -1017,7 +1070,7 @@ const styles = StyleSheet.create({
   docThumbnailContainer: {
     width: "100%",
     height: 120,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: BorderRadius.md,
     overflow: "hidden",
     alignItems: "center",
@@ -1036,9 +1089,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   docTextInput: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: Colors.borderStrong,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: 9,
@@ -1057,8 +1110,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceAlt,
   },
   docTypeChipActive: {
     backgroundColor: Colors.primaryLight,

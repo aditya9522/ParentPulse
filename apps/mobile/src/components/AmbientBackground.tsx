@@ -1,9 +1,10 @@
 import React from "react";
 import { View, StyleSheet, Dimensions } from "react-native";
+import { createThemedStyles } from "../theme";
 import { LinearGradient } from "expo-linear-gradient";
 import { useApp } from "../context/AppContext";
 
-const { width, height } = Dimensions.get("window");
+const { height } = Dimensions.get("window");
 
 export const AmbientBackground: React.FC = () => {
   const { themeMode } = useApp();
@@ -86,7 +87,7 @@ export const AmbientBackground: React.FC = () => {
 };
 
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   baseCanvas: {
     position: "absolute",
     top: 0,

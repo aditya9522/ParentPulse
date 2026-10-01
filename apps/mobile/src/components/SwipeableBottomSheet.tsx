@@ -17,6 +17,9 @@ import * as Haptics from "expo-haptics";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 
+import { useApp } from "../context/AppContext";
+import { createThemedStyles } from "../theme";
+
 interface SwipeableBottomSheetProps {
   visible: boolean;
   onClose: () => void;
@@ -33,12 +36,56 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   children,
   maxHeight = "90%",
   containerStyle,
-  grabHandleColor = "rgba(148, 163, 184, 0.7)",
+  grabHandleColor,
   testID,
 }) => {
+  const { themeMode } = useApp();
   const translateY = useRef(new Animated.Value(900)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isDismissing = useRef(false);
+
+  const isDark = themeMode === "dark";
+  const isAmber = themeMode === "amber";
+
+  const effectiveTint = isDark ? "dark" : "light";
+
+  const defaultContainerBg = isDark
+    ? "rgba(15, 23, 42, 0.94)"
+    : isAmber
+    ? "rgba(255, 251, 245, 0.95)"
+    : "rgba(255, 255, 255, 0.88)";
+
+  const defaultBorderColor = isDark
+    ? "rgba(255, 255, 255, 0.16)"
+    : isAmber
+    ? "rgba(253, 230, 138, 0.85)"
+    : "rgba(255, 255, 255, 0.92)";
+
+  const sheenColors = isDark
+    ? (["rgba(30, 41, 59, 0.70)", "rgba(15, 23, 42, 0.85)"] as const)
+    : isAmber
+    ? (["rgba(255, 251, 245, 0.75)", "rgba(254, 243, 199, 0.45)"] as const)
+    : (["rgba(255, 255, 255, 0.45)", "rgba(255, 255, 255, 0.18)"] as const);
+
+  const dragZoneBg = isDark
+    ? "rgba(30, 41, 59, 0.5)"
+    : isAmber
+    ? "rgba(254, 243, 199, 0.4)"
+    : "rgba(255, 255, 255, 0.3)";
+
+  const dragZoneBorderColor = isDark
+    ? "rgba(255, 255, 255, 0.1)"
+    : isAmber
+    ? "rgba(253, 230, 138, 0.6)"
+    : "rgba(255, 255, 255, 0.6)";
+
+  const effectiveGrabHandleColor = grabHandleColor ?? (
+    isDark
+      ? "rgba(255, 255, 255, 0.35)"
+      : isAmber
+      ? "rgba(217, 119, 6, 0.45)"
+      : "rgba(148, 163, 184, 0.7)"
+  );
 
   useEffect(() => {
     if (visible) {
@@ -161,29 +208,39 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
         <Animated.View
           style={[
             styles.halfSheetContainer,
-            { maxHeight: maxHeight as any, transform: [{ translateY }] },
+            {
+              backgroundColor: defaultContainerBg,
+              borderColor: defaultBorderColor,
+              maxHeight: maxHeight as any,
+              transform: [{ translateY }],
+            },
             containerStyle,
           ]}
         >
           {Platform.OS !== "web" && (
             <BlurView
               intensity={Platform.OS === "android" ? 50 : 85}
-              tint="light"
-              blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined}
+              tint={effectiveTint}
               pointerEvents="none"
               style={StyleSheet.absoluteFill}
             />
           )}
           <LinearGradient
-            colors={["rgba(255, 255, 255, 0.45)", "rgba(255, 255, 255, 0.18)"]}
+            colors={sheenColors}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 0.8, y: 1 }}
             pointerEvents="none"
           />
           {/* Top Swiping Zone with Grab Handle (Supports Dragging Down to Close) */}
-          <View {...panResponder.panHandlers} style={styles.swipeDragZone}>
-            <View style={[styles.grabHandle, { backgroundColor: grabHandleColor }]} />
+          <View
+            {...panResponder.panHandlers}
+            style={[
+              styles.swipeDragZone,
+              { backgroundColor: dragZoneBg, borderBottomColor: dragZoneBorderColor },
+            ]}
+          >
+            <View style={[styles.grabHandle, { backgroundColor: effectiveGrabHandleColor }]} />
           </View>
 
           {children}
@@ -194,7 +251,7 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   keyboardAvoider: {
     flex: 1,
   },
@@ -221,6 +278,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 0,
+    width: "100%",
+    maxWidth: 680,
+    alignSelf: "center",
   },
   swipeDragZone: {
     width: "100%",

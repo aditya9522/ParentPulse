@@ -50,7 +50,7 @@ const expo = {
   slug: "parentpulse",
   scheme: "parentpulse",
   version: "1.0.2",
-  orientation: "portrait",
+  orientation: "default",
   icon: "./assets/icon.png",
   splash: {
     image: "./assets/icon.png",

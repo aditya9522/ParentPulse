@@ -1,19 +1,50 @@
 // apps/mobile/src/components/MedicineCard.tsx
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { Pill, CheckCircle2, Clock, AlertTriangle, User, Circle, Trash2 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { MedicineSchedule } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, createThemedStyles } from "../theme";
 import { useApp } from "../context/AppContext";
 
 export const MedicineCard: React.FC<{
   medicine: MedicineSchedule;
   onDelete?: (medicine: MedicineSchedule) => void;
 }> = ({ medicine, onDelete }) => {
-  const { seniorMode, language, dosesTakenToday, markDoseTaken } = useApp();
+  const { seniorMode, language, dosesTakenToday, markDoseTaken, isDark, themeMode } = useApp();
   const isTaken = !!dosesTakenToday[medicine.id];
   const isLowInventory = medicine.current_inventory <= medicine.refill_alert_threshold;
+
+  const pendingCardBg = isDark
+    ? "rgba(30, 41, 59, 0.78)"
+    : themeMode === "amber"
+    ? "rgba(255, 251, 245, 0.90)"
+    : "rgba(255, 255, 255, 0.92)";
+  const pendingCardBorder = isDark
+    ? "rgba(51, 65, 85, 0.75)"
+    : themeMode === "amber"
+    ? "rgba(253, 230, 138, 0.65)"
+    : "rgba(255, 255, 255, 0.95)";
+  const takenCardBg = isDark
+    ? "rgba(6, 78, 59, 0.40)"
+    : themeMode === "amber"
+    ? "rgba(254, 243, 199, 0.75)"
+    : "rgba(240, 253, 244, 0.92)";
+  const takenCardBorder = isDark
+    ? "rgba(16, 185, 129, 0.45)"
+    : themeMode === "amber"
+    ? "rgba(217, 119, 6, 0.4)"
+    : "rgba(134, 239, 172, 0.9)";
+  const dosageBadgeBg = isDark
+    ? "rgba(51, 65, 85, 0.7)"
+    : themeMode === "amber"
+    ? "rgba(254, 243, 199, 0.8)"
+    : "rgba(241, 245, 249, 0.85)";
+  const dosageBadgeBorder = isDark
+    ? "rgba(71, 85, 105, 0.6)"
+    : themeMode === "amber"
+    ? "rgba(253, 230, 138, 0.6)"
+    : "rgba(255, 255, 255, 0.9)";
 
   const handleToggle = () => {
     if (isTaken) return;
@@ -28,22 +59,29 @@ export const MedicineCard: React.FC<{
   const getInstructionBadge = () => {
     switch (medicine.instructions) {
       case "after_food":
-        return { label: language === "hi" ? "भोजन के बाद" : "After Food", color: Colors.secondary, bg: "rgba(224, 242, 254, 0.85)" };
+        return { label: language === "hi" ? "भोजन के बाद" : "After Food", color: Colors.secondary, bg: isDark ? "rgba(2, 132, 199, 0.25)" : "rgba(224, 242, 254, 0.85)" };
       case "before_food":
-        return { label: language === "hi" ? "भोजन से पहले" : "Before Food", color: Colors.warningDark, bg: "rgba(254, 243, 199, 0.85)" };
+        return { label: language === "hi" ? "भोजन से पहले" : "Before Food", color: Colors.warningDark, bg: isDark ? "rgba(217, 119, 6, 0.25)" : "rgba(254, 243, 199, 0.85)" };
       case "with_food":
-        return { label: language === "hi" ? "भोजन के साथ" : "With Food", color: Colors.primaryDark, bg: "rgba(204, 251, 241, 0.85)" };
+        return { label: language === "hi" ? "भोजन के साथ" : "With Food", color: Colors.primaryDark, bg: isDark ? "rgba(13, 148, 136, 0.25)" : "rgba(204, 251, 241, 0.85)" };
       case "empty_stomach":
-        return { label: language === "hi" ? "खाली पेट" : "Empty Stomach", color: "#7C3AED", bg: "rgba(237, 233, 254, 0.85)" };
+        return { label: language === "hi" ? "खाली पेट" : "Empty Stomach", color: "#7C3AED", bg: isDark ? "rgba(124, 58, 237, 0.25)" : "rgba(237, 233, 254, 0.85)" };
       default:
-        return { label: "As Directed", color: Colors.textSecondary, bg: "rgba(241, 245, 249, 0.85)" };
+        return { label: "As Directed", color: Colors.textSecondary, bg: isDark ? "rgba(51, 65, 85, 0.5)" : "rgba(241, 245, 249, 0.85)" };
     }
   };
 
   const inst = getInstructionBadge();
 
   return (
-    <View style={[styles.card, isTaken ? styles.cardTaken : styles.cardPending]}>
+    <View
+      style={[
+        styles.card,
+        isTaken
+          ? [styles.cardTaken, { backgroundColor: takenCardBg, borderColor: takenCardBorder }]
+          : [styles.cardPending, { backgroundColor: pendingCardBg, borderColor: pendingCardBorder }],
+      ]}
+    >
       {/* Left Pill Icon / Indicator */}
       <View style={[styles.pillIconBox, isTaken ? styles.pillIconBoxTaken : styles.pillIconBoxPending]}>
         <Pill
@@ -59,7 +97,7 @@ export const MedicineCard: React.FC<{
           <Text style={[styles.medName, seniorMode && styles.seniorMedName]}>
             {medicine.name}
           </Text>
-          <View style={styles.dosageBadge}>
+          <View style={[styles.dosageBadge, { backgroundColor: dosageBadgeBg, borderColor: dosageBadgeBorder }]}>
             <Text style={styles.dosageText}>{medicine.dosage}</Text>
           </View>
         </View>
@@ -140,7 +178,7 @@ export const MedicineCard: React.FC<{
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   card: {
     borderRadius: BorderRadius.xl,
     padding: Spacing.md,

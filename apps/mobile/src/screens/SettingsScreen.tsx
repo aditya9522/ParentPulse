@@ -39,7 +39,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useApp , SupportedLanguage } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, AppThemeMode } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, AppThemeMode, createThemedStyles } from "../theme";
 import { registerRemotePushDevice, syncCareReminders } from "../services/reminders";
 import { getNotifications, notificationsAvailable } from "../services/notificationRuntime";
 import { apiClient, ConsentType } from "../api/client";
@@ -111,7 +111,6 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
     setLanguage,
     themeMode,
     setThemeMode,
-    isDark,
     setActiveScreen,
     medicines,
     appointments,
@@ -666,7 +665,7 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               disabled={consentsLoading || consentSaving !== null}
               onValueChange={(value) => void updateConsent("voice_input", value)}
               trackColor={{ false: Colors.border, true: "#7C3AED" }}
-              thumbColor={voiceAssistanceEnabled ? "#FFFFFF" : "#F1F5F9"}
+              thumbColor={"#FFFFFF"}
             />
           </View>
         </View>
@@ -716,7 +715,7 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
               disabled={consentsLoading || consentSaving !== null}
               onValueChange={(value) => void updateConsent("sos_location_sharing", value)}
               trackColor={{ false: Colors.border, true: Colors.emergency }}
-              thumbColor={sosGpsBroadcast ? "#FFFFFF" : "#F1F5F9"}
+              thumbColor={"#FFFFFF"}
             />
           </View>
           <View style={styles.privacyStatus}>
@@ -921,13 +920,13 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.background,
   },
   header: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     paddingTop: 12,
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.sm,
@@ -974,7 +973,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   sectionCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
@@ -1122,8 +1121,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.secondary,
   },
   langChipUnavailable: {
-    opacity: 0.58,
-    backgroundColor: "rgba(241, 245, 249, 0.6)",
+    opacity: 0.5,
   },
   langNative: {
     fontSize: Typography.sizes.sm,
@@ -1201,12 +1199,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    backgroundColor: "#FEE2E2",
+    backgroundColor: Colors.emergencyFaint,
     borderRadius: BorderRadius.md,
     paddingVertical: 10,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: Colors.emergencyLight,
   },
   deleteAccountBtnText: {
     fontSize: Typography.sizes.xs,
@@ -1215,8 +1213,8 @@ const styles = StyleSheet.create({
   },
   dangerCard: {
     borderWidth: 1,
-    borderColor: "#FECACA",
-    backgroundColor: "#FFFDFD",
+    borderColor: Colors.emergencyLight,
+    backgroundColor: Colors.emergencyFaint,
   },
   onboardingLaunchBtn: {
     marginTop: Spacing.sm,
@@ -1372,7 +1370,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surfaceAlt,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: BorderRadius.md,
@@ -1392,7 +1390,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   textInput: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
@@ -1403,7 +1401,7 @@ const styles = StyleSheet.create({
   },
   readOnlyInput: {
     backgroundColor: Colors.surfaceAlt,
-    borderColor: "#E2E8F0",
+    borderColor: Colors.border,
   },
   readOnlyText: {
     fontSize: Typography.sizes.sm,

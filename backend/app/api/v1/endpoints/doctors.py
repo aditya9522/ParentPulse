@@ -1,13 +1,16 @@
 # backend/app/api/v1/endpoints/doctors.py
-from typing import List
+from uuid import UUID
+
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.dependencies import get_current_user, get_db
+from app.core.exceptions import ResourceNotFoundError
+from app.helpers.response_builder import build_response
 from app.models.doctor import Doctor
 from app.models.user import User
-from uuid import UUID
-from app.core.exceptions import ResourceNotFoundError
+from app.schemas.common import ApiResponse
 from app.schemas.doctor import DoctorCreate, DoctorResponse, DoctorUpdate
 
 router = APIRouter(prefix="/doctors", tags=["Doctors"])
@@ -35,7 +38,7 @@ async def register_doctor(
     return build_response(DoctorResponse.model_validate(doctor))
 
 
-@router.get("", response_model=ApiResponse[List[DoctorResponse]])
+@router.get("", response_model=ApiResponse[list[DoctorResponse]])
 async def list_verified_doctors(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -96,4 +99,3 @@ async def delete_doctor(
 
     await session.delete(doctor)
     await session.flush()
-    return None

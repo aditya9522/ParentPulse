@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   ScrollView,
   ActivityIndicator,
   Platform,
@@ -31,7 +30,7 @@ import {
   Radio,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
-import { Colors, Spacing, Shadows } from "../theme";
+import { Colors, Spacing, Shadows, createThemedStyles } from "../theme";
 import { apiClient } from "../api/client";
 import { AppAlert as Alert } from "../services/appAlert";
 
@@ -52,7 +51,7 @@ const renderInlineMarkdown = (text: string, baseStyle: any) => {
       {chunks.map((chunk, index) => {
         if (index % 2 === 1) {
           return (
-            <Text key={index} style={{ fontWeight: "800", color: "#1E1B4B" }}>
+            <Text key={index} style={{ fontWeight: "800", color: Colors.textPrimary }}>
               {chunk}
             </Text>
           );
@@ -133,6 +132,8 @@ export const AiAssistantModal: React.FC = () => {
     setAiAssistantModalVisible,
     seniorMode,
     language,
+    isDark,
+    themeMode,
   } = useApp();
 
   const isHindi = language === "hi";
@@ -381,6 +382,22 @@ export const AiAssistantModal: React.FC = () => {
     default: 12,
   });
 
+  const screenBg = isDark ? "#090D16" : themeMode === "amber" ? "#FDFBF7" : "#F8FAFC";
+  const disclaimerBg = isDark ? "rgba(30, 41, 59, 0.95)" : themeMode === "amber" ? "rgba(254, 243, 199, 0.8)" : "rgba(239, 246, 255, 0.88)";
+  const disclaimerBorder = isDark ? "rgba(51, 65, 85, 0.8)" : themeMode === "amber" ? "rgba(253, 230, 138, 0.7)" : "#DBEAFE";
+  const disclaimerTextColor = isDark ? "#94A3B8" : themeMode === "amber" ? "#92400E" : "#1E40AF";
+  const aiBubbleBg = isDark ? "rgba(30, 41, 59, 0.9)" : themeMode === "amber" ? "rgba(255, 251, 245, 0.92)" : "rgba(255, 255, 255, 0.85)";
+  const aiBubbleBorder = isDark ? "rgba(51, 65, 85, 0.8)" : themeMode === "amber" ? "rgba(253, 230, 138, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const quickPromptBg = isDark ? "rgba(15, 23, 42, 0.9)" : themeMode === "amber" ? "rgba(255, 251, 245, 0.9)" : "rgba(255, 255, 255, 0.72)";
+  const promptChipBg = isDark ? "rgba(30, 41, 59, 0.85)" : themeMode === "amber" ? "rgba(254, 243, 199, 0.8)" : "rgba(245, 243, 255, 0.8)";
+  const promptChipBorder = isDark ? "rgba(79, 70, 229, 0.4)" : themeMode === "amber" ? "rgba(217, 119, 6, 0.3)" : "rgba(221, 214, 254, 0.85)";
+  const promptChipTextColor = isDark ? "#A78BFA" : themeMode === "amber" ? "#B45309" : "#6D28D9";
+  const inputBarBg = isDark ? "rgba(15, 23, 42, 0.95)" : themeMode === "amber" ? "rgba(255, 251, 245, 0.95)" : "rgba(255, 255, 255, 0.85)";
+  const inputBarBorder = isDark ? "rgba(51, 65, 85, 0.8)" : themeMode === "amber" ? "rgba(243, 230, 209, 0.8)" : "rgba(255, 255, 255, 0.85)";
+  const inputBg = isDark ? "rgba(30, 41, 59, 0.8)" : themeMode === "amber" ? "rgba(254, 243, 199, 0.5)" : "rgba(255, 255, 255, 0.72)";
+  const inputBorder = isDark ? "rgba(51, 65, 85, 0.8)" : themeMode === "amber" ? "rgba(253, 230, 138, 0.6)" : "rgba(255, 255, 255, 0.9)";
+  const inputTextColor = isDark ? "#F8FAFC" : Colors.textPrimary;
+
   return (
     <Modal
       visible={aiAssistantModalVisible}
@@ -392,7 +409,7 @@ export const AiAssistantModal: React.FC = () => {
       hardwareAccelerated={true}
       onRequestClose={closeAssistant}
     >
-      <View style={[styles.fullScreenContainer, { paddingTop: topPadding, paddingBottom: insets.bottom }]}>
+      <View style={[styles.fullScreenContainer, { paddingTop: topPadding, paddingBottom: insets.bottom, backgroundColor: screenBg }]}>
         <StatusBar barStyle="light-content" backgroundColor="#4F46E5" />
         {/* Top Gradient Header */}
         <LinearGradient
@@ -441,9 +458,9 @@ export const AiAssistantModal: React.FC = () => {
         </LinearGradient>
 
         {/* Clinical Safety Disclaimer */}
-        <View style={styles.disclaimerBar}>
-          <ShieldCheck size={14} color="#1E40AF" style={{ marginTop: 1 }} />
-          <Text style={styles.disclaimerText}>
+        <View style={[styles.disclaimerBar, { backgroundColor: disclaimerBg, borderBottomColor: disclaimerBorder }]}>
+          <ShieldCheck size={14} color={disclaimerTextColor} style={{ marginTop: 1 }} />
+          <Text style={[styles.disclaimerText, { color: disclaimerTextColor }]}>
             {isHindi
               ? "पैरेंटपल्स AI केवल पारिवारिक स्वास्थ्य रिकॉर्ड का सारांश प्रस्तुत करता है। यह चिकित्सीय सलाह या दवा का विकल्प नहीं है।"
               : "ParentPulse AI summarizes verified family medical records. It does not replace professional clinical diagnosis or prescribe treatment."}
@@ -479,7 +496,7 @@ export const AiAssistantModal: React.FC = () => {
                 <View
                   style={[
                     styles.bubble,
-                    m.sender === "user" ? styles.bubbleUser : styles.bubbleAi,
+                    m.sender === "user" ? styles.bubbleUser : [styles.bubbleAi, { backgroundColor: aiBubbleBg, borderColor: aiBubbleBorder }],
                     seniorMode && styles.seniorBubble,
                   ]}
                 >
@@ -527,7 +544,7 @@ export const AiAssistantModal: React.FC = () => {
           </ScrollView>
 
           {/* Suggested Quick Prompt Chips */}
-          <View style={styles.quickPromptContainer}>
+          <View style={[styles.quickPromptContainer, { backgroundColor: quickPromptBg }]}>
             <View style={styles.quickPromptHeader}>
               <Lightbulb size={13} color="#7C3AED" />
               <Text style={styles.quickPromptTitle}>
@@ -538,11 +555,11 @@ export const AiAssistantModal: React.FC = () => {
               {quickQuestions.map((q, i) => (
                 <TouchableOpacity
                   key={i}
-                  style={styles.promptChip}
+                  style={[styles.promptChip, { backgroundColor: promptChipBg, borderColor: promptChipBorder }]}
                   onPress={() => handleSend(q)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.promptText}>“{q}”</Text>
+                  <Text style={[styles.promptText, { color: promptChipTextColor }]}>“{q}”</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -559,7 +576,7 @@ export const AiAssistantModal: React.FC = () => {
           )}
 
           {/* Input Bar with Mic and Send Buttons */}
-          <View style={styles.inputBar}>
+          <View style={[styles.inputBar, { backgroundColor: inputBarBg, borderTopColor: inputBarBorder }]}>
             {/* Real Microphone Voice Button */}
             <TouchableOpacity
               style={[styles.micBtn, isRecording && styles.micBtnActive]}
@@ -577,7 +594,7 @@ export const AiAssistantModal: React.FC = () => {
             </TouchableOpacity>
 
             <TextInput
-              style={[styles.input, seniorMode && styles.seniorInput]}
+              style={[styles.input, { backgroundColor: inputBg, borderColor: inputBorder, color: inputTextColor }, seniorMode && styles.seniorInput]}
               placeholder={
                 isRecording
                   ? (isHindi ? "बोलिए..." : "Listening...")
@@ -585,7 +602,7 @@ export const AiAssistantModal: React.FC = () => {
                     ? `${activeParent.full_name.split(" ")[0]} के बारे में पूछें या बोलें...`
                     : `Ask about ${activeParent.full_name.split(" ")[0]}'s records...`)
               }
-              placeholderTextColor={isRecording ? "#EF4444" : Colors.textMuted}
+              placeholderTextColor={isRecording ? "#EF4444" : isDark ? "#64748B" : Colors.textMuted}
               value={inputQuery}
               onChangeText={setInputQuery}
               onSubmitEditing={() => handleSend()}
@@ -613,7 +630,7 @@ export const AiAssistantModal: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   fullScreenContainer: {
     flex: 1,
     backgroundColor: "#F8FAFC",
@@ -759,7 +776,7 @@ const styles = StyleSheet.create({
   mdHeadingText: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#1E1B4B",
+    color: Colors.textPrimary,
   },
   mdBulletRow: {
     flexDirection: "row",

@@ -17,7 +17,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass, createThemedStyles } from "../theme";
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -915,7 +915,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

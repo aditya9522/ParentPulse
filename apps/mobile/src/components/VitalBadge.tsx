@@ -1,13 +1,24 @@
 // apps/mobile/src/components/VitalBadge.tsx
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text } from "react-native";
 import { Activity, Droplets, Heart, Wind, Clock } from "lucide-react-native";
 import { HealthMeasurement } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "../theme";
+import { Colors, Typography, Spacing, BorderRadius, createThemedStyles } from "../theme";
 import { useApp } from "../context/AppContext";
 
 export const VitalBadge: React.FC<{ measurement: HealthMeasurement }> = ({ measurement }) => {
-  const { seniorMode, language } = useApp();
+  const { seniorMode, language, isDark, themeMode } = useApp();
+
+  const cardBg = isDark
+    ? "rgba(30, 41, 59, 0.75)"
+    : themeMode === "amber"
+    ? "rgba(255, 251, 245, 0.85)"
+    : "rgba(255, 255, 255, 0.65)";
+  const cardBorder = isDark
+    ? "rgba(51, 65, 85, 0.7)"
+    : themeMode === "amber"
+    ? "rgba(253, 230, 138, 0.6)"
+    : "rgba(255, 255, 255, 0.85)";
 
   const getVitalConfig = () => {
     switch (measurement.vital_type) {
@@ -88,7 +99,7 @@ export const VitalBadge: React.FC<{ measurement: HealthMeasurement }> = ({ measu
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
       {/* Top Icon & Status Row */}
       <View style={styles.topRow}>
         <View style={[styles.iconBox, { backgroundColor: config.bgLight }]}>
@@ -123,7 +134,7 @@ export const VitalBadge: React.FC<{ measurement: HealthMeasurement }> = ({ measu
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   card: {
     backgroundColor: "rgba(255, 255, 255, 0.65)",
     padding: Spacing.md,

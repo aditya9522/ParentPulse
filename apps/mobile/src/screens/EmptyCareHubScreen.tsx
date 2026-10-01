@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "../context/AppContext";
 import { apiClient } from "../api/client";
 import { AmbientBackground } from "../components/AmbientBackground";
-import { BorderRadius, Colors, Shadows, Spacing, Typography } from "../theme";
+import { BorderRadius, Colors, Shadows, Spacing, Typography, createThemedStyles } from "../theme";
 
 const CAPABILITIES = [
   { icon: "pulse" as const, title: "Daily health signals", detail: "Vitals, medicines and refill tracking" },
@@ -99,7 +99,7 @@ export const EmptyCareHubScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   screen: { flex: 1, backgroundColor: "#F4FBFA", paddingHorizontal: Spacing.md },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 1 },
   identity: { flexDirection: "row", alignItems: "center", gap: 10 },

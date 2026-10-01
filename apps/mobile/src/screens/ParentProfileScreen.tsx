@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
   TouchableOpacity,
   TextInput,
   Linking,
@@ -32,7 +31,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, createThemedStyles } from "../theme";
 import { EmergencyContact, PrimaryDoctor } from "../types";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 
@@ -769,17 +768,17 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.background,
   },
   sheetInnerPadding: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
   },
   header: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     paddingTop: 12,
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.sm,
@@ -989,7 +988,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   sectionCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
@@ -1243,7 +1242,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: 10,
@@ -1261,7 +1260,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#CBD5E1",
+    backgroundColor: Colors.borderStrong,
     alignSelf: "center",
     marginBottom: 12,
   },

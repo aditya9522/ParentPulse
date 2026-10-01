@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
   TouchableOpacity,
   Linking,
   Image,
@@ -12,7 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, createThemedStyles } from "../theme";
 import { ParentSelector } from "../components/ParentSelector";
 import { VitalBadge } from "../components/VitalBadge";
 import { MedicineCard } from "../components/MedicineCard";
@@ -685,7 +684,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   screenWrapper: {
     flex: 1,
     backgroundColor: "transparent",

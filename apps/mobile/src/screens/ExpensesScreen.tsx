@@ -5,7 +5,6 @@ import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
   TouchableOpacity,
   TextInput,
   Platform,
@@ -32,7 +31,7 @@ import * as Crypto from "expo-crypto";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApp } from "../context/AppContext";
 import { HealthcareExpense, InsurancePolicy } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass, createThemedStyles } from "../theme";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 
 export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
@@ -697,7 +696,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
             {showExpiryPicker && (
               <DateTimePicker
-                value={new Date(insExpiry || Date.now())}
+                value={new Date(insExpiry)}
                 mode="date"
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={(event, selectedDate) => {
@@ -731,13 +730,13 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.background,
   },
   header: {
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
+    backgroundColor: Colors.surface,
     paddingTop: 12,
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.sm,
@@ -797,7 +796,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
   },
   segmentBtnActive: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     ...Shadows.subtle,
   },
   segmentText: {
@@ -870,7 +869,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: BorderRadius.full,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -1075,7 +1074,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
     paddingTop: 10,
@@ -1210,7 +1209,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 40,
     paddingHorizontal: Spacing.lg,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.xl,
     marginVertical: Spacing.md,
     borderWidth: 1,

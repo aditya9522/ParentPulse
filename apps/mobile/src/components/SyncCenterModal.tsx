@@ -1,10 +1,10 @@
 import React from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useApp } from "../context/AppContext";
 import { QueuedMutation } from "../services/mutationQueue";
-import { Colors, Shadows, Spacing } from "../theme";
+import { Colors, Shadows, Spacing, createThemedStyles } from "../theme";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 
 const statePresentation = (item: QueuedMutation) => {
@@ -131,7 +131,7 @@ export const SyncCenterModal: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   sheet: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
   header: { flexDirection: "row", alignItems: "flex-start", paddingTop: 2, paddingBottom: 16 },
   headerIcon: { width: 50, height: 50, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(232, 247, 245, 0.85)", borderWidth: 1, borderColor: "rgba(255, 255, 255, 0.9)" },

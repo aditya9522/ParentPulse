@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet,
   StatusBar,
   Platform,
   Animated,
@@ -45,7 +44,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { isExpoGo } from "./src/services/runtimeEnvironment";
 import { apiClient } from "./src/api/client";
 import { AppAlert as Alert } from "./src/services/appAlert";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "./src/theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass, createThemedStyles } from "./src/theme";
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 if (!isExpoGo) SplashScreen.setOptions({ duration: 300, fade: true });
@@ -299,7 +298,7 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   appRoot: {
     flex: 1,
   },
@@ -310,6 +309,9 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: "transparent",
+    width: "100%",
+    maxWidth: 960,
+    alignSelf: "center",
   },
   stateScreen: { flex: 1, alignItems: "center", justifyContent: "center", padding: Spacing.xl, backgroundColor: "#F8FAFC" },
   stateCard: { width: "100%", maxWidth: 470, alignItems: "center", padding: 30, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1, borderColor: "rgba(255,255,255,0.95)", ...Shadows.card },
@@ -324,8 +326,10 @@ const styles = StyleSheet.create({
   stateSecondaryActionText: { color: Colors.primaryDark, fontSize: 13, fontWeight: "800" },
   floatingNavWrapper: {
     position: "absolute",
-    left: Spacing.md,
-    right: Spacing.md,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
     zIndex: 9999,
     elevation: 30,
   },
@@ -335,6 +339,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     minHeight: 62,
     backgroundColor: "transparent",
+    width: "100%",
+    maxWidth: 640,
   },
   seniorBottomBarContainer: {
     paddingVertical: 10,

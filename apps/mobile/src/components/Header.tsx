@@ -1,19 +1,17 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Image, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, Platform, Image, ScrollView } from "react-native";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass, createThemedStyles } from "../theme";
 
 export const Header: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {
     activeParent,
     seniorMode,
-    toggleSeniorMode,
     language,
-    setLanguage,
     setSosModalVisible,
     setDoctorShareModalVisible,
     setAiAssistantModalVisible,
@@ -24,6 +22,8 @@ export const Header: React.FC = () => {
     syncQueue,
     syncBusy,
     setSyncCenterVisible,
+    isDark,
+    themeMode,
   } = useApp();
 
   const [parentCardExpanded, setParentCardExpanded] = useState(true);
@@ -37,8 +37,23 @@ export const Header: React.FC = () => {
     default: 8,
   });
 
+  const headerBg = isDark ? "rgba(9, 13, 22, 0.94)" : themeMode === "amber" ? "rgba(253, 251, 247, 0.95)" : "rgba(255, 255, 255, 0.94)";
+  const headerBorder = isDark ? "rgba(51, 65, 85, 0.6)" : themeMode === "amber" ? "rgba(243, 230, 209, 0.8)" : "rgba(226, 232, 240, 0.7)";
+  const pillBg = isDark ? "rgba(30, 41, 59, 0.85)" : themeMode === "amber" ? "rgba(255, 251, 245, 0.9)" : "rgba(255, 255, 255, 0.85)";
+  const pillBorder = isDark ? "rgba(51, 65, 85, 0.8)" : themeMode === "amber" ? "rgba(253, 230, 138, 0.6)" : "rgba(255, 255, 255, 0.95)";
+  const chipBg = isDark ? "rgba(30, 41, 59, 0.75)" : themeMode === "amber" ? "rgba(255, 251, 245, 0.8)" : "rgba(255, 255, 255, 0.8)";
+  const chipBorder = isDark ? "rgba(51, 65, 85, 0.7)" : themeMode === "amber" ? "rgba(253, 230, 138, 0.5)" : Colors.border;
+
+  // Dynamic text colors — read at render time so theme switches are reflected
+  const dynTextPrimary = Colors.textPrimary;
+  const dynTextMuted = Colors.textMuted;
+  const shortcutAiBg = isDark ? "rgba(88, 28, 135, 0.35)" : themeMode === "amber" ? "rgba(237, 233, 254, 0.85)" : "rgba(243, 232, 255, 0.8)";
+  const shortcutQrBg = isDark ? "rgba(3, 105, 161, 0.35)" : themeMode === "amber" ? "rgba(224, 242, 254, 0.85)" : "rgba(224, 242, 254, 0.8)";
+  const shortcutRptBg = isDark ? "rgba(15, 118, 110, 0.35)" : themeMode === "amber" ? "rgba(204, 251, 241, 0.85)" : "rgba(204, 251, 241, 0.8)";
+
   return (
-    <View style={[styles.container, { paddingTop: topInset }]}>
+    <View style={[styles.container, { paddingTop: topInset, backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
+      <View style={styles.headerInner}>
       {/* Top Utility Bar */}
       <View style={styles.topRow}>
         <TouchableOpacity
@@ -54,8 +69,8 @@ export const Header: React.FC = () => {
             />
           </View>
           <View>
-            <Text style={styles.brandTitle}>ParentPulse</Text>
-            <Text style={styles.brandSub}>
+            <Text style={[styles.brandTitle, { color: dynTextPrimary }]}>ParentPulse</Text>
+            <Text style={[styles.brandSub, { color: dynTextMuted }]}>
               {isHindi ? "पारिवारिक स्वास्थ्य समन्वय" : "Remote Family Eldercare"}
             </Text>
           </View>
@@ -65,7 +80,7 @@ export const Header: React.FC = () => {
         <View style={styles.actionsContainer}>
           {/* Expand / Collapse Second Top Parent Card Button (Left side of Profile Icon) */}
           <TouchableOpacity
-            style={styles.collapseToggleBtn}
+            style={[styles.collapseToggleBtn, { backgroundColor: pillBg, borderColor: pillBorder }]}
             onPress={() => {
               if (Platform.OS !== "web") {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -84,7 +99,7 @@ export const Header: React.FC = () => {
 
           {/* User Account / Auth Pill (Profile Icon) */}
           <TouchableOpacity
-            style={styles.authPill}
+            style={[styles.authPill, { backgroundColor: pillBg, borderColor: pillBorder }]}
             onPress={() => setAuthModalVisible(true)}
             activeOpacity={0.85}
             accessibilityLabel="User Account Profile"
@@ -123,7 +138,7 @@ export const Header: React.FC = () => {
 
           <View style={styles.parentTextInfo}>
             <View style={styles.parentNameRow}>
-              <Text style={[styles.parentName, seniorMode && styles.seniorParentName]}>
+              <Text style={[styles.parentName, seniorMode && styles.seniorParentName, { color: dynTextPrimary }]}>
                 {activeParent.full_name}
               </Text>
               <View style={styles.relationChip}>
@@ -134,7 +149,7 @@ export const Header: React.FC = () => {
                 </Text>
               </View>
             </View>
-            <Text style={styles.parentSubDetails}>
+            <Text style={[styles.parentSubDetails, { color: dynTextMuted }]}>
               {isHindi ? "रक्त समूह" : "Blood Group"}: {activeParent.blood_group} • Gurugram, India
             </Text>
           </View>
@@ -142,16 +157,16 @@ export const Header: React.FC = () => {
           {/* Quick Header Shortcuts (AI & QR & Report) */}
           <View style={styles.headerShortcuts}>
             <TouchableOpacity
-              style={styles.shortcutBtnReport}
+              style={[styles.shortcutBtnReport, { backgroundColor: shortcutRptBg }]}
               onPress={() => setReportModalVisible(true)}
               accessibilityLabel="Monthly Health Summary"
               activeOpacity={0.8}
             >
-              <Ionicons name="document-text" size={16} color="#0D9488" />
+              <Ionicons name="document-text" size={16} color={Colors.primary} />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.shortcutBtnAi}
+              style={[styles.shortcutBtnAi, { backgroundColor: shortcutAiBg }]}
               onPress={() => setAiAssistantModalVisible(true)}
               accessibilityLabel="Ask AI Health Assistant"
               activeOpacity={0.8}
@@ -160,7 +175,7 @@ export const Header: React.FC = () => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.shortcutBtnQr}
+              style={[styles.shortcutBtnQr, { backgroundColor: shortcutQrBg }]}
               onPress={() => setDoctorShareModalVisible(true)}
               accessibilityLabel="Doctor Clinical Brief QR"
               activeOpacity={0.8}
@@ -175,7 +190,7 @@ export const Header: React.FC = () => {
       <View style={styles.moduleStrip}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.moduleScroll}>
           <TouchableOpacity
-            style={[styles.moduleChip, syncQueue.length > 0 && styles.syncChipActive]}
+            style={[styles.moduleChip, { backgroundColor: chipBg, borderColor: chipBorder }, syncQueue.length > 0 && styles.syncChipActive]}
             onPress={() => setSyncCenterVisible(true)}
             activeOpacity={0.7}
             accessibilityLabel={`${syncQueue.length} care changes waiting to synchronize`}
@@ -185,90 +200,97 @@ export const Header: React.FC = () => {
               size={13}
               color={syncQueue.some((item) => item.state === "blocked" || item.state === "conflict") ? "#B54708" : Colors.primaryDark}
             />
-            <Text style={[styles.moduleChipText, styles.syncChipText]}>
+            <Text style={[styles.moduleChipText, styles.syncChipText, { color: Colors.primaryDark }]}>
               {syncBusy ? "Syncing" : syncQueue.length > 0 ? `${syncQueue.length} pending` : "Synced"}
             </Text>
             {syncQueue.length > 0 && <View style={styles.syncCount}><Text style={styles.syncCountText}>{Math.min(syncQueue.length, 99)}</Text></View>}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.moduleChip, activeScreen === "tabs" && styles.moduleChipActive]}
+            style={[styles.moduleChip, { backgroundColor: chipBg, borderColor: chipBorder }, activeScreen === "tabs" && styles.moduleChipActive]}
             onPress={() => setActiveScreen("tabs")}
             activeOpacity={0.7}
           >
-            <Ionicons name="grid-outline" size={12} color={activeScreen === "tabs" ? Colors.primaryDark : Colors.textMuted} />
-            <Text style={[styles.moduleChipText, activeScreen === "tabs" && styles.moduleChipTextActive]}>
+            <Ionicons name="grid-outline" size={12} color={activeScreen === "tabs" ? Colors.primaryDark : dynTextMuted} />
+            <Text style={[styles.moduleChipText, activeScreen === "tabs" && styles.moduleChipTextActive, { color: activeScreen === "tabs" ? Colors.primaryDark : dynTextMuted }]}>
               {isHindi ? "केयर हब" : "Care Hub"}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.moduleChip, activeScreen === "family" && styles.moduleChipActive]}
+            style={[styles.moduleChip, { backgroundColor: chipBg, borderColor: chipBorder }, activeScreen === "family" && styles.moduleChipActive]}
             onPress={() => setActiveScreen("family")}
             activeOpacity={0.7}
           >
-            <Ionicons name="people-outline" size={12} color={activeScreen === "family" ? Colors.primaryDark : Colors.textMuted} />
-            <Text style={[styles.moduleChipText, activeScreen === "family" && styles.moduleChipTextActive]}>
+            <Ionicons name="people-outline" size={12} color={activeScreen === "family" ? Colors.primaryDark : dynTextMuted} />
+            <Text style={[styles.moduleChipText, activeScreen === "family" && styles.moduleChipTextActive, { color: activeScreen === "family" ? Colors.primaryDark : dynTextMuted }]}>
               {isHindi ? "परिवार व कार्य" : "Family & Tasks"}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.moduleChip, activeScreen === "profile" && styles.moduleChipActive]}
+            style={[styles.moduleChip, { backgroundColor: chipBg, borderColor: chipBorder }, activeScreen === "profile" && styles.moduleChipActive]}
             onPress={() => setActiveScreen("profile")}
             activeOpacity={0.7}
           >
-            <Ionicons name="medical-outline" size={12} color={activeScreen === "profile" ? Colors.primaryDark : Colors.textMuted} />
-            <Text style={[styles.moduleChipText, activeScreen === "profile" && styles.moduleChipTextActive]}>
+            <Ionicons name="medical-outline" size={12} color={activeScreen === "profile" ? Colors.primaryDark : dynTextMuted} />
+            <Text style={[styles.moduleChipText, activeScreen === "profile" && styles.moduleChipTextActive, { color: activeScreen === "profile" ? Colors.primaryDark : dynTextMuted }]}>
               {isHindi ? "स्वास्थ्य प्रोफ़ाइल" : "Health Profile"}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.moduleChip, activeScreen === "expenses" && styles.moduleChipActive]}
+            style={[styles.moduleChip, { backgroundColor: chipBg, borderColor: chipBorder }, activeScreen === "expenses" && styles.moduleChipActive]}
             onPress={() => setActiveScreen("expenses")}
             activeOpacity={0.7}
           >
-            <Ionicons name="receipt-outline" size={12} color={activeScreen === "expenses" ? Colors.primaryDark : Colors.textMuted} />
-            <Text style={[styles.moduleChipText, activeScreen === "expenses" && styles.moduleChipTextActive]}>
+            <Ionicons name="receipt-outline" size={12} color={activeScreen === "expenses" ? Colors.primaryDark : dynTextMuted} />
+            <Text style={[styles.moduleChipText, activeScreen === "expenses" && styles.moduleChipTextActive, { color: activeScreen === "expenses" ? Colors.primaryDark : dynTextMuted }]}>
               {isHindi ? "खर्च व बीमा" : "Expenses & Bills"}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.moduleChip}
+            style={[styles.moduleChip, { backgroundColor: chipBg, borderColor: chipBorder }]}
             onPress={() => setReportModalVisible(true)}
             activeOpacity={0.7}
           >
-            <Ionicons name="analytics-outline" size={12} color="#0D9488" />
+            <Ionicons name="analytics-outline" size={12} color={Colors.primaryDark} />
             <Text style={[styles.moduleChipText, { color: Colors.primaryDark }]}>
               {isHindi ? "मासिक रिपोर्ट" : "Health Report"}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.moduleChip, activeScreen === "settings" && styles.moduleChipActive]}
+            style={[styles.moduleChip, { backgroundColor: chipBg, borderColor: chipBorder }, activeScreen === "settings" && styles.moduleChipActive]}
             onPress={() => setActiveScreen("settings")}
             activeOpacity={0.7}
           >
-            <Ionicons name="settings-outline" size={12} color={activeScreen === "settings" ? Colors.primaryDark : Colors.textMuted} />
-            <Text style={[styles.moduleChipText, activeScreen === "settings" && styles.moduleChipTextActive]}>
+            <Ionicons name="settings-outline" size={12} color={activeScreen === "settings" ? Colors.primaryDark : dynTextMuted} />
+            <Text style={[styles.moduleChipText, activeScreen === "settings" && styles.moduleChipTextActive, { color: activeScreen === "settings" ? Colors.primaryDark : dynTextMuted }]}>
               {isHindi ? "सेटिंग्स" : "Settings"}
             </Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     backgroundColor: "rgba(255, 255, 255, 0.94)",
     paddingHorizontal: Spacing.md,
     paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(226, 232, 240, 0.7)",
+    width: "100%",
+  },
+  headerInner: {
+    width: "100%",
+    maxWidth: 960,
+    alignSelf: "center",
   },
   topRow: {
     flexDirection: "row",

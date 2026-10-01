@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
   TouchableOpacity,
   Platform,
 } from "react-native";
@@ -30,7 +29,7 @@ import { MedicineCard } from "../components/MedicineCard";
 import { AddMedicineModal } from "../components/AddMedicineModal";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { MedicineSchedule } from "../types";
-import { Colors, Spacing, Shadows, Gradients, Glass, BorderRadius } from "../theme";
+import { Colors, Spacing, Shadows, Gradients, Glass, BorderRadius, createThemedStyles } from "../theme";
 
 type TimeSlot = "all" | "morning" | "afternoon" | "evening" | "night";
 
@@ -410,7 +409,7 @@ export const MedicinesScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
     backgroundColor: "transparent",
@@ -624,7 +623,7 @@ const styles = StyleSheet.create({
   },
   inventoryTrack: {
     height: 6,
-    backgroundColor: "#E2E8F0",
+    backgroundColor: Colors.borderLight,
     borderRadius: 3,
     overflow: "hidden",
     marginTop: 6,

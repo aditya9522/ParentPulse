@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Modal, Platform, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FeedbackEvent, FeedbackTone, subscribeToAppAlerts } from "../services/appAlert";
-import { Colors, Shadows, Spacing } from "../theme";
+import { Colors, Shadows, Spacing, createThemedStyles } from "../theme";
 
 const TONE: Record<FeedbackTone, { color: string; soft: string; icon: keyof typeof Ionicons.glyphMap }> = {
   success: { color: "#047857", soft: "#ECFDF5", icon: "checkmark-circle" },
@@ -103,7 +103,7 @@ export const PremiumFeedbackHost: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   toastLayer: { position: "absolute", left: Spacing.md, right: Spacing.md, zIndex: 20000, elevation: 40 },
   toast: { flexDirection: "row", alignItems: "flex-start", padding: 14, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.88)", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.95)", ...Shadows.card, elevation: 0 },
   iconWrap: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },

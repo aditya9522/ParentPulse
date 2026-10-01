@@ -3,7 +3,8 @@ import React from "react";
 import { View, StyleSheet, ViewStyle, StyleProp, Platform } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { Glass, BorderRadius, currentThemeMode } from "../theme";
+import { useApp } from "../context/AppContext";
+import { Glass, BorderRadius, createThemedStyles } from "../theme";
 
 interface GlassViewProps {
   children?: React.ReactNode;
@@ -20,9 +21,10 @@ export const GlassView: React.FC<GlassViewProps> = ({
   tint,
   variant = "card",
 }) => {
+  const { themeMode } = useApp();
   const glassToken = Glass[variant] || Glass.card;
-  const isDarkMode = currentThemeMode === "dark" || variant === "dark";
-  const isAmberMode = currentThemeMode === "amber";
+  const isDarkMode = themeMode === "dark" || variant === "dark";
+  const isAmberMode = themeMode === "amber";
   const isHeroTeal = variant === "heroTeal";
 
   const effectiveTint = tint ?? (isDarkMode ? "dark" : "light");
@@ -56,7 +58,6 @@ export const GlassView: React.FC<GlassViewProps> = ({
         <BlurView
           intensity={Platform.OS === "android" ? Math.min(intensity, 50) : intensity}
           tint={effectiveTint}
-          blurMethod={Platform.OS === "android" ? "dimezisBlurViewSdk31Plus" : undefined}
           style={[StyleSheet.absoluteFill, styles.blurView]}
         />
       )}
@@ -72,7 +73,7 @@ export const GlassView: React.FC<GlassViewProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   outerContainer: {
     borderRadius: BorderRadius.xl,
     overflow: "hidden",

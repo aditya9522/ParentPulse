@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,7 +14,7 @@ import { AlertTriangle, BadgeCheck, LockKeyhole, Trash2 } from "lucide-react-nat
 import { apiClient, AuthMethod, DeletionImpact } from "../api/client";
 import { AppAlert } from "../services/appAlert";
 import { getFreshGoogleIdToken, isGoogleAuthConfigured } from "../services/googleAuth";
-import { BorderRadius, Colors, Shadows, Spacing, Typography } from "../theme";
+import { BorderRadius, Colors, Shadows, Spacing, Typography, createThemedStyles } from "../theme";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 
 interface DeleteAccountSheetProps {
@@ -220,7 +219,7 @@ export const DeleteAccountSheet: React.FC<DeleteAccountSheetProps> = ({ visible,
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   content: { paddingHorizontal: Spacing.xl, paddingBottom: 34, alignItems: "stretch" },
   iconWrap: { width: 48, height: 48, borderRadius: 16, backgroundColor: Colors.emergencyLight, alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 4 },
   title: { fontSize: Typography.sizes.xxl, fontWeight: Typography.weights.extraBold, color: Colors.textPrimary, textAlign: "center", marginTop: 12 },

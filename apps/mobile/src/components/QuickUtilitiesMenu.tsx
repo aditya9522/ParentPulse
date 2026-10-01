@@ -28,7 +28,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../context/AppContext";
 import { GlassView } from "./GlassView";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, createThemedStyles } from "../theme";
 
 export const QuickUtilitiesMenu: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -42,7 +42,6 @@ export const QuickUtilitiesMenu: React.FC = () => {
     setLanguage,
     themeMode,
     setThemeMode,
-    isDark,
     setActiveScreen,
     setAiAssistantModalVisible,
     setSosModalVisible,
@@ -459,7 +458,7 @@ export const QuickUtilitiesMenu: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   floatingAnchor: {
     position: "absolute",
     right: 18,

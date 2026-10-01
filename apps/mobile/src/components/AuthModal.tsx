@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { AppAlert as Alert } from "../services/appAlert";
-import { ArrowLeft, ArrowRight, BadgeCheck, Lock, Mail, ShieldCheck, User, X } from "lucide-react-native";
+import { ArrowLeft, ArrowRight, Lock, Mail, ShieldCheck, User, X } from "lucide-react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../context/AppContext";
 import { apiClient } from "../api/client";
-import { BorderRadius, Colors, Gradients, Spacing, Typography } from "../theme";
+import { BorderRadius, Colors, Gradients, Spacing, Typography, createThemedStyles } from "../theme";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
 import { getFreshGoogleIdToken, isGoogleAuthConfigured } from "../services/googleAuth";
 
@@ -118,7 +118,7 @@ export const AuthModal: React.FC = () => {
 
 const Field: React.FC<{ icon: React.ReactNode; label: string; children: React.ReactNode }> = ({ icon, label, children }) => <View style={styles.fieldGroup}><Text style={styles.label}>{label}</Text><View style={styles.field}>{icon}{children}</View></View>;
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: Spacing.lg, paddingTop: 2 },
   brandIcon: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryDark },
   iconButton: { width: 42, height: 42, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.75)", borderWidth: 1, borderColor: "rgba(255,255,255,0.9)" },

@@ -1,5 +1,5 @@
 // apps/mobile/src/theme/index.ts
-import { Platform } from "react-native";
+import { StyleSheet } from "react-native";
 
 export type AppThemeMode = "light" | "dark" | "amber";
 
@@ -26,6 +26,7 @@ export const LIGHT_COLORS = {
   emergency: "#EF4444", // Red 500
   emergencyDark: "#DC2626", // Red 600
   emergencyLight: "#FEE2E2",
+  emergencyFaint: "#FFF5F5",
   warning: "#F59E0B", // Amber 500
   warningDark: "#D97706",
   warningLight: "#FEF3C7",
@@ -80,6 +81,7 @@ export const DARK_COLORS = {
   emergency: "#F87171",
   emergencyDark: "#EF4444",
   emergencyLight: "rgba(239, 68, 68, 0.20)",
+  emergencyFaint: "rgba(239, 68, 68, 0.08)",
   warning: "#FBBF24",
   warningDark: "#F59E0B",
   warningLight: "rgba(245, 158, 11, 0.20)",
@@ -134,6 +136,7 @@ export const AMBER_COLORS = {
   emergency: "#EF4444",
   emergencyDark: "#DC2626",
   emergencyLight: "#FEE2E2",
+  emergencyFaint: "#FFF5F5",
   warning: "#D97706",
   warningDark: "#B45309",
   warningLight: "#FEF3C7",
@@ -165,7 +168,27 @@ export const AMBER_COLORS = {
   seniorBorder: "#B45309",
 };
 
-export const Colors = { ...LIGHT_COLORS };
+export const Colors: typeof LIGHT_COLORS = new Proxy({} as typeof LIGHT_COLORS, {
+  get(_target, prop: string) {
+    const palette = THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { colors: LIGHT_COLORS };
+    return (palette.colors as any)[prop] ?? (LIGHT_COLORS as any)[prop];
+  },
+  ownKeys() {
+    return Object.keys(LIGHT_COLORS);
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    const palette = THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { colors: LIGHT_COLORS };
+    return {
+      value: (palette.colors as any)?.[prop],
+      enumerable: true,
+      configurable: true,
+      writable: false,
+    };
+  },
+  has(_target, prop) {
+    return prop in LIGHT_COLORS;
+  },
+});
 
 export const LIGHT_GRADIENTS = {
   primary: ["#0D9488", "#0F766E"] as const,
@@ -206,7 +229,38 @@ export const AMBER_GRADIENTS = {
   cardTeal: ["#FEF3C7", "#FDE68A"] as const,
 };
 
-export const Gradients = { ...LIGHT_GRADIENTS };
+export const Gradients = {
+  get primary() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.primary;
+  },
+  get primaryHero() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.primaryHero;
+  },
+  get teal() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.teal;
+  },
+  get sos() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.sos;
+  },
+  get crimson() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.crimson;
+  },
+  get doctor() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.doctor;
+  },
+  get ai() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.ai;
+  },
+  get vital() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.vital;
+  },
+  get cardSoft() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.cardSoft;
+  },
+  get cardTeal() {
+    return (THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { gradients: LIGHT_GRADIENTS }).gradients.cardTeal;
+  },
+};
 
 export const Typography = {
   fontFamily: "System",
@@ -592,7 +646,32 @@ export const AMBER_GLASS = {
   },
 };
 
-export const Glass = { ...LIGHT_GLASS };
+export const Glass = {
+  get card() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.card };
+  },
+  get cardElevated() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.cardElevated };
+  },
+  get modal() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.modal };
+  },
+  get heroTeal() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.heroTeal };
+  },
+  get pill() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.pill };
+  },
+  get nav() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.nav };
+  },
+  get subtle() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.subtle };
+  },
+  get dark() {
+    return { ...(THEME_PALETTES?.[currentThemeMode] || THEME_PALETTES?.light || { glass: LIGHT_GLASS }).glass.dark };
+  },
+};
 
 export const THEME_PALETTES = {
   light: {
@@ -625,15 +704,120 @@ export let currentThemeMode: AppThemeMode = "light";
 
 export function applyTheme(mode: AppThemeMode) {
   currentThemeMode = mode;
-  const palette = THEME_PALETTES[mode] || THEME_PALETTES.light;
-  Object.assign(Colors, palette.colors);
-  Object.assign(Glass.card, palette.glass.card);
-  Object.assign(Glass.cardElevated, palette.glass.cardElevated);
-  Object.assign(Glass.modal, palette.glass.modal);
-  Object.assign(Glass.heroTeal, palette.glass.heroTeal);
-  Object.assign(Glass.pill, palette.glass.pill);
-  Object.assign(Glass.nav, palette.glass.nav);
-  Object.assign(Glass.subtle, palette.glass.subtle);
-  Object.assign(Glass.dark, palette.glass.dark);
-  Object.assign(Gradients, palette.gradients);
+}
+
+const STYLE_COLOR_TOKENS: Record<string, (keyof typeof LIGHT_COLORS)[]> = {
+  color: [
+    "textPrimary", "textSecondary", "textMuted", "textSubtle",
+    "primary", "primaryDark", "primaryDeep", "secondary", "secondaryDark",
+    "accent", "indigo", "emergency", "emergencyDark", "warning", "warningDark",
+    "success", "successDark",
+  ],
+  backgroundColor: [
+    "background", "surface", "surfaceCard", "surfaceAlt", "surfaceHighlight",
+    "primaryLight", "primaryFaint", "secondaryLight", "accentLight", "indigoLight",
+    "emergencyLight", "emergencyFaint", "warningLight", "successLight",
+  ],
+  borderColor: ["border", "borderLight", "borderStrong"],
+  borderTopColor: ["border", "borderLight", "borderStrong"],
+  borderBottomColor: ["border", "borderLight", "borderStrong"],
+  borderLeftColor: ["border", "borderLight", "borderStrong"],
+  borderRightColor: ["border", "borderLight", "borderStrong"],
+  textDecorationColor: ["textPrimary", "textSecondary", "textMuted", "textSubtle"],
+  tintColor: ["primary", "primaryDark", "textMuted"],
+};
+
+function getRgbChannels(value: string): [number, number, number] | null {
+  const hex = value.match(/^#([\da-f]{3}|[\da-f]{6})$/i)?.[1];
+  if (hex) {
+    const expanded = hex.length === 3 ? [...hex].map((channel) => channel + channel).join("") : hex;
+    return [0, 2, 4].map((offset) => parseInt(expanded.slice(offset, offset + 2), 16)) as [number, number, number];
+  }
+
+  const rgb = value.match(/^rgba?\(\s*(\d{1,3}),\s*(\d{1,3}),\s*(\d{1,3})(?:,\s*[\d.]+)?\s*\)$/i);
+  return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : null;
+}
+
+function resolveStyleColor(property: string, value: unknown): unknown {
+  if (typeof value !== "string") return value;
+
+  const palette = getThemePalette().colors;
+  const token = STYLE_COLOR_TOKENS[property]?.find((key) => LIGHT_COLORS[key] === value);
+  if (token) return palette[token];
+
+  if (property === "color") {
+    const darkTextAliases: Record<string, keyof typeof LIGHT_COLORS> = {
+      "#1e1b4b": "textPrimary",
+      "#1e40af": "secondary",
+      "#175cd3": "secondary",
+      "#92400e": "warningDark",
+      "#b45309": "warningDark",
+      "#991b1b": "emergencyDark",
+      "#b42318": "emergencyDark",
+      "#166534": "successDark",
+      "#15803d": "successDark",
+    };
+    if (currentThemeMode === "dark" && darkTextAliases[value.toLowerCase()]) {
+      return palette[darkTextAliases[value.toLowerCase()]];
+    }
+    if (value.toLowerCase() === "black" || value.toLowerCase() === "#000000" || value.toLowerCase() === "#000") {
+      return palette.textPrimary;
+    }
+  }
+
+  if (property === "backgroundColor" && /^rgba\(\s*255,\s*255,\s*255,\s*[\d.]+\s*\)$/i.test(value)) {
+    return palette.surfaceCard;
+  }
+  if (property.startsWith("border") && /^rgba\(\s*255,\s*255,\s*255,\s*[\d.]+\s*\)$/i.test(value)) {
+    return palette.border;
+  }
+
+  if (currentThemeMode === "dark") {
+    const channels = getRgbChannels(value);
+    if (channels) {
+      const max = Math.max(...channels);
+      const min = Math.min(...channels);
+      const saturation = max === 0 ? 0 : (max - min) / max;
+      const luminance = (channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722) / 255;
+      if (property === "color" && luminance < 0.48) return palette.textPrimary;
+      if (property === "backgroundColor" && luminance > 0.88 && saturation < 0.16) {
+        return palette.surfaceAlt;
+      }
+      if (property.startsWith("border") && luminance > 0.88 && saturation < 0.16) {
+        return palette.border;
+      }
+    }
+  }
+
+  return value;
+}
+
+export function createThemedStyles<T extends StyleSheet.NamedStyles<T>>(styles: T): T {
+  const registeredStyles = StyleSheet.create(styles);
+  return new Proxy(registeredStyles, {
+    get(target, property, receiver) {
+      const style = Reflect.get(target, property, receiver);
+      if (!style || typeof style !== "object" || Array.isArray(style)) return style;
+
+      const themedStyle = { ...style } as Record<string, unknown>;
+      for (const [key, value] of Object.entries(themedStyle)) {
+        themedStyle[key] = resolveStyleColor(key, value);
+      }
+      return themedStyle;
+    },
+  });
+}
+
+export function getThemePalette(mode: AppThemeMode = currentThemeMode) {
+  return THEME_PALETTES[mode] || THEME_PALETTES.light;
+}
+
+/**
+ * Returns a live snapshot of the current theme colors.
+ * Call at the TOP of a function component (like a hook) so colors update on re-render.
+ * Usage:  const C = useThemeColors();
+ */
+export function useThemeColors(): typeof LIGHT_COLORS {
+  const palette = THEME_PALETTES[currentThemeMode] || THEME_PALETTES.light;
+  return palette.colors as typeof LIGHT_COLORS;
 }

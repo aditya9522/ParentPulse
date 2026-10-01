@@ -1,7 +1,7 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { BorderRadius, Colors, Spacing, Typography } from "../theme";
+import { BorderRadius, Colors, Spacing, Typography, createThemedStyles } from "../theme";
 
 interface Props {
   children: React.ReactNode;
@@ -46,7 +46,7 @@ export class AppErrorBoundary extends React.Component<Props, State> {
   }
 }
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   screen: { flex: 1, alignItems: "center", justifyContent: "center", padding: Spacing.xl, backgroundColor: "#F4FBFA" },
   icon: { width: 64, height: 64, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryDark },
   eyebrow: { marginTop: 20, color: Colors.primaryDark, fontSize: 9, fontWeight: Typography.weights.extraBold, letterSpacing: 1.5 },

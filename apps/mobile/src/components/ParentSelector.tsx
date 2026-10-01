@@ -1,12 +1,45 @@
 // apps/mobile/src/components/ParentSelector.tsx
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image } from "react-native";
+import { View, Text, TouchableOpacity, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "../context/AppContext";
-import { Colors, Typography, Spacing, Shadows, BorderRadius } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, createThemedStyles } from "../theme";
 
 export const ParentSelector: React.FC = () => {
-  const { activeParent, parentList, setActiveParentId, seniorMode, language, setActiveScreen } = useApp();
+  const { activeParent, parentList, setActiveParentId, seniorMode, language, setActiveScreen, isDark, themeMode } = useApp();
+
+  const tabBg = isDark
+    ? "rgba(30, 41, 59, 0.75)"
+    : themeMode === "amber"
+    ? "rgba(255, 251, 245, 0.85)"
+    : "rgba(255, 255, 255, 0.65)";
+  const tabBorder = isDark
+    ? "rgba(51, 65, 85, 0.7)"
+    : themeMode === "amber"
+    ? "rgba(253, 230, 138, 0.6)"
+    : "rgba(255, 255, 255, 0.85)";
+  const addBtnBg = isDark
+    ? "rgba(30, 41, 59, 0.7)"
+    : themeMode === "amber"
+    ? "rgba(255, 251, 245, 0.85)"
+    : "rgba(255, 255, 255, 0.8)";
+  const addBtnBorder = isDark
+    ? "rgba(20, 184, 166, 0.4)"
+    : themeMode === "amber"
+    ? "rgba(217, 119, 6, 0.4)"
+    : "rgba(13, 148, 136, 0.4)";
+  const alertBg = isDark
+    ? "rgba(120, 53, 15, 0.25)"
+    : themeMode === "amber"
+    ? "rgba(254, 243, 199, 0.85)"
+    : "rgba(254, 243, 199, 0.85)";
+  const alertBorder = isDark
+    ? "rgba(245, 158, 11, 0.3)"
+    : themeMode === "amber"
+    ? "rgba(253, 230, 138, 0.7)"
+    : "rgba(255, 255, 255, 0.8)";
+  const alertLabelColor = isDark ? "#FBBF24" : "#92400E";
+  const alertTextColor = isDark ? "#FDE68A" : "#78350F";
 
   return (
     <View style={styles.container}>
@@ -27,7 +60,12 @@ export const ParentSelector: React.FC = () => {
           return (
             <TouchableOpacity
               key={parent.id}
-              style={[styles.parentTab, Shadows.card, isSelected && styles.parentTabActive]}
+              style={[
+                styles.parentTab,
+                Shadows.card,
+                { backgroundColor: tabBg, borderColor: tabBorder },
+                isSelected && styles.parentTabActive,
+              ]}
               onPress={() => setActiveParentId(parent.id)}
               activeOpacity={0.8}
               accessibilityRole="button"
@@ -64,7 +102,7 @@ export const ParentSelector: React.FC = () => {
 
         {/* Add Parent / Care Circle Onboarding Launcher */}
         <TouchableOpacity
-          style={styles.addParentBtn}
+          style={[styles.addParentBtn, { backgroundColor: addBtnBg, borderColor: addBtnBorder }]}
           onPress={() => setActiveScreen("onboarding")}
           activeOpacity={0.8}
           accessibilityLabel="Add New Parent Profile"
@@ -79,13 +117,13 @@ export const ParentSelector: React.FC = () => {
       </View>
 
       {/* Critical Health Alerts Ribbon */}
-      <View style={styles.alertRibbon}>
-        <Ionicons name="warning" size={16} color="#B45309" style={{ marginRight: 6 }} />
+      <View style={[styles.alertRibbon, { backgroundColor: alertBg, borderColor: alertBorder }]}>
+        <Ionicons name="warning" size={16} color={isDark ? "#FBBF24" : "#B45309"} style={{ marginRight: 6 }} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.alertLabel}>
+          <Text style={[styles.alertLabel, { color: alertLabelColor }]}>
             {language === "hi" ? "महत्वपूर्ण स्वास्थ्य सूचना:" : "Critical Health Conditions & Allergies:"}
           </Text>
-          <Text style={styles.alertText} numberOfLines={2}>
+          <Text style={[styles.alertText, { color: alertTextColor }]} numberOfLines={2}>
             Allergies: {activeParent.allergies.join(", ") || "None"} •{" "}
             {activeParent.chronic_conditions.join(" • ")}
           </Text>
@@ -95,7 +133,7 @@ export const ParentSelector: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,

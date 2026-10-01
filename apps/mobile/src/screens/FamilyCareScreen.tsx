@@ -13,11 +13,13 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { AppAlert as Alert } from "../services/appAlert";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   Users,
   CheckCircle2,
   Plus,
   Calendar,
+  Clock,
   User,
   Trash2,
   Sparkles,
@@ -35,7 +37,7 @@ import * as Haptics from "expo-haptics";
 import * as Crypto from "expo-crypto";
 import { useApp } from "../context/AppContext";
 import { CareTask, FamilyMemberItem, TaskPriority, UserRole } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass, createThemedStyles } from "../theme";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 import { apiClient } from "../api/client";
@@ -65,6 +67,9 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
   const [taskDesc, setTaskDesc] = useState("");
   const [taskPriority, setTaskPriority] = useState<TaskPriority>("medium");
   const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskDueDateObj, setTaskDueDateObj] = useState<Date>(() => new Date(Date.now() + 86400000));
+  const [showTaskDatePicker, setShowTaskDatePicker] = useState(false);
+  const [showTaskTimePicker, setShowTaskTimePicker] = useState(false);
   const [taskAssignee, setTaskAssignee] = useState(familyMembers[0]?.name || "");
 
   // Invite Member Modal State
@@ -115,17 +120,25 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
     return true;
   });
 
+  const formatTaskTime = (date: Date) => {
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const minStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+    const hrStr = hours < 10 ? `0${hours}` : `${hours}`;
+    return `${hrStr}:${minStr} ${ampm}`;
+  };
+
   const handleCreateTask = () => {
     if (!taskTitle.trim()) {
       Alert.alert(isHindi ? "शीर्षक आवश्यक है" : "Title Required", isHindi ? "कृपया कार्य का नाम लिखें।" : "Please enter a task title.");
       return;
     }
-    if (taskDueDate && !Number.isFinite(Date.parse(taskDueDate))) {
-      Alert.alert("Invalid due date", "Use an ISO date and time, for example 2026-10-05T10:00:00Z.");
-      return;
-    }
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    const dueDateISO = taskDueDate ? taskDueDateObj.toISOString() : undefined;
     const newTask: CareTask = {
       id: Crypto.randomUUID(),
       parent_id: activeParent.id,
@@ -134,7 +147,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
       description: taskDesc.trim() || undefined,
       priority: taskPriority,
       status: "pending",
-      due_date: taskDueDate || undefined,
+      due_date: dueDateISO,
       assigned_to_name: taskAssignee,
       assigned_to_user_id: activeFamilyMembers.find((member) => member.name === taskAssignee)?.user_id,
       created_at: new Date().toISOString(),
@@ -143,6 +156,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
     addTask(newTask);
     setTaskTitle("");
     setTaskDesc("");
+    setTaskDueDate("");
     setAddTaskModalVisible(false);
   };
 
@@ -609,13 +623,75 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
               </View>
 
               <Text style={styles.inputLabel}>{isHindi ? "नियत समय" : "Due Date & Time"}</Text>
-              <TextInput
-                style={styles.textInput}
-                value={taskDueDate}
-                onChangeText={setTaskDueDate}
-                placeholder="YYYY-MM-DDTHH:mm:ssZ (optional)"
-                placeholderTextColor={Colors.textMuted}
-              />
+              <View style={styles.dueDateRow}>
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, { flex: 1 }]}
+                  onPress={() => setShowTaskDatePicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <Calendar size={15} color={Colors.primary} />
+                  <Text style={styles.datePickerBtnText}>
+                    {taskDueDate ? taskDueDateObj.toISOString().slice(0, 10) : (isHindi ? "तारीख चुनें" : "Select Date")}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.datePickerBtn, { flex: 1 }]}
+                  onPress={() => setShowTaskTimePicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <Clock size={15} color={Colors.secondary} />
+                  <Text style={styles.datePickerBtnText}>
+                    {taskDueDate ? formatTaskTime(taskDueDateObj) : (isHindi ? "समय चुनें" : "Select Time")}
+                  </Text>
+                </TouchableOpacity>
+
+                {taskDueDate ? (
+                  <TouchableOpacity
+                    style={styles.clearDueDateBtn}
+                    onPress={() => setTaskDueDate("")}
+                    activeOpacity={0.8}
+                  >
+                    <X size={14} color={Colors.textMuted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {showTaskDatePicker && (
+                <DateTimePicker
+                  value={taskDueDateObj}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  minimumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowTaskDatePicker(false);
+                    if (selectedDate) {
+                      const updated = new Date(taskDueDateObj);
+                      updated.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                      setTaskDueDateObj(updated);
+                      setTaskDueDate(updated.toISOString());
+                    }
+                  }}
+                />
+              )}
+
+              {showTaskTimePicker && (
+                <DateTimePicker
+                  value={taskDueDateObj}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={(event, selectedDate) => {
+                    setShowTaskTimePicker(false);
+                    if (selectedDate) {
+                      const updated = new Date(taskDueDateObj);
+                      updated.setHours(selectedDate.getHours(), selectedDate.getMinutes());
+                      setTaskDueDateObj(updated);
+                      setTaskDueDate(updated.toISOString());
+                    }
+                  }}
+                />
+              )}
 
               <Text style={styles.inputLabel}>{isHindi ? "किसे सौंपा जाए" : "Assign To"}</Text>
               <View style={styles.assigneeList}>
@@ -872,18 +948,50 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.background,
   },
   header: {
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
+    backgroundColor: Colors.surface,
     paddingTop: 12,
     paddingHorizontal: Spacing.md,
     paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+  },
+  dueDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  datePickerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: Colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  datePickerBtnText: {
+    fontSize: 13,
+    color: Colors.textPrimary,
+    fontWeight: Typography.weights.medium,
+    flex: 1,
+  },
+  clearDueDateBtn: {
+    width: 32,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   headerTitleRow: {
     flexDirection: "row",
@@ -936,7 +1044,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
   },
   segmentBtnActive: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     ...Shadows.subtle,
   },
   segmentText: {
@@ -966,7 +1074,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: BorderRadius.full,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -1008,7 +1116,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   taskCardDone: {
-    backgroundColor: "#F1F5F9",
+    backgroundColor: Colors.surfaceAlt,
     opacity: 0.75,
   },
   checkCircleBtn: {
@@ -1085,7 +1193,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   emptyCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.xl,
     alignItems: "center",
@@ -1280,7 +1388,7 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.bold,
   },
   memberEditorSheet: {
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.surface,
   },
   memberEditorContent: {
     paddingHorizontal: Spacing.lg,
@@ -1293,9 +1401,9 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 12,
     borderRadius: BorderRadius.xl,
-    backgroundColor: "#ECFDF5",
+    backgroundColor: Colors.primaryFaint,
     borderWidth: 1,
-    borderColor: "#A7F3D0",
+    borderColor: Colors.primaryLight,
   },
   memberEditorAvatar: {
     width: 48,
@@ -1316,7 +1424,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -1327,7 +1435,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 16,
     borderRadius: BorderRadius.xl,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.border,
   },
@@ -1385,7 +1493,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: Colors.surface,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
     paddingTop: 10,
@@ -1397,7 +1505,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#CBD5E1",
+    backgroundColor: Colors.borderStrong,
     alignSelf: "center",
     marginBottom: 12,
   },

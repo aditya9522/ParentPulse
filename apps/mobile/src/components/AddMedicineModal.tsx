@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  StyleSheet,
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
@@ -19,7 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApp } from "../context/AppContext";
 import { MedicineSchedule } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, createThemedStyles } from "../theme";
 
 interface AddMedicineModalProps {
   visible: boolean;
@@ -358,9 +357,9 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   sheetContainer: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "transparent",
     paddingTop: 4,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Platform.OS === "ios" ? 34 : 20,
@@ -395,9 +394,11 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(241, 245, 249, 0.8)",
+    backgroundColor: Colors.surfaceAlt,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   scrollBody: {
     paddingBottom: 70,
@@ -415,9 +416,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   input: {
-    backgroundColor: "rgba(248, 250, 252, 0.9)",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1.2,
-    borderColor: "rgba(226, 232, 240, 0.9)",
+    borderColor: Colors.border,
     borderRadius: BorderRadius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -439,9 +440,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: BorderRadius.full,
-    backgroundColor: "rgba(241, 245, 249, 0.85)",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "rgba(226, 232, 240, 0.9)",
+    borderColor: Colors.border,
   },
   instructionChipActive: {
     backgroundColor: Colors.primaryLight,
@@ -481,9 +482,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "rgba(248, 250, 252, 0.9)",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1.2,
-    borderColor: "rgba(226, 232, 240, 0.9)",
+    borderColor: Colors.border,
     borderRadius: BorderRadius.md,
     paddingHorizontal: 12,
     paddingVertical: 12,

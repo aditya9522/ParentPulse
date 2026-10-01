@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   Platform,
   ScrollView,
 } from "react-native";
@@ -24,7 +23,7 @@ import {
   Info,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
-import { Colors, Spacing, Shadows, Gradients } from "../theme";
+import { Colors, Spacing, Shadows, Gradients, createThemedStyles } from "../theme";
 
 export const LogVitalModal: React.FC = () => {
   const {
@@ -400,7 +399,7 @@ export const LogVitalModal: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.6)",

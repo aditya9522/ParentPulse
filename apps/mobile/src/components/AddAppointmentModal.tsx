@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   ScrollView,
   Platform,
 } from "react-native";
@@ -26,7 +25,7 @@ import {
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
 import { Appointment } from "../types";
-import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients } from "../theme";
+import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, createThemedStyles } from "../theme";
 
 interface AddAppointmentModalProps {
   visible: boolean;
@@ -242,7 +241,7 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
 
                 {showDatePicker && (
                   <DateTimePicker
-                    value={new Date(dateStr || Date.now())}
+                    value={new Date(dateStr)}
                     mode="date"
                     display={Platform.OS === "ios" ? "spinner" : "default"}
                     onChange={(event, selectedDate) => {
@@ -331,9 +330,9 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   sheetBox: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "transparent",
     paddingHorizontal: Spacing.xl,
     paddingTop: 4,
     paddingBottom: Platform.OS === "ios" ? 40 : 25,
@@ -371,9 +370,11 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: Colors.surfaceAlt,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   formContent: {
     paddingBottom: 60,
@@ -390,9 +391,9 @@ const styles = StyleSheet.create({
   pickerBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(248, 250, 252, 0.9)",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "rgba(226, 232, 240, 0.8)",
+    borderColor: Colors.border,
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     height: 46,
@@ -406,9 +407,9 @@ const styles = StyleSheet.create({
   inputBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(248, 250, 252, 0.9)",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "rgba(226, 232, 240, 0.8)",
+    borderColor: Colors.border,
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     height: 46,
@@ -427,12 +428,12 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   specPill: {
-    backgroundColor: "rgba(241, 245, 249, 0.8)",
+    backgroundColor: Colors.surfaceAlt,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(203, 213, 225, 0.8)",
+    borderColor: Colors.border,
   },
   specPillActive: {
     backgroundColor: Colors.primaryLight,

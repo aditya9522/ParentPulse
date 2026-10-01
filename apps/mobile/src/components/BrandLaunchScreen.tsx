@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Easing, Image, StatusBar, StyleSheet, Text, View } from "react-native";
+import { createThemedStyles } from "../theme";
 import { LinearGradient } from "expo-linear-gradient";
 import * as SplashScreen from "expo-splash-screen";
 import Svg, { Path } from "react-native-svg";
@@ -148,7 +149,7 @@ export const BrandLaunchScreen: React.FC<BrandLaunchScreenProps> = ({ onFinished
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     position: "absolute",
     top: 0,

@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
   TouchableOpacity,
   Linking,
   Platform,
@@ -36,17 +35,13 @@ import {
   ZoomIn,
   ZoomOut,
   ChevronUp,
-  ChevronDown,
-  Maximize2,
-  Minimize2,
   SlidersHorizontal,
-  Filter,
   Check,
   X,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
 import { HealthcarePlace, PlaceCategory } from "../types";
-import { Colors, Typography, Spacing, Shadows, Glass, BorderRadius } from "../theme";
+import { Colors, Typography, Spacing, Shadows, Glass, BorderRadius, createThemedStyles } from "../theme";
 import { GlassView } from "../components/GlassView";
 import { apiClient } from "../api/client";
 
@@ -680,7 +675,7 @@ export const MapsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createThemedStyles({
   container: {
     flex: 1,
     backgroundColor: "transparent",
@@ -959,9 +954,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 9,
     borderRadius: BorderRadius.md,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: Colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -989,9 +984,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: BorderRadius.md,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: Colors.border,
   },
   categoryModalItemActive: {
     backgroundColor: Colors.primaryLight,
@@ -1071,7 +1066,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 5,
     borderRadius: 3,
-    backgroundColor: "#CBD5E1",
+    backgroundColor: Colors.borderStrong,
   },
   sheetHeader: {
     flexDirection: "row",

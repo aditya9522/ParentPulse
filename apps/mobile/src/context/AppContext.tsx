@@ -280,6 +280,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Per-parent data cache
   const [dataStore, setDataStore] = useState<Record<string, ParentData>>({});
+  const dataStoreRef = useRef(dataStore);
+
+  useEffect(() => {
+    dataStoreRef.current = dataStore;
+  }, [dataStore]);
 
   const [familyMembers, setFamilyMembers] = useState<FamilyMemberItem[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile>(EMPTY_CURRENT_USER);
@@ -660,7 +665,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return [];
         });
         const [medicines, appointments, documents, timeline, measurements, visits, tasks, expenses, insurance, doseLogs] = domainData;
-        const currentCached = dataStore[parent.id];
+        const currentCached = dataStoreRef.current[parent.id];
         const mergedData: ParentData = {
           profile: normalizeParentProfile(parent),
           medicines: mergeById(currentCached?.medicines, medicines),
