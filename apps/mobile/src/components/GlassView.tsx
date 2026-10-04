@@ -56,8 +56,9 @@ export const GlassView: React.FC<GlassViewProps> = ({
     <View style={[styles.outerContainer, glassToken, webGlassStyle, style]}>
       {Platform.OS !== "web" && (
         <BlurView
-          intensity={Platform.OS === "android" ? Math.min(intensity, 50) : intensity}
+          intensity={Platform.OS === "android" ? Math.min(intensity, 40) : intensity}
           tint={effectiveTint}
+          blurMethod={Platform.OS === "android" ? "none" : undefined}
           style={[StyleSheet.absoluteFill, styles.blurView]}
         />
       )}

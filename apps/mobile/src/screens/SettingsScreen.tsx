@@ -38,12 +38,14 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as Application from "expo-application";
+import Constants from "expo-constants";
 import { useApp , SupportedLanguage } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, AppThemeMode, createThemedStyles } from "../theme";
 import { registerRemotePushDevice, syncCareReminders } from "../services/reminders";
 import { getNotifications, notificationsAvailable } from "../services/notificationRuntime";
 import { apiClient, ConsentType } from "../api/client";
-import { File, Paths } from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { DeleteAccountSheet } from "../components/DeleteAccountSheet";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
@@ -98,6 +100,12 @@ const THEME_OPTIONS: {
     gradient: ["#F59E0B", "#D97706"],
   },
 ];
+
+const IS_EXPO_GO = Constants.appOwnership === "expo" || Constants.expoGoConfig != null;
+const APP_VERSION = Platform.OS === "web" || IS_EXPO_GO
+  ? Constants.expoConfig?.version ?? "unknown"
+  : Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "unknown";
+const APP_BUILD = Platform.OS === "web" || IS_EXPO_GO ? null : Application.nativeBuildVersion;
 
 
 export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
@@ -273,18 +281,17 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
       if (Platform.OS === "web") {
         await Share.share({ title: `ParentPulse account export · ${date}`, message: serialized });
       } else {
-        const file = new File(Paths.cache, `parentpulse-account-${date}.json`);
-        file.create({ overwrite: true });
-        file.write(serialized);
+        const fileUri = `${FileSystem.cacheDirectory}parentpulse-account-${date}.json`;
+        await FileSystem.writeAsStringAsync(fileUri, serialized, { encoding: FileSystem.EncodingType.UTF8 });
         if (!(await Sharing.isAvailableAsync())) throw new Error("File sharing is not available on this device.");
         try {
-          await Sharing.shareAsync(file.uri, {
+          await Sharing.shareAsync(fileUri, {
             dialogTitle: "Share ParentPulse account archive",
             mimeType: "application/json",
             UTI: "public.json",
           });
         } finally {
-          if (file.exists) file.delete();
+          await FileSystem.deleteAsync(fileUri, { idempotent: true });
         }
       }
     } catch (error) {
@@ -781,6 +788,13 @@ export const SettingsScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
           </TouchableOpacity>
         </View>
 
+        <View style={styles.versionFooter} accessibilityLabel={`ParentPulse version ${APP_VERSION}${APP_BUILD ? ` build ${APP_BUILD}` : ""}`}>
+          <Text style={styles.versionAppName}>ParentPulse</Text>
+          <Text style={styles.versionText}>
+            Version {APP_VERSION}{APP_BUILD ? ` (${APP_BUILD})` : ""}
+          </Text>
+        </View>
+
       </ScrollView>
 
       {/* Edit Profile & Photo Modal */}
@@ -971,6 +985,21 @@ const styles = createThemedStyles({
   content: {
     padding: Spacing.md,
     paddingBottom: 100,
+  },
+  versionFooter: {
+    alignItems: "center",
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.md,
+  },
+  versionAppName: {
+    color: Colors.textSecondary,
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+  },
+  versionText: {
+    color: Colors.textMuted,
+    fontSize: Typography.sizes.xxs,
+    marginTop: 2,
   },
   sectionCard: {
     backgroundColor: Colors.surface,

@@ -3,6 +3,17 @@ import { StyleSheet } from "react-native";
 
 export type AppThemeMode = "light" | "dark" | "amber";
 
+export const BorderRadius = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 28,
+  full: 9999,
+} as const;
+
+
 export const LIGHT_COLORS = {
   // Brand Emerald & Teal
   primary: "#0D9488", // Teal 600 - Fresh, clinical, calming
@@ -304,15 +315,6 @@ export const Spacing = {
   xxxl: 32,
 };
 
-export const BorderRadius = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  full: 9999,
-};
-
 export const Shadows = {
   subtle: {
     shadowColor: "#0F172A",
@@ -421,8 +423,8 @@ export const LIGHT_GLASS = {
     elevation: 0,
   },
   nav: {
-    backgroundColor: "rgba(255, 255, 255, 0.68)",
-    borderColor: "rgba(255, 255, 255, 0.85)",
+    backgroundColor: "rgba(255, 255, 255, 0.89)",
+    borderColor: "rgba(255, 255, 255, 0.96)",
     borderWidth: 1.5,
     borderRadius: 26,
     overflow: "hidden" as const,
@@ -517,7 +519,7 @@ export const DARK_GLASS = {
     elevation: 0,
   },
   nav: {
-    backgroundColor: "rgba(15, 23, 42, 0.82)",
+    backgroundColor: "rgba(15, 23, 42, 0.91)",
     borderColor: "rgba(255, 255, 255, 0.18)",
     borderWidth: 1.5,
     borderRadius: 26,
@@ -613,8 +615,8 @@ export const AMBER_GLASS = {
     elevation: 0,
   },
   nav: {
-    backgroundColor: "rgba(255, 251, 245, 0.75)",
-    borderColor: "rgba(253, 230, 138, 0.9)",
+    backgroundColor: "rgba(255, 251, 245, 0.91)",
+    borderColor: "rgba(255, 255, 255, 0.96)",
     borderWidth: 1.5,
     borderRadius: 26,
     overflow: "hidden" as const,

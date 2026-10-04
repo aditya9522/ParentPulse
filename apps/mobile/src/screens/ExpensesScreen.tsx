@@ -179,13 +179,19 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
     }
 
     const coverageAmount = Number(insCoverage.replace(/[,\s]/g, ""));
-    const expiryDate = new Date(`${insExpiry}T00:00:00`);
     if (!Number.isFinite(coverageAmount) || coverageAmount <= 0) {
       Alert.alert(isHindi ? "अमान्य कवरेज" : "Invalid Coverage", isHindi ? "कृपया सही कवरेज राशि दर्ज करें।" : "Please enter a valid coverage amount.");
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(insExpiry) || Number.isNaN(expiryDate.getTime()) || expiryDate.toISOString().slice(0, 10) !== insExpiry) {
-      Alert.alert(isHindi ? "अमान्य समाप्ति तिथि" : "Invalid Expiry Date", isHindi ? "कृपया YYYY-MM-DD प्रारूप में सही तिथि दर्ज करें।" : "Enter a real date in YYYY-MM-DD format.");
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(insExpiry.trim())) {
+      Alert.alert(isHindi ? "अमान्य समाप्ति तिथि" : "Invalid Expiry Date", isHindi ? "कृपया YYYY-MM-DD प्रारूप में समाप्ति तिथि चुनें।" : "Please select or enter an expiry date in YYYY-MM-DD format.");
+      return;
+    }
+    const [y, m, d] = insExpiry.trim().split("-").map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    if (Number.isNaN(dateObj.getTime()) || dateObj.getFullYear() !== y || dateObj.getMonth() !== m - 1 || dateObj.getDate() !== d) {
+      Alert.alert(isHindi ? "अमान्य समाप्ति तिथि" : "Invalid Expiry Date", isHindi ? "कृपया सही कैलेंडर तिथि दर्ज करें।" : "Enter a real calendar date in YYYY-MM-DD format.");
       return;
     }
 
@@ -199,7 +205,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
       plan_name: insPlanName.trim(),
       coverage_amount: coverageAmount,
       currency: "INR",
-      expiry_date: insExpiry,
+      expiry_date: insExpiry.trim(),
       tpa_cashless_helpline: insTpa.trim() || undefined,
       created_at: new Date().toISOString(),
     };
@@ -209,7 +215,7 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
     setInsPolicyNum("");
     setInsPlanName("");
     setInsCoverage("");
-    setInsExpiry("");
+    setInsExpiry("2027-03-31");
     setAddInsModalVisible(false);
   };
 
@@ -536,9 +542,9 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         visible={addExpenseModalVisible}
         onClose={() => setAddExpenseModalVisible(false)}
         maxHeight="90%"
-        containerStyle={styles.modalCard}
+        testID="add-expense-modal"
       >
-        <View style={styles.sheetInnerPadding}>
+        <View style={styles.sheetContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{isHindi ? "नया मेडिकल खर्च दर्ज करें" : "Log Medical Expense"}</Text>
             <TouchableOpacity onPress={() => setAddExpenseModalVisible(false)}>
@@ -631,9 +637,9 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
         visible={addInsModalVisible}
         onClose={() => setAddInsModalVisible(false)}
         maxHeight="90%"
-        containerStyle={styles.modalCard}
+        testID="add-insurance-modal"
       >
-        <View style={styles.sheetInnerPadding}>
+        <View style={styles.sheetContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{isHindi ? "नई बीमा पॉलिसी जोड़ें" : "Add Health Insurance Policy"}</Text>
             <TouchableOpacity onPress={() => setAddInsModalVisible(false)}>
@@ -696,15 +702,28 @@ export const ExpensesScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) =>
 
             {showExpiryPicker && (
               <DateTimePicker
-                value={new Date(insExpiry)}
+                value={(() => {
+                  if (insExpiry && /^\d{4}-\d{2}-\d{2}$/.test(insExpiry.trim())) {
+                    const [y, m, d] = insExpiry.trim().split("-").map(Number);
+                    const dt = new Date(y, m - 1, d);
+                    if (!Number.isNaN(dt.getTime())) return dt;
+                  }
+                  const nextYear = new Date();
+                  nextYear.setFullYear(nextYear.getFullYear() + 1);
+                  return nextYear;
+                })()}
                 mode="date"
                 display={Platform.OS === "ios" ? "spinner" : "default"}
-                onChange={(event, selectedDate) => {
+                onValueChange={(event, selectedDate) => {
                   setShowExpiryPicker(false);
                   if (selectedDate) {
-                    setInsExpiry(selectedDate.toISOString().slice(0, 10));
+                    const year = selectedDate.getFullYear();
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                    const day = String(selectedDate.getDate()).padStart(2, "0");
+                    setInsExpiry(`${year}-${month}-${day}`);
                   }
                 }}
+                onDismiss={() => setShowExpiryPicker(false)}
               />
             )}
 
@@ -1073,11 +1092,15 @@ const styles = createThemedStyles({
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
+  sheetContainer: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Platform.OS === "ios" ? 34 : 20,
+  },
   modalCard: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    paddingTop: 10,
+    paddingTop: 0,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
     maxHeight: "85%",
@@ -1094,7 +1117,8 @@ const styles = createThemedStyles({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 2,
+    marginBottom: 16,
   },
   modalTitle: {
     fontSize: Typography.sizes.md,

@@ -244,12 +244,13 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
                     value={new Date(dateStr)}
                     mode="date"
                     display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={(event, selectedDate) => {
+                    onValueChange={(event, selectedDate) => {
                       setShowDatePicker(false);
                       if (selectedDate) {
                         setDateStr(selectedDate.toISOString().slice(0, 10));
                       }
                     }}
+                    onDismiss={() => setShowDatePicker(false)}
                   />
                 )}
               </View>
@@ -271,12 +272,13 @@ export const AddAppointmentModal: React.FC<AddAppointmentModalProps> = ({ visibl
                     mode="time"
                     is24Hour={false}
                     display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={(event, selectedDate) => {
+                    onValueChange={(event, selectedDate) => {
                       setShowTimePicker(false);
                       if (selectedDate) {
                         setTimeStr(formatTime(selectedDate));
                       }
                     }}
+                    onDismiss={() => setShowTimePicker(false)}
                   />
                 )}
               </View>

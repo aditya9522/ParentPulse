@@ -244,12 +244,13 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
                     mode="time"
                     is24Hour={false}
                     display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={(event, selectedDate) => {
+                    onValueChange={(event, selectedDate) => {
                       setShowPicker1(false);
                       if (selectedDate) {
                         setScheduleTime1(formatTime(selectedDate));
                       }
                     }}
+                    onDismiss={() => setShowPicker1(false)}
                   />
                 )}
               </View>
@@ -271,12 +272,13 @@ export const AddMedicineModal: React.FC<AddMedicineModalProps> = ({ visible, onC
                     mode="time"
                     is24Hour={false}
                     display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={(event, selectedDate) => {
+                    onValueChange={(event, selectedDate) => {
                       setShowPicker2(false);
                       if (selectedDate) {
                         setScheduleTime2(formatTime(selectedDate));
                       }
                     }}
+                    onDismiss={() => setShowPicker2(false)}
                   />
                 )}
               </View>

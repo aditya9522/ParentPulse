@@ -61,6 +61,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
 
   // Add Contact Modal State
   const [addContactModalVisible, setAddContactModalVisible] = useState(false);
+  const [editingContactIndex, setEditingContactIndex] = useState<number | null>(null);
   const [contactName, setContactName] = useState("");
   const [contactRelation, setContactRelation] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -117,25 +118,75 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
     }
 
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    const newContact: EmergencyContact = {
+    const targetContact: EmergencyContact = {
       name: contactName.trim(),
       relationship: contactRelation.trim() || "Family",
       phone_number: contactPhone.trim(),
       is_primary: contactPrimary,
     };
 
-    const updatedContacts = contactPrimary
-      ? [
-        newContact,
+    let updatedContacts: EmergencyContact[];
+    if (editingContactIndex !== null) {
+      updatedContacts = activeParent.emergency_contacts.map((c, i) => {
+        if (i === editingContactIndex) return targetContact;
+        if (contactPrimary) return { ...c, is_primary: false };
+        return c;
+      });
+    } else if (contactPrimary) {
+      updatedContacts = [
+        targetContact,
         ...activeParent.emergency_contacts.map((c) => ({ ...c, is_primary: false })),
-      ]
-      : [...activeParent.emergency_contacts, newContact];
+      ];
+    } else {
+      updatedContacts = [...activeParent.emergency_contacts, targetContact];
+    }
 
     updateActiveParentProfile({ emergency_contacts: updatedContacts });
     setContactName("");
     setContactRelation("");
     setContactPhone("");
+    setContactPrimary(false);
+    setEditingContactIndex(null);
     setAddContactModalVisible(false);
+  };
+
+  const handleEditContact = (index: number) => {
+    const contact = activeParent.emergency_contacts[index];
+    if (!contact) return;
+    triggerHaptic();
+    setContactName(contact.name);
+    setContactRelation(contact.relationship);
+    setContactPhone(contact.phone_number);
+    setContactPrimary(contact.is_primary);
+    setEditingContactIndex(index);
+    setAddContactModalVisible(true);
+  };
+
+  const handleDeleteContact = (index: number) => {
+    const contact = activeParent.emergency_contacts[index];
+    if (!contact) return;
+    triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      isHindi ? "आपातकालीन संपर्क हटाएं?" : "Remove Emergency Contact?",
+      isHindi
+        ? `क्या आप ${contact.name} को आपातकालीन संपर्क सूची से हटाना चाहते हैं?`
+        : `Are you sure you want to remove ${contact.name} from emergency contacts?`,
+      [
+        { text: isHindi ? "रद्द करें" : "Cancel", style: "cancel" },
+        {
+          text: isHindi ? "हटाएं" : "Remove",
+          style: "destructive",
+          onPress: () => {
+            const updated = activeParent.emergency_contacts.filter((_, i) => i !== index);
+            updateActiveParentProfile({ emergency_contacts: updated });
+            Alert.alert(
+              isHindi ? "संपर्क हटाया गया" : "Contact Removed",
+              isHindi ? "आपातकालीन संपर्क सुरक्षित रूप से हटा दिया गया है।" : "Emergency contact removed successfully."
+            );
+          },
+        },
+      ]
+    );
   };
 
   const handleEditDoctor = (index: number) => {
@@ -420,6 +471,11 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
               style={styles.addSmallBtn}
               onPress={() => {
                 triggerHaptic();
+                setContactName("");
+                setContactRelation("");
+                setContactPhone("");
+                setContactPrimary(false);
+                setEditingContactIndex(null);
                 setAddContactModalVisible(true);
               }}
               activeOpacity={0.8}
@@ -444,13 +500,34 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
                 <Text style={styles.contactPhone}>{contact.phone_number}</Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.callCircleBtn}
-                onPress={() => Linking.openURL(`tel:${contact.phone_number.replace(/\s+/g, "")}`)}
-                activeOpacity={0.7}
-              >
-                <Phone size={16} color="#FFFFFF" />
-              </TouchableOpacity>
+              <View style={styles.contactActionsRow}>
+                <TouchableOpacity
+                  style={styles.callCircleBtn}
+                  onPress={() => Linking.openURL(`tel:${contact.phone_number.replace(/\s+/g, "")}`)}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Call Contact"
+                >
+                  <Phone size={15} color="#FFFFFF" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.docIconBtn}
+                  onPress={() => handleEditContact(idx)}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Edit Contact"
+                >
+                  <Edit3 size={13} color={Colors.primaryDark} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.docIconBtnDanger}
+                  onPress={() => handleDeleteContact(idx)}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Delete Contact"
+                >
+                  <Trash2 size={13} color={Colors.emergencyDark} />
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
         </View>
@@ -635,7 +712,11 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
       >
         <View style={styles.sheetInnerPadding}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{isHindi ? "आपातकालीन संपर्क जोड़ें" : "Add Emergency Contact"}</Text>
+            <Text style={styles.modalTitle}>
+              {editingContactIndex !== null
+                ? (isHindi ? "आपातकालीन संपर्क संपादित करें" : "Edit Emergency Contact")
+                : (isHindi ? "आपातकालीन संपर्क जोड़ें" : "Add Emergency Contact")}
+            </Text>
             <TouchableOpacity onPress={() => setAddContactModalVisible(false)}>
               <X size={20} color={Colors.textMuted} />
             </TouchableOpacity>
@@ -645,7 +726,8 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <Text style={styles.inputLabel}>{isHindi ? "नाम *" : "Full Name *"}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="Emergency contact name"
+              placeholder={isHindi ? "आपातकालीन संपर्क का नाम" : "Emergency contact name"}
+              placeholderTextColor={Colors.textMuted}
               value={contactName}
               onChangeText={setContactName}
             />
@@ -653,7 +735,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <Text style={styles.inputLabel}>{isHindi ? "रिश्ता *" : "Relationship *"}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Daughter (Bangalore), Son, Neighbor"
+              placeholder={isHindi ? "जैसे: बेटी, बेटा, पड़ोसी" : "e.g. Daughter (Bangalore), Son, Neighbor"}
               placeholderTextColor={Colors.textMuted}
               value={contactRelation}
               onChangeText={setContactRelation}
@@ -683,7 +765,11 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
 
             <TouchableOpacity style={styles.saveBtn} onPress={handleAddContact} activeOpacity={0.8}>
               <LinearGradient colors={Gradients.primary} style={styles.btnGradient}>
-                <Text style={styles.btnGradientText}>{isHindi ? "संपर्क सहेजें" : "Save Emergency Contact"}</Text>
+                <Text style={styles.btnGradientText}>
+                  {editingContactIndex !== null
+                    ? (isHindi ? "बदलाव सहेजें" : "Update Emergency Contact")
+                    : (isHindi ? "संपर्क सहेजें" : "Save Emergency Contact")}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
           </ScrollView>
@@ -1125,12 +1211,17 @@ const styles = createThemedStyles({
     marginTop: 2,
   },
   callCircleBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: Colors.success,
     justifyContent: "center",
     alignItems: "center",
+  },
+  contactActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
   },
   doctorItemCard: {
     flexDirection: "row",
@@ -1245,7 +1336,7 @@ const styles = createThemedStyles({
     backgroundColor: Colors.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    paddingTop: 10,
+    paddingTop: 0,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
     maxHeight: "88%",
@@ -1268,7 +1359,8 @@ const styles = createThemedStyles({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 2,
+    marginBottom: 16,
   },
   modalTitle: {
     fontSize: Typography.sizes.md,

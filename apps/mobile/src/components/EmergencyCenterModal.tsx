@@ -8,6 +8,7 @@ import { apiClient } from "../api/client";
 import { useApp } from "../context/AppContext";
 import { Colors, Shadows, Spacing, createThemedStyles } from "../theme";
 import { SwipeableBottomSheet } from "./SwipeableBottomSheet";
+import { playEmergencySosAlert } from "../services/soundService";
 
 export const EmergencyCenterModal: React.FC = () => {
   const { activeParent, userLocation, sosModalVisible, setSosModalVisible, seniorMode } = useApp();
@@ -29,6 +30,7 @@ export const EmergencyCenterModal: React.FC = () => {
 
   const activate = async () => {
     haptic();
+    void playEmergencySosAlert(activeParent.full_name);
     setBusy(true);
     try {
       let shareCoordinates = false;

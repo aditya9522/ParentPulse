@@ -1,6 +1,6 @@
 {
   "name": "parentpulse",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "ParentPulse — Remote-Care Family Health Coordination Platform",
   "private": true,
   "workspaces": [

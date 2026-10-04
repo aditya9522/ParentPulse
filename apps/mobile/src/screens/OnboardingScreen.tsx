@@ -649,11 +649,12 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
                     mode="date"
                     display="spinner"
                     maximumDate={new Date()}
-                    onChange={(event, selectedDate) => {
+                    onValueChange={(event, selectedDate) => {
                       if (selectedDate) {
                         setParentDob(formatLocalDate(selectedDate));
                       }
                     }}
+                    onDismiss={() => setShowDatePicker(false)}
                   />
                 </View>
               ) : showDatePicker && Platform.OS === 'android' ? (
@@ -662,12 +663,13 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
                   mode="date"
                   display="default"
                   maximumDate={new Date()}
-                  onChange={(event, selectedDate) => {
+                  onValueChange={(event, selectedDate) => {
                     setShowDatePicker(false);
-                    if (event.type === 'set' && selectedDate) {
+                    if (selectedDate) {
                       setParentDob(formatLocalDate(selectedDate));
                     }
                   }}
+                  onDismiss={() => setShowDatePicker(false)}
                 />
               ) : null}
             </View>

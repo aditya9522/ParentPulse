@@ -28,6 +28,17 @@ export const ParentSelector: React.FC = () => {
     : themeMode === "amber"
     ? "rgba(217, 119, 6, 0.4)"
     : "rgba(13, 148, 136, 0.4)";
+  const selectedTabBg = isDark
+    ? "rgba(20, 184, 166, 0.18)"
+    : themeMode === "amber"
+      ? "rgba(245, 158, 11, 0.18)"
+      : "rgba(204, 251, 241, 0.72)";
+  const selectedTabBorder = isDark
+    ? "rgba(45, 212, 191, 0.68)"
+    : themeMode === "amber"
+      ? "rgba(217, 119, 6, 0.62)"
+      : Colors.primary;
+  const selectedTextColor = isDark ? Colors.primary : Colors.primaryDeep;
   const alertBg = isDark
     ? "rgba(120, 53, 15, 0.25)"
     : themeMode === "amber"
@@ -65,6 +76,7 @@ export const ParentSelector: React.FC = () => {
                 Shadows.card,
                 { backgroundColor: tabBg, borderColor: tabBorder },
                 isSelected && styles.parentTabActive,
+                isSelected && { backgroundColor: selectedTabBg, borderColor: selectedTabBorder },
               ]}
               onPress={() => setActiveParentId(parent.id)}
               activeOpacity={0.8}
@@ -83,7 +95,7 @@ export const ParentSelector: React.FC = () => {
               )}
 
               <View style={styles.tabTextContainer}>
-                <Text style={[styles.tabName, isSelected && styles.tabNameActive]} numberOfLines={1}>
+                <Text style={[styles.tabName, isSelected && styles.tabNameActive, isSelected && { color: selectedTextColor }]} numberOfLines={1}>
                   {parent.full_name.split(" ")[0]} {isFather ? "(Papa)" : "(Maa)"}
                 </Text>
                 <Text style={styles.tabRole}>
@@ -94,7 +106,7 @@ export const ParentSelector: React.FC = () => {
               </View>
 
               {isSelected && (
-                <Ionicons name="checkmark-circle" size={18} color={Colors.primaryDark} />
+                <Ionicons name="checkmark-circle" size={18} color={selectedTextColor} />
               )}
             </TouchableOpacity>
           );
@@ -286,4 +298,3 @@ const styles = createThemedStyles({
     color: Colors.primaryDark,
   },
 });
-

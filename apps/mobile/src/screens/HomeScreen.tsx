@@ -1,5 +1,4 @@
-// apps/mobile/src/screens/HomeScreen.tsx
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,6 +16,7 @@ import { VitalBadge } from "../components/VitalBadge";
 import { MedicineCard } from "../components/MedicineCard";
 import { AddAppointmentModal } from "../components/AddAppointmentModal";
 import { ConfirmationModal } from "../components/ConfirmationModal";
+import { evaluateVitalCriticality } from "../services/soundService";
 import { Appointment } from "../types";
 
 export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({ onNavigateTab }) => {
@@ -27,6 +27,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
     appointments,
     deleteAppointment,
     documents,
+    visits,
     tasks,
     toggleTaskCompleted,
     dosesTakenToday,
@@ -49,6 +50,41 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
 
   const nextAppointment = appointments[0];
   const parentTasks = tasks.filter((t) => t.parent_id === activeParent.id);
+
+  const vitalAlerts = useMemo(() => {
+    const alerts: {
+      id: string;
+      vitalType: string;
+      valStr: string;
+      title: string;
+      detail: string;
+      isCritical: boolean;
+      recordedAt: string;
+    }[] = [];
+
+    measurements.slice(0, 5).forEach((m) => {
+      const evaluation = evaluateVitalCriticality(
+        m.vital_type,
+        m.value_numeric,
+        m.value_secondary
+      );
+      if (evaluation.isCritical || evaluation.isWarning) {
+        alerts.push({
+          id: m.id,
+          vitalType: m.vital_type,
+          valStr: m.value_secondary
+            ? `${m.value_numeric}/${m.value_secondary} ${m.unit}`
+            : `${m.value_numeric} ${m.unit}`,
+          title: evaluation.title,
+          detail: evaluation.detail,
+          isCritical: evaluation.isCritical,
+          recordedAt: m.recorded_at,
+        });
+      }
+    });
+
+    return alerts;
+  }, [measurements]);
 
   const totalMeds = medicines.length;
   const takenMedsCount = Object.keys(dosesTakenToday).filter((k) =>
@@ -254,6 +290,49 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
             </LinearGradient>
           </TouchableOpacity>
         </View>
+
+        {/* Urgent Health & Clinical Alerts */}
+        {vitalAlerts.length > 0 && (
+          <View style={[styles.alertSectionContainer, Shadows.card]}>
+            <View style={styles.alertHeaderRow}>
+              <View
+                style={[
+                  styles.alertIconCircle,
+                  { backgroundColor: vitalAlerts[0].isCritical ? "#FEE2E2" : "#FEF3C7" },
+                ]}
+              >
+                <Ionicons
+                  name={vitalAlerts[0].isCritical ? "alert-circle" : "warning"}
+                  size={20}
+                  color={vitalAlerts[0].isCritical ? "#DC2626" : "#D97706"}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertHeaderTitle}>
+                  {vitalAlerts[0].isCritical
+                    ? (language === "hi" ? "महत्वपूर्ण स्वास्थ्य चेतावनी" : "Critical Health Alert")
+                    : (language === "hi" ? "वाइटल ध्यान देने योग्य" : "Vital Sign Notice")}
+                </Text>
+                <Text style={styles.alertHeaderSub}>
+                  {vitalAlerts[0].title} • {vitalAlerts[0].valStr}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.alertActionBtn,
+                  { backgroundColor: vitalAlerts[0].isCritical ? "#DC2626" : "#D97706" },
+                ]}
+                onPress={() => setLogVitalModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.alertActionBtnText}>
+                  {language === "hi" ? "जाँचें" : "Review"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.alertDetailText}>{vitalAlerts[0].detail}</Text>
+          </View>
+        )}
 
         {/* Interactive 7-Day Vitals Analytics & Trend Visualizer */}
         <View style={styles.sectionContainer}>
@@ -650,6 +729,64 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               </View>
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* Recent Healthcare Facility Activity & Map Link */}
+        <View style={[styles.sectionContainer, { marginBottom: 20 }]}>
+          <View style={styles.sectionHeaderWithoutPadding}>
+            <View style={styles.sectionHeaderTitleRow}>
+              <Ionicons name="location" size={18} color={Colors.primaryDark} />
+              <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
+                {language === "hi" ? "हालिया स्वास्थ्य केंद्र विज़िट्स" : "Recent Facility Visits"}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => onNavigateTab("maps")}>
+              <Text style={styles.sectionLink}>
+                {language === "hi" ? "नक्शा खोलें" : "Open Map"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {visits.length > 0 ? (
+            visits.slice(0, 2).map((v) => (
+              <TouchableOpacity
+                key={v.id}
+                style={[styles.visitPreviewCard, Shadows.card]}
+                onPress={() => onNavigateTab("maps")}
+                activeOpacity={0.8}
+              >
+                <View style={styles.visitPreviewIconBox}>
+                  <Ionicons name="business" size={20} color={Colors.primaryDark} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.visitPreviewName} numberOfLines={1}>{v.place_name}</Text>
+                  <Text style={styles.visitPreviewAddress} numberOfLines={1}>{v.address}</Text>
+                  <Text style={styles.visitPreviewTime}>{v.visited_at} • {v.category}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            ))
+          ) : (
+            <TouchableOpacity
+              style={[styles.mapPromptCard, Shadows.card]}
+              onPress={() => onNavigateTab("maps")}
+              activeOpacity={0.85}
+            >
+              <View style={styles.mapPromptIconBox}>
+                <Ionicons name="map-outline" size={22} color={Colors.primaryDeep} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.mapPromptTitle}>
+                  {language === "hi" ? "नज़दीकी अस्पताल व फ़ार्मेसी खोजें" : "Explore Nearby Healthcare"}
+                </Text>
+                <Text style={styles.mapPromptSub}>
+                  {language === "hi"
+                    ? "इंटरैक्टिव मैप पर डॉक्टर, अस्पताल व आपातकालीन केंद्र देखें और चेक-इन दर्ज करें।"
+                    : "Interactive map with verified clinics, pharmacies, and 1-tap check-in logging."}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
@@ -1288,5 +1425,115 @@ const styles = createThemedStyles({
     fontSize: 11,
     color: "rgba(255, 255, 255, 0.9)",
     marginTop: 2,
+  },
+  alertSectionContainer: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.2)",
+  },
+  alertHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 6,
+  },
+  alertIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  alertHeaderTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  alertHeaderSub: {
+    fontSize: 11,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  alertActionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.sm,
+  },
+  alertActionBtnText: {
+    fontSize: 11,
+    fontWeight: Typography.weights.bold,
+    color: "#FFFFFF",
+  },
+  alertDetailText: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: Colors.textMuted,
+  },
+  visitPreviewCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.xs,
+  },
+  visitPreviewIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  visitPreviewName: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  visitPreviewAddress: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  visitPreviewTime: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 2,
+    textTransform: "capitalize",
+  },
+  mapPromptCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  mapPromptIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapPromptTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  mapPromptSub: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
   },
 });

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Linking,
   Platform,
-  Image,
   ActivityIndicator,
   Animated,
   PanResponder,
@@ -31,43 +30,77 @@ import {
   Compass,
   ArrowUpRight,
   History,
-  Layers,
   ZoomIn,
   ZoomOut,
   ChevronUp,
   SlidersHorizontal,
+  Search,
   Check,
   X,
+  RefreshCw,
+  Trash2,
 } from "lucide-react-native";
+import type { CameraRef } from "@maplibre/maplibre-react-native";
+import { NearbyMapCanvas } from "../components/NearbyMapCanvas";
 import { useApp } from "../context/AppContext";
-import { HealthcarePlace, PlaceCategory } from "../types";
+import { HealthcarePlace, PlaceCategory, LocationVisit } from "../types";
 import { Colors, Typography, Spacing, Shadows, Glass, BorderRadius, createThemedStyles } from "../theme";
 import { GlassView } from "../components/GlassView";
+import { ConfirmationModal } from "../components/ConfirmationModal";
 import { apiClient } from "../api/client";
+import { isExpoGo } from "../services/runtimeEnvironment";
 
-const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
+function computeHaversineMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
 
 export const MapsScreen: React.FC = () => {
-  const { activeParent, visits, recordNewVisit, userLocation, seniorMode, language } = useApp();
+
+  const { activeParent, visits, recordNewVisit, deleteVisit, userLocation, seniorMode, language } = useApp();
   const [selectedCategory, setSelectedCategory] = useState<PlaceCategory>("hospital");
   const [viewMode, setViewMode] = useState<"nearby" | "visits">("nearby");
   const [maxDistanceKm, setMaxDistanceKm] = useState<number>(10);
+  const [visitToDelete, setVisitToDelete] = useState<LocationVisit | null>(null);
 
-  // Real-Time Google Maps State
-  const initialLat = userLocation?.latitude ?? activeParent.latitude ?? 0;
-  const initialLng = userLocation?.longitude ?? activeParent.longitude ?? 0;
+  const initialLat = userLocation?.latitude ?? activeParent.latitude ?? 20.5937;
+  const initialLng = userLocation?.longitude ?? activeParent.longitude ?? 78.9629;
   const [centerCoords, setCenterCoords] = useState<{ lat: number; lng: number }>({
     lat: initialLat,
     lng: initialLng,
   });
+  const [manualSearchLocation, setManualSearchLocation] = useState<{
+    parentId: string;
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [lastLocatedCoordinates, setLastLocatedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [zoom, setZoom] = useState<number>(14);
-  const [mapType, setMapType] = useState<"roadmap" | "satellite">("roadmap");
+  const cameraRef = useRef<CameraRef>(null);
+  const currentParentIdRef = useRef(activeParent.id);
+  const hasManuallyMovedMapRef = useRef(false);
   const [isLocating, setIsLocating] = useState<boolean>(false);
-  const [mapImageLoading, setMapImageLoading] = useState<boolean>(false);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapLoadError, setMapLoadError] = useState(false);
+  const [mapInstance, setMapInstance] = useState(0);
+  const [unsearchedMapParentId, setUnsearchedMapParentId] = useState<string | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [nearbyPlaces, setNearbyPlaces] = useState<HealthcarePlace[]>([]);
   const [placesLoading, setPlacesLoading] = useState(false);
   const [placesError, setPlacesError] = useState<string | null>(null);
+  const [searchRequestId, setSearchRequestId] = useState(0);
 
   const insets = useSafeAreaInsets();
   const [filterMenuVisible, setFilterMenuVisible] = useState(false);
@@ -86,7 +119,9 @@ export const MapsScreen: React.FC = () => {
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 5 && Math.abs(gs.dy) > Math.abs(gs.dx),
       onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dy) > 8 && Math.abs(gs.dy) > Math.abs(gs.dx),
       onPanResponderMove: (_, gs) => {
-        sheetTranslateY.setValue(gs.dy);
+        // Upward gestures change the drawer's snap point; they must not drag the
+        // entire surface beyond the top edge while it is being expanded.
+        sheetTranslateY.setValue(Math.max(0, gs.dy));
       },
       onPanResponderRelease: (_, gs) => {
         const current = sheetStateRef.current;
@@ -94,7 +129,7 @@ export const MapsScreen: React.FC = () => {
           // Swiping UP: expands half -> expanded
           try {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          } catch {}
+          } catch { }
           Animated.spring(sheetTranslateY, { toValue: 0, friction: 8, tension: 60, useNativeDriver: true }).start();
           if (current === "half" || current === "collapsed") {
             setSheetState("expanded");
@@ -103,7 +138,7 @@ export const MapsScreen: React.FC = () => {
           // Swiping DOWN: shrinks expanded -> half, or half -> collapsed
           try {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          } catch {}
+          } catch { }
           if (current === "expanded") {
             Animated.spring(sheetTranslateY, { toValue: 0, friction: 8, tension: 60, useNativeDriver: true }).start();
             setSheetState("half");
@@ -137,7 +172,7 @@ export const MapsScreen: React.FC = () => {
       if (Platform.OS !== "web") {
         Haptics.impactAsync(style);
       }
-    } catch {}
+    } catch { }
   };
 
   const categories = [
@@ -181,41 +216,42 @@ export const MapsScreen: React.FC = () => {
   useEffect(() => {
     const latitude = userLocation?.latitude ?? activeParent.latitude;
     const longitude = userLocation?.longitude ?? activeParent.longitude;
-    if (latitude == null || longitude == null) {
-      return;
-    }
+    if (latitude == null || longitude == null) return;
+    const parentChanged = currentParentIdRef.current !== activeParent.id;
+    currentParentIdRef.current = activeParent.id;
+    if (parentChanged) hasManuallyMovedMapRef.current = false;
+    if (hasManuallyMovedMapRef.current && !parentChanged) return;
+    cameraRef.current?.easeTo({ center: [longitude, latitude], zoom: 14, duration: 500 });
+  }, [activeParent.id, activeParent.latitude, activeParent.longitude, userLocation?.latitude, userLocation?.longitude]);
+
+  const searchCenter = manualSearchLocation?.parentId === activeParent.id
+    ? { lat: manualSearchLocation.latitude, lng: manualSearchLocation.longitude }
+    : {
+      lat: userLocation?.latitude ?? activeParent.latitude ?? initialLat,
+      lng: userLocation?.longitude ?? activeParent.longitude ?? initialLng,
+    };
+  const hasSearchCoordinates = manualSearchLocation?.parentId === activeParent.id ||
+    ((userLocation?.latitude ?? activeParent.latitude) != null &&
+      (userLocation?.longitude ?? activeParent.longitude) != null);
+  const currentPlacesLoading = hasSearchCoordinates && placesLoading;
+
+  useEffect(() => {
+    if (!hasSearchCoordinates) return;
     let active = true;
     const timer = setTimeout(() => {
       if (!active) return;
       setPlacesLoading(true);
       setPlacesError(null);
-      void apiClient.getNearbyHealthcare(latitude, longitude, selectedCategory, maxDistanceKm * 1000)
+      void apiClient.getNearbyHealthcare(searchCenter.lat, searchCenter.lng, selectedCategory, maxDistanceKm * 1000)
         .then((places) => { if (active) setNearbyPlaces(places); })
         .catch((error) => { if (active) { setNearbyPlaces([]); setPlacesError(error instanceof Error ? error.message : "Nearby search is unavailable."); } })
         .finally(() => { if (active) setPlacesLoading(false); });
-    }, 0);
+    }, 250);
     return () => { active = false; clearTimeout(timer); };
-  }, [activeParent.latitude, activeParent.longitude, maxDistanceKm, selectedCategory, userLocation?.latitude, userLocation?.longitude]);
+  }, [hasSearchCoordinates, maxDistanceKm, searchCenter.lat, searchCenter.lng, searchRequestId, selectedCategory]);
 
-  const hasSearchCoordinates = (userLocation?.latitude ?? activeParent.latitude) != null && (userLocation?.longitude ?? activeParent.longitude) != null;
   const currentPlaces = hasSearchCoordinates ? nearbyPlaces : [];
   const currentPlacesError = hasSearchCoordinates ? placesError : "Enable location access or add coordinates to the parent profile.";
-
-  // Construct Real-Time Google Maps Static URL with Key and Markers
-  const getGoogleMapUrl = () => {
-    const center = `${centerCoords.lat},${centerCoords.lng}`;
-    const parentMarker = activeParent.latitude != null && activeParent.longitude != null
-      ? `&markers=color:red%7Clabel:P%7C${activeParent.latitude},${activeParent.longitude}`
-      : "";
-    const placeMarkers = currentPlaces
-      .slice(0, 5)
-      .map(
-        (p) =>
-          `&markers=color:blue%7Clabel:${p.category[0].toUpperCase()}%7C${p.latitude},${p.longitude}`
-      )
-      .join("");
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${center}&zoom=${zoom}&size=640x960&scale=2&maptype=${mapType}${parentMarker}${placeMarkers}&key=${GOOGLE_MAPS_API_KEY}`;
-  };
 
   const handleLocateMe = async () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
@@ -224,13 +260,19 @@ export const MapsScreen: React.FC = () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setCenterCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        const nextCenter = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+        setLastLocatedCoordinates({ latitude: nextCenter.lat, longitude: nextCenter.lng });
+        setManualSearchLocation({ parentId: activeParent.id, latitude: nextCenter.lat, longitude: nextCenter.lng });
+        setCenterCoords(nextCenter);
+        hasManuallyMovedMapRef.current = false;
+        setUnsearchedMapParentId(null);
         setZoom(15);
+        cameraRef.current?.easeTo({ center: [nextCenter.lng, nextCenter.lat], zoom: 15, duration: 650 });
       } else {
-        setCenterCoords({ lat: initialLat, lng: initialLng });
+        Alert.alert("Location permission needed", "Allow location access to find healthcare near you, or add a location to the parent profile.");
       }
-    } catch {
-      setCenterCoords({ lat: initialLat, lng: initialLng });
+    } catch (error) {
+      Alert.alert("Couldn’t get your location", error instanceof Error ? error.message : "Try again or add a location to the parent profile.");
     } finally {
       setIsLocating(false);
     }
@@ -238,25 +280,36 @@ export const MapsScreen: React.FC = () => {
 
   const handleZoom = (delta: number) => {
     triggerHaptic();
-    setZoom((prev) => Math.max(10, Math.min(19, prev + delta)));
-  };
-
-  const handleToggleMapType = () => {
-    triggerHaptic();
-    setMapType((prev) => (prev === "roadmap" ? "satellite" : "roadmap"));
+    const nextZoom = Math.max(3, Math.min(20, zoom + delta));
+    setZoom(nextZoom);
+    cameraRef.current?.zoomTo(nextZoom, { duration: 250 });
   };
 
   const handleSelectPlaceOnMap = (place: HealthcarePlace) => {
     triggerHaptic();
     setSelectedPlaceId(place.place_id);
-    setCenterCoords({ lat: place.latitude, lng: place.longitude });
+    const nextCenter = { lat: place.latitude, lng: place.longitude };
+    setCenterCoords(nextCenter);
     setZoom(16);
+    cameraRef.current?.easeTo({ center: [nextCenter.lng, nextCenter.lat], zoom: 16, duration: 500 });
   };
 
   const openGoogleDirections = (place: HealthcarePlace) => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
     const url = `https://www.google.com/maps/dir/?api=1&destination=${place.latitude},${place.longitude}`;
-    Linking.openURL(url);
+    void Linking.openURL(url).catch(() => Alert.alert("Couldn’t open directions", "Check that a browser or maps app is available."));
+  };
+
+  const searchThisArea = () => {
+    triggerHaptic();
+    setManualSearchLocation({ parentId: activeParent.id, latitude: centerCoords.lat, longitude: centerCoords.lng });
+    setUnsearchedMapParentId(null);
+    setSearchRequestId((current) => current + 1);
+  };
+
+  const openMapInBrowser = () => {
+    const url = `https://www.openstreetmap.org/?mlat=${centerCoords.lat}&mlon=${centerCoords.lng}#map=${Math.round(zoom)}/${centerCoords.lat}/${centerCoords.lng}`;
+    void Linking.openURL(url).catch(() => Alert.alert("Couldn’t open map", "Try again or use the nearby places list."));
   };
 
   const handleCheckInVisit = (place: HealthcarePlace) => {
@@ -269,6 +322,15 @@ export const MapsScreen: React.FC = () => {
         : `Recorded healthcare visit to ${place.name} for ${activeParent.full_name}. Synced to family timeline and map history.`
     );
   };
+
+  const currentDeviceCoordinates = userLocation ?? lastLocatedCoordinates;
+  const hasInteractiveNativeMap = Platform.OS !== "web" && !isExpoGo;
+
+  useEffect(() => {
+    if (!hasInteractiveNativeMap || viewMode !== "nearby" || mapReady || mapLoadError) return;
+    const timeout = setTimeout(() => setMapLoadError(true), 15000);
+    return () => clearTimeout(timeout);
+  }, [hasInteractiveNativeMap, mapInstance, mapLoadError, mapReady, viewMode]);
 
   return (
     <View style={styles.container}>
@@ -313,19 +375,76 @@ export const MapsScreen: React.FC = () => {
 
       {viewMode === "nearby" ? (
         <View style={styles.fullScreenMapWrapper}>
-          {/* Live Full Screen Google Map Image */}
-          <Image
-            source={{ uri: getGoogleMapUrl() }}
-            style={styles.fullScreenMapImage}
-            resizeMode="cover"
-            onLoadStart={() => setMapImageLoading(true)}
-            onLoadEnd={() => setMapImageLoading(false)}
+          <NearbyMapCanvas
+            isHindi={isHindi}
+            cameraRef={cameraRef}
+            mapInstance={mapInstance}
+            center={{ latitude: initialLat, longitude: initialLng }}
+            zoom={zoom}
+            parentLocation={activeParent.latitude != null && activeParent.longitude != null
+              ? { latitude: activeParent.latitude, longitude: activeParent.longitude }
+              : undefined}
+            deviceLocation={currentDeviceCoordinates ?? undefined}
+            places={currentPlaces}
+            markerColor={activeCat.color}
+            selectedPlaceId={selectedPlaceId}
+            onSelectPlace={handleSelectPlaceOnMap}
+            onRegionDidChange={(center, nextZoom, userInteraction) => {
+              setCenterCoords({ lat: center[1], lng: center[0] });
+              setZoom(nextZoom);
+              if (userInteraction) {
+                hasManuallyMovedMapRef.current = true;
+                setUnsearchedMapParentId(activeParent.id);
+              }
+            }}
+            onMapReady={() => {
+              setMapReady(true);
+              setMapLoadError(false);
+            }}
+            onMapError={() => {
+              setMapReady(false);
+              setMapLoadError(true);
+            }}
+            onPressBlank={() => setSelectedPlaceId(null)}
+            onOpenExternalMap={openMapInBrowser}
           />
 
-          {/* Loading Indicator Overlay */}
-          {mapImageLoading && (
-            <View style={styles.mapLoadingOverlay}>
+          {hasInteractiveNativeMap && !mapReady && !mapLoadError && (
+            <View style={styles.mapStatusBadge} pointerEvents="none">
               <ActivityIndicator color={Colors.primary} size="small" />
+              <Text style={styles.mapStatusText}>{isHindi ? "मानचित्र लोड हो रहा है…" : "Loading map…"}</Text>
+            </View>
+          )}
+          {hasInteractiveNativeMap && mapLoadError && (
+            <View style={styles.mapFailureCard}>
+              <Text style={styles.mapFailureTitle}>{isHindi ? "मानचित्र लोड नहीं हो सका" : "Map tiles couldn’t load"}</Text>
+              <Text style={styles.mapFailureText}>
+                {isHindi
+                  ? "इंटरनेट कनेक्शन जांचें और फिर प्रयास करें। आस-पास के केंद्र सूची में उपलब्ध हैं।"
+                  : "Check your connection and try again. Nearby places remain available in the list."}
+              </Text>
+              <TouchableOpacity
+                style={styles.mapRetryButton}
+                onPress={() => {
+                  setMapLoadError(false);
+                  setMapReady(false);
+                  setMapInstance((current) => current + 1);
+                }}
+                activeOpacity={0.85}
+              >
+                <RefreshCw size={15} color="#FFFFFF" />
+                <Text style={styles.mapRetryButtonText}>{isHindi ? "फिर प्रयास करें" : "Retry map"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.mapExternalButton}
+                onPress={openMapInBrowser}
+                activeOpacity={0.85}
+              >
+                <ArrowUpRight size={15} color={Colors.primaryDark} />
+                <Text style={styles.mapExternalButtonText}>
+                  {isHindi ? "बाहरी मानचित्र खोलें" : "Open external map"}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -358,8 +477,19 @@ export const MapsScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Overlaid Interactive Controls Dock (Filter on top of Zoom In, Zoom Out, Satellite, Locate) */}
-          <View style={styles.mapControlsDock}>
+          {hasInteractiveNativeMap && unsearchedMapParentId === activeParent.id && hasSearchCoordinates && (
+            <TouchableOpacity style={styles.searchThisAreaButton} onPress={searchThisArea} activeOpacity={0.88}>
+              {currentPlacesLoading ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Search size={15} color="#FFFFFF" />}
+              <Text style={styles.searchThisAreaText}>
+                {currentPlacesLoading
+                  ? (isHindi ? "आस-पास खोज रहे हैं…" : "Searching nearby…")
+                  : (isHindi ? "इस क्षेत्र में खोजें" : "Search this area")}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Interactive map controls */}
+          {hasInteractiveNativeMap && <View style={styles.mapControlsDock}>
             <TouchableOpacity
               style={[styles.mapCtrlBtn, styles.mapCtrlBtnFilter]}
               onPress={() => {
@@ -380,14 +510,6 @@ export const MapsScreen: React.FC = () => {
               <ZoomOut size={18} color={Colors.textPrimary} />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.mapCtrlBtn, mapType === "satellite" && styles.mapCtrlBtnActive]}
-              onPress={handleToggleMapType}
-              activeOpacity={0.8}
-            >
-              <Layers size={18} color={mapType === "satellite" ? Colors.primaryDark : Colors.textPrimary} />
-            </TouchableOpacity>
-
             <TouchableOpacity style={styles.mapCtrlBtn} onPress={handleLocateMe} activeOpacity={0.8}>
               {isLocating ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
@@ -395,13 +517,13 @@ export const MapsScreen: React.FC = () => {
                 <LocateFixed size={18} color={Colors.primaryDark} />
               )}
             </TouchableOpacity>
-          </View>
+          </View>}
 
           {/* Floating Live GPS Parent Badge */}
           <View style={styles.parentGpsHud}>
-            <View style={styles.pulseDot} />
+            <MapPin size={13} color="#FFFFFF" />
             <Text style={styles.parentGpsText} numberOfLines={1}>
-              {activeParent.full_name} · {activeParent.address}
+              Care map · {activeParent.full_name}
             </Text>
           </View>
 
@@ -458,87 +580,145 @@ export const MapsScreen: React.FC = () => {
 
               <ScrollView
                 style={styles.sheetPlacesScroll}
-                contentContainerStyle={{ paddingBottom: 95 }}
+                contentContainerStyle={styles.sheetPlacesContent}
                 showsVerticalScrollIndicator={false}
               >
-              {placesLoading && <View style={styles.mapLoadingOverlay}><ActivityIndicator color={Colors.primary} /><Text style={styles.travelStatText}>Loading live Google Places results…</Text></View>}
-              {!placesLoading && currentPlacesError && <View style={styles.mapLoadingOverlay}><Text style={styles.placeAddress}>{currentPlacesError}</Text></View>}
-              {!placesLoading && !currentPlacesError && currentPlaces.length === 0 && <View style={styles.mapLoadingOverlay}><Text style={styles.placeAddress}>No matching healthcare places were returned for this area.</Text></View>}
-              {currentPlaces.map((place) => {
-                const isSelected = selectedPlaceId === place.place_id;
-                return (
-                  <TouchableOpacity
-                    key={place.place_id}
-                    style={[styles.placeCard, isSelected && styles.placeCardSelected]}
-                    onPress={() => handleSelectPlaceOnMap(place)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.placeCardTop}>
-                      <View style={styles.placeInfoCol}>
-                        <Text style={[styles.placeName, seniorMode && styles.seniorPlaceName]}>
-                          {place.name}
-                        </Text>
-                        <Text style={styles.placeAddress} numberOfLines={2}>
-                          {place.address}
-                        </Text>
-                      </View>
-                      {place.rating && (
-                        <View style={styles.ratingBadge}>
-                          <Star size={12} color="#F59E0B" fill="#F59E0B" />
-                          <Text style={styles.ratingText}>{place.rating}</Text>
+                {currentPlacesLoading && currentPlaces.length === 0 && (
+                  <View style={styles.placesState}>
+                    <ActivityIndicator color={Colors.primary} />
+                    <Text style={styles.placesStateText}>{isHindi ? "आस-पास स्वास्थ्य केंद्र खोजे जा रहे हैं…" : "Searching nearby healthcare…"}</Text>
+                  </View>
+                )}
+                {!currentPlacesLoading && currentPlacesError && (
+                  <View style={styles.placesState}>
+                    <Text style={styles.placesStateText}>
+                      {isHindi && !hasSearchCoordinates
+                        ? "आस-पास के केंद्र खोजने के लिए स्थान अनुमति दें या प्रोफ़ाइल में स्थान जोड़ें।"
+                        : currentPlacesError}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.inlineRetryButton}
+                      onPress={() => hasSearchCoordinates ? setSearchRequestId((current) => current + 1) : void handleLocateMe()}
+                    >
+                      <Text style={styles.inlineRetryButtonText}>
+                        {hasSearchCoordinates
+                          ? (isHindi ? "फिर प्रयास करें" : "Try again")
+                          : (isHindi ? "मेरी जगह उपयोग करें" : "Use my location")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {!currentPlacesLoading && !currentPlacesError && currentPlaces.length === 0 && (
+                  <View style={styles.placesState}>
+                    <Text style={styles.placesStateText}>
+                      {isHindi ? "इस क्षेत्र में कोई स्वास्थ्य केंद्र नहीं मिला।" : "No matching healthcare places found in this area."}
+                    </Text>
+                    <TouchableOpacity style={styles.inlineRetryButton} onPress={() => setSearchRequestId((current) => current + 1)}>
+                      <Text style={styles.inlineRetryButtonText}>{isHindi ? "फिर खोजें" : "Search again"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {currentPlaces.map((place) => {
+                  const isSelected = selectedPlaceId === place.place_id;
+                  // Prefer live GPS, then the search center (always valid when places are returned)
+                  const originLat = userLocation?.latitude ?? searchCenter.lat ?? activeParent.latitude ?? initialLat;
+                  const originLng = userLocation?.longitude ?? searchCenter.lng ?? activeParent.longitude ?? initialLng;
+                  const distanceMeters =
+                    place.distance_meters != null && place.distance_meters > 0
+                      ? place.distance_meters
+                      : place.latitude != null && place.longitude != null
+                        ? computeHaversineMeters(originLat, originLng, place.latitude, place.longitude)
+                        : null;
+
+                  const distanceText =
+                    distanceMeters != null
+                      ? distanceMeters < 1000
+                        ? `${distanceMeters} m`
+                        : `${(distanceMeters / 1000).toFixed(1)} km`
+                      : (isHindi ? "दूरी अज्ञात" : "Distance unavailable");
+
+                  const durationMinutes =
+                    place.duration_minutes != null && place.duration_minutes > 0
+                      ? place.duration_minutes
+                      : distanceMeters != null
+                        ? Math.max(1, Math.round(distanceMeters / 400))
+                        : null;
+
+                  return (
+                    <TouchableOpacity
+                      key={place.place_id}
+                      style={[styles.placeCard, isSelected && styles.placeCardSelected]}
+                      onPress={() => handleSelectPlaceOnMap(place)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.placeCardTop}>
+                        <View style={styles.placeInfoCol}>
+                          <Text style={[styles.placeName, seniorMode && styles.seniorPlaceName]}>
+                            {place.name}
+                          </Text>
+                          <Text style={styles.placeAddress} numberOfLines={2}>
+                            {place.address}
+                          </Text>
                         </View>
-                      )}
-                    </View>
+                        {place.rating && (
+                          <View style={styles.ratingBadge}>
+                            <Star size={12} color="#F59E0B" fill="#F59E0B" />
+                            <Text style={styles.ratingText}>{place.rating}</Text>
+                          </View>
+                        )}
+                      </View>
 
-                    {/* Travel Stats & Actions */}
-                    <View style={styles.placeCardBottom}>
-                      <View style={styles.travelStatRow}>
-                        <View style={styles.travelStat}>
-                          <Navigation size={12} color={Colors.primaryDark} />
-                          <Text style={styles.travelStatText}>
-                            {place.distance_meters ? `${(place.distance_meters / 1000).toFixed(1)} km` : "Distance unavailable"}
-                          </Text>
+                      {/* Travel Stats & Actions */}
+                      <View style={styles.placeCardBottom}>
+                        <View style={styles.travelStatRow}>
+                          <View style={styles.travelStat}>
+                            <Navigation size={12} color={Colors.primaryDark} />
+                            <Text style={styles.travelStatText}>
+                              {distanceText}
+                            </Text>
+                          </View>
+                          {durationMinutes != null && (
+                            <View style={styles.travelStat}>
+                              <Clock size={12} color={Colors.primaryDark} />
+                              <Text style={styles.travelStatText}>
+                                ~{durationMinutes} min
+                              </Text>
+                            </View>
+                          )}
                         </View>
-                        {place.duration_minutes != null && <View style={styles.travelStat}>
-                          <Clock size={12} color={Colors.primaryDark} />
-                          <Text style={styles.travelStatText}>
-                            ~{place.duration_minutes} min
-                          </Text>
-                        </View>}
-                      </View>
 
-                      <View style={styles.actionButtonsRow}>
-                        <TouchableOpacity
-                          style={styles.checkInBtn}
-                          onPress={() => handleCheckInVisit(place)}
-                          activeOpacity={0.8}
-                        >
-                          <CheckCircle2 size={13} color={Colors.primaryDark} />
-                          <Text style={styles.checkInText}>
-                            {isHindi ? "विज़िट दर्ज" : "Check-in"}
-                          </Text>
-                        </TouchableOpacity>
+                        <View style={styles.actionButtonsRow}>
+                          <TouchableOpacity
+                            style={styles.checkInBtn}
+                            onPress={() => handleCheckInVisit(place)}
+                            activeOpacity={0.8}
+                          >
+                            <CheckCircle2 size={13} color={Colors.primaryDark} />
+                            <Text style={styles.checkInText}>
+                              {isHindi ? "विज़िट दर्ज" : "Check-in"}
+                            </Text>
+                          </TouchableOpacity>
 
-                        <TouchableOpacity
-                          style={styles.directionsBtn}
-                          onPress={() => openGoogleDirections(place)}
-                          activeOpacity={0.8}
-                        >
-                          <ArrowUpRight size={14} color="#FFFFFF" />
-                          <Text style={styles.directionsText}>
-                            {isHindi ? "दिशा-निर्देश" : "Directions"}
-                          </Text>
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.directionsBtn}
+                            onPress={() => openGoogleDirections(place)}
+                            activeOpacity={0.8}
+                          >
+                            <ArrowUpRight size={14} color="#FFFFFF" />
+                            <Text style={styles.directionsText}>
+                              {isHindi ? "दिशा-निर्देश" : "Directions"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </Animated.View>
-        )}
-      </View>
-    ) : (
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </Animated.View>
+          )}
+        </View>
+      ) : (
         /* Visit History View */
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.historyHeader}>
@@ -552,23 +732,47 @@ export const MapsScreen: React.FC = () => {
             </Text>
           </View>
 
-          {visits.map((v) => (
-            <View key={v.id} style={styles.visitCard}>
-              <View style={styles.visitIconCircle}>
-                <MapPin size={18} color={Colors.primaryDark} />
+          {visits.length === 0 ? (
+            <View style={styles.emptyHistoryState}>
+              <View style={styles.emptyHistoryIconCircle}>
+                <History size={28} color={Colors.primaryDark} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.visitName}>{v.place_name}</Text>
-                <Text style={styles.visitAddress}>{v.address}</Text>
-                <View style={styles.visitMetaRow}>
-                  <Text style={styles.visitTime}>{v.visited_at}</Text>
-                  <View style={styles.visitTag}>
-                    <Text style={styles.visitTagText}>{v.category}</Text>
+              <Text style={styles.emptyHistoryTitle}>
+                {isHindi ? "कोई विज़िट दर्ज नहीं" : "No Healthcare Visits Logged"}
+              </Text>
+              <Text style={styles.emptyHistorySub}>
+                {isHindi
+                  ? "जब आप किसी अस्पताल या क्लिनिक में चेक-इन करते हैं, तो वह यहाँ दर्ज हो जाएगा।"
+                  : "Healthcare visits recorded via 'Check-In' on nearby facilities will appear here with location & timestamps."}
+              </Text>
+            </View>
+          ) : (
+            visits.map((v) => (
+              <View key={v.id} style={styles.visitCard}>
+                <View style={styles.visitIconCircle}>
+                  <MapPin size={18} color={Colors.primaryDark} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.visitName}>{v.place_name}</Text>
+                  <Text style={styles.visitAddress}>{v.address}</Text>
+                  <View style={styles.visitMetaRow}>
+                    <Text style={styles.visitTime}>{v.visited_at}</Text>
+                    <View style={styles.visitTag}>
+                      <Text style={styles.visitTagText}>{v.category}</Text>
+                    </View>
                   </View>
                 </View>
+                <TouchableOpacity
+                  style={styles.visitDeleteBtn}
+                  onPress={() => setVisitToDelete(v)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel="Delete visit record"
+                >
+                  <Trash2 size={15} color={Colors.textMuted} />
+                </TouchableOpacity>
               </View>
-            </View>
-          ))}
+            ))
+          )}
         </ScrollView>
       )}
 
@@ -671,6 +875,29 @@ export const MapsScreen: React.FC = () => {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Confirmation Modal for Deleting Visit Record */}
+      <ConfirmationModal
+        visible={Boolean(visitToDelete)}
+        title={isHindi ? "विज़िट रिकॉर्ड हटाएं?" : "Delete Visit Record?"}
+        message={
+          visitToDelete
+            ? (isHindi
+                ? `क्या आप वाकई "${visitToDelete.place_name}" का विज़िट रिकॉर्ड हटाना चाहते हैं?`
+                : `Are you sure you want to delete the visit record for "${visitToDelete.place_name}"?`)
+            : ""
+        }
+        confirmText={isHindi ? "हटाएं" : "Delete"}
+        cancelText={isHindi ? "रद्द करें" : "Cancel"}
+        isDestructive
+        onConfirm={() => {
+          if (visitToDelete) {
+            deleteVisit(visitToDelete.id);
+            setVisitToDelete(null);
+          }
+        }}
+        onCancel={() => setVisitToDelete(null)}
+      />
     </View>
   );
 };
@@ -685,7 +912,7 @@ const styles = createThemedStyles({
   },
   viewToggleContainer: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.xs,
     paddingBottom: Spacing.xs,
   },
   viewToggleRow: {
@@ -726,32 +953,79 @@ const styles = createThemedStyles({
     position: "relative",
     backgroundColor: "#1E293B",
   },
-  fullScreenMapImage: {
+  mapStatusBadge: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: "100%",
-    height: "100%",
+    top: 106,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    zIndex: 14,
+    ...Shadows.card,
   },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#10B981",
-    marginRight: 4,
+  mapStatusText: {
+    fontSize: 12,
+    color: Colors.textPrimary,
+    fontWeight: "600",
   },
-  mapLoadingOverlay: {
+  mapFailureCard: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    top: "28%",
+    left: 24,
+    right: 24,
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.97)",
+    borderRadius: 18,
+    padding: Spacing.lg,
+    zIndex: 30,
+    ...Shadows.cardElevated,
+  },
+  mapFailureTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: Colors.textPrimary,
+    textAlign: "center",
+  },
+  mapFailureText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 18,
+    marginTop: 5,
+  },
+  mapRetryButton: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 10,
+    gap: 7,
+    backgroundColor: Colors.primaryDark,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    marginTop: 12,
+  },
+  mapRetryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mapExternalButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    marginTop: 8,
+  },
+  mapExternalButtonText: {
+    color: Colors.primaryDark,
+    fontSize: 12,
+    fontWeight: "700",
   },
   floatingTopLayer: {
     position: "absolute",
@@ -800,6 +1074,25 @@ const styles = createThemedStyles({
     fontWeight: "700",
     color: Colors.primaryDark,
   },
+  searchThisAreaButton: {
+    position: "absolute",
+    top: 108,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
+    zIndex: 18,
+    ...Shadows.cardElevated,
+  },
+  searchThisAreaText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   mapControlsDock: {
     position: "absolute",
     right: 12,
@@ -822,9 +1115,6 @@ const styles = createThemedStyles({
     justifyContent: "center",
   },
   mapCtrlBtnFilter: {
-    backgroundColor: Colors.primaryLight,
-  },
-  mapCtrlBtnActive: {
     backgroundColor: Colors.primaryLight,
   },
   parentGpsHud: {
@@ -858,7 +1148,7 @@ const styles = createThemedStyles({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: Spacing.lg,
-    paddingTop: 8,
+    paddingTop: 0,
     paddingBottom: 20,
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.95)",
@@ -870,7 +1160,7 @@ const styles = createThemedStyles({
     zIndex: 25,
   },
   bottomSheetContainerExpanded: {
-    height: "78%",
+    height: "100%",
   },
   sheetHeaderActions: {
     flexDirection: "row",
@@ -1059,8 +1349,8 @@ const styles = createThemedStyles({
   sheetHandleTouch: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 38,
-    paddingVertical: 9,
+    minHeight: 26,
+    paddingVertical: 5,
   },
   sheetHandleBar: {
     width: 44,
@@ -1098,6 +1388,38 @@ const styles = createThemedStyles({
   },
   sheetPlacesScroll: {
     flex: 1,
+  },
+  sheetPlacesContent: {
+    paddingTop: Spacing.xs,
+    paddingBottom: 90,
+    gap: 4,
+  },
+  placesState: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: "rgba(255, 255, 255, 0.75)",
+    marginBottom: Spacing.md,
+  },
+  placesStateText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+  },
+  inlineRetryButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryLight,
+  },
+  inlineRetryButtonText: {
+    color: Colors.primaryDark,
+    fontSize: 12,
+    fontWeight: "700",
   },
   radiusChipActive: {
     backgroundColor: Colors.primaryLight,
@@ -1169,13 +1491,14 @@ const styles = createThemedStyles({
   },
   placesList: {
     paddingHorizontal: Spacing.lg,
-    gap: 12,
+    gap: 6,
     paddingTop: Spacing.xs,
   },
   placeCard: {
     ...Glass.card,
     padding: Spacing.md,
     borderRadius: 18,
+    marginBottom: 0,
   },
   placeCardSelected: {
     borderColor: Colors.primary,
@@ -1277,7 +1600,7 @@ const styles = createThemedStyles({
   },
   historyHeader: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
+    paddingTop: Spacing.sm,
     marginBottom: Spacing.md,
   },
   historyTitle: {
@@ -1339,5 +1662,44 @@ const styles = createThemedStyles({
     fontWeight: "700",
     color: Colors.textSecondary,
     textTransform: "capitalize",
+  },
+  visitDeleteBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceAlt,
+    alignSelf: "center",
+  },
+  emptyHistoryState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 48,
+    paddingHorizontal: Spacing.xl,
+    marginHorizontal: Spacing.lg,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyHistoryIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  emptyHistoryTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  emptyHistorySub: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
   },
 });

@@ -87,6 +87,8 @@ export interface MedicalDocument {
   summary?: string;
   extracted_tags: string[];
   extracted_fields?: Record<string, any>;
+  mime_type?: string;
+  raw_ocr_text?: string;
   created_at?: string;
   updated_at?: string;
 }

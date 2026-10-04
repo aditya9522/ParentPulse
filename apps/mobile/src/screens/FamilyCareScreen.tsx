@@ -663,7 +663,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                   mode="date"
                   display={Platform.OS === "ios" ? "spinner" : "default"}
                   minimumDate={new Date()}
-                  onChange={(event, selectedDate) => {
+                  onValueChange={(event, selectedDate) => {
                     setShowTaskDatePicker(false);
                     if (selectedDate) {
                       const updated = new Date(taskDueDateObj);
@@ -672,6 +672,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                       setTaskDueDate(updated.toISOString());
                     }
                   }}
+                  onDismiss={() => setShowTaskDatePicker(false)}
                 />
               )}
 
@@ -681,7 +682,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                   mode="time"
                   is24Hour={false}
                   display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(event, selectedDate) => {
+                  onValueChange={(event, selectedDate) => {
                     setShowTaskTimePicker(false);
                     if (selectedDate) {
                       const updated = new Date(taskDueDateObj);
@@ -690,6 +691,7 @@ export const FamilyCareScreen: React.FC<{ onBack?: () => void }> = ({ onBack }) 
                       setTaskDueDate(updated.toISOString());
                     }
                   }}
+                  onDismiss={() => setShowTaskTimePicker(false)}
                 />
               )}
 
@@ -1496,7 +1498,7 @@ const styles = createThemedStyles({
     backgroundColor: Colors.surface,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    paddingTop: 10,
+    paddingTop: 0,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Platform.OS === "ios" ? 34 : Spacing.lg,
     maxHeight: "85%",
@@ -1513,7 +1515,8 @@ const styles = createThemedStyles({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginTop: 2,
+    marginBottom: 16,
   },
   modalTitle: {
     fontSize: Typography.sizes.md,

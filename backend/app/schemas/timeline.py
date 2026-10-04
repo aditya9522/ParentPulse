@@ -19,6 +19,17 @@ class TimelineEventCreate(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class TimelineEventUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    event_type: Optional[TimelineEventType] = None
+    event_date: Optional[datetime] = None
+    doctor_name: Optional[str] = None
+    facility_name: Optional[str] = None
+    document_id: Optional[uuid.UUID] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
 class TimelineEventResponse(BaseModel):
     id: uuid.UUID
     parent_id: uuid.UUID

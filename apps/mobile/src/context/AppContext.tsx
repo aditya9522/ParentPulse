@@ -203,12 +203,14 @@ interface AppContextType {
   updateDoctor: (index: number, updated: PrimaryDoctor) => void;
   deleteDoctor: (index: number) => void;
   addTimelineEvent: (event: TimelineEvent) => void;
+  updateTimelineEvent: (event: TimelineEvent) => void;
   deleteTimelineEvent: (id: string) => void;
   updateUserProfile: (data: Partial<UserProfile>) => Promise<void>;
   updateUserAvatar: (uri: string, filename?: string, mimeType?: string) => Promise<void>;
 
   logNewMeasurement: (vitalType: any, val: number, valSec?: number, notes?: string) => void;
   recordNewVisit: (placeName: string, category: any, address: string) => void;
+  deleteVisit: (id: string) => void;
 
   // Modals
   sosModalVisible: boolean;
@@ -229,13 +231,28 @@ interface AppContextType {
   setReportModalVisible: (v: boolean) => void;
 }
 
-const mergeById = <T extends { id?: string }>(cached: T[] = [], incoming: T[] = []): T[] => {
+const mergeById = <T extends { id?: string; status?: string }>(cached: T[] = [], incoming: T[] = []): T[] => {
   const map = new Map<string, T>();
   (cached || []).forEach((item) => {
     if (item && item.id) map.set(item.id, item);
   });
   (incoming || []).forEach((item) => {
-    if (item && item.id) map.set(item.id, item);
+    if (item && item.id) {
+      const prev = map.get(item.id);
+      // Prevent regression of locally or previously extracted documents to processing or pending
+      if (prev && (prev as any).status === "extracted" && ((item as any).status === "pending" || (item as any).status === "processing")) {
+        map.set(item.id, {
+          ...item,
+          status: "extracted",
+          summary: (prev as any).summary || (item as any).summary,
+          extracted_fields: (prev as any).extracted_fields || (item as any).extracted_fields,
+          extracted_tags: (prev as any).extracted_tags || (item as any).extracted_tags,
+          raw_ocr_text: (prev as any).raw_ocr_text || (item as any).raw_ocr_text,
+        });
+      } else {
+        map.set(item.id, item);
+      }
+    }
   });
   return Array.from(map.values());
 };
@@ -765,7 +782,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateParentData(parentId, (current) => {
       const existing = current.documents;
       const documents = existing.some((item) => item.id === doc.id)
-        ? existing.map((item) => item.id === doc.id ? doc : item)
+        ? existing.map((item) => {
+          if (item.id !== doc.id) return item;
+          if (item.status === "extracted" && (doc.status === "pending" || doc.status === "processing")) {
+            return {
+              ...doc,
+              status: "extracted" as const,
+              summary: item.summary || doc.summary,
+              extracted_fields: item.extracted_fields || doc.extracted_fields,
+              extracted_tags: item.extracted_tags || doc.extracted_tags,
+              raw_ocr_text: item.raw_ocr_text || doc.raw_ocr_text,
+            };
+          }
+          return doc;
+        })
         : [doc, ...existing];
       return { ...current, documents };
     });
@@ -908,31 +938,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Family Members & Caregiver Management
   const logNewMeasurement = (vitalType: any, val: number, valSec?: number, notes?: string) => {
     const parentId = activeParentId;
-    const isoNow = new Date().toISOString();
-    const newMeasurement: HealthMeasurement = {
-      id: Crypto.randomUUID(),
-      parent_id: parentId,
-      vital_type: vitalType,
-      value_numeric: val,
-      value_secondary: valSec,
-      unit: vitalType === "blood_pressure" ? "mmHg" : vitalType === "blood_sugar" ? "mg/dL" : "bpm",
-      recorded_at: isoNow,
-      notes,
-    };
-    updateParentData(parentId, (current) => ({ ...current, measurements: [newMeasurement, ...current.measurements] }));
+    const now = new Date();
+    const isoNow = now.toISOString();
+    const todayLocalDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const unit = vitalType === "blood_pressure" ? "mmHg" : vitalType === "blood_sugar" ? "mg/dL" : "bpm";
+
+    let resourceId = Crypto.randomUUID();
+
+    updateParentData(parentId, (current) => {
+      // Find if a vital measurement for this metric was already logged today
+      const existingIndex = current.measurements.findIndex((m) => {
+        if (m.vital_type !== vitalType) return false;
+        if (!m.recorded_at) return false;
+        const mDate = new Date(m.recorded_at);
+        const mLocalDate = !Number.isNaN(mDate.getTime())
+          ? `${mDate.getFullYear()}-${String(mDate.getMonth() + 1).padStart(2, "0")}-${String(mDate.getDate()).padStart(2, "0")}`
+          : m.recorded_at.slice(0, 10);
+        return mLocalDate === todayLocalDate || m.recorded_at.slice(0, 10) === isoNow.slice(0, 10);
+      });
+
+      if (existingIndex >= 0) {
+        const existing = current.measurements[existingIndex];
+        resourceId = existing.id;
+        const updated: HealthMeasurement = {
+          ...existing,
+          value_numeric: val,
+          value_secondary: valSec,
+          unit,
+          recorded_at: isoNow,
+          notes: notes ?? existing.notes,
+        };
+        const updatedList = [...current.measurements];
+        updatedList[existingIndex] = updated;
+        return { ...current, measurements: updatedList };
+      } else {
+        const newMeasurement: HealthMeasurement = {
+          id: resourceId,
+          parent_id: parentId,
+          vital_type: vitalType,
+          value_numeric: val,
+          value_secondary: valSec,
+          unit,
+          recorded_at: isoNow,
+          notes,
+        };
+        return { ...current, measurements: [newMeasurement, ...current.measurements] };
+      }
+    });
 
     void syncMutation("/measurements", "POST", {
       parent_id: parentId,
       vital_type: vitalType,
       value_numeric: val,
       value_secondary: valSec,
-      unit: newMeasurement.unit,
+      unit,
       recorded_at: isoNow,
       notes,
     }, {
       label: `Record ${vitalType.replace(/_/g, " ")}`,
       resourceType: "measurement",
-      resourceId: newMeasurement.id,
+      resourceId,
       parentId,
     });
   };
@@ -970,6 +1035,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       label: `Check in at ${placeName}`,
       resourceType: "visit",
       resourceId: newVisit.id,
+      parentId,
+    });
+  };
+
+  const deleteVisit = (id: string) => {
+    const parentId = activeParentId;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      visits: current.visits.filter((v) => v.id !== id),
+    }));
+
+    void syncMutation(`/parents/${parentId}/locations/visits/${id}`, "DELETE", undefined, {
+      label: "Delete healthcare visit",
+      resourceType: "visit",
+      resourceId: id,
       parentId,
     });
   };
@@ -1082,6 +1162,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const updateTimelineEvent = (event: TimelineEvent) => {
+    const parentId = event.parent_id;
+    updateParentData(parentId, (current) => ({
+      ...current,
+      timeline: current.timeline.map((t) => (t.id === event.id ? event : t)),
+    }));
+    void syncMutation(`/timeline/${event.id}`, "PATCH", event, {
+      label: `Update timeline milestone: ${event.title}`,
+      resourceType: "timeline",
+      resourceId: event.id,
+      parentId,
+    });
+  };
+
   const deleteTimelineEvent = (id: string) => {
     const parentId = activeParentId;
     updateParentData(parentId, (current) => ({
@@ -1153,12 +1247,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteDocument,
         timeline: currentData.timeline,
         addTimelineEvent,
+        updateTimelineEvent,
         deleteTimelineEvent,
         measurements: currentData.measurements,
         logNewMeasurement,
         deleteMeasurement,
         visits: currentData.visits,
         recordNewVisit,
+        deleteVisit,
         tasks: currentData.tasks,
         addTask,
         toggleTaskCompleted,

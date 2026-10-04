@@ -19,6 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { useApp } from "../context/AppContext";
 import { createThemedStyles } from "../theme";
+import { useGlassBlurTarget } from "./GlassBlurProvider";
 
 interface SwipeableBottomSheetProps {
   visible: boolean;
@@ -40,6 +41,7 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
   testID,
 }) => {
   const { themeMode } = useApp();
+  const blurTarget = useGlassBlurTarget();
   const translateY = useRef(new Animated.Value(900)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const isDismissing = useRef(false);
@@ -67,11 +69,8 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
     ? (["rgba(255, 251, 245, 0.75)", "rgba(254, 243, 199, 0.45)"] as const)
     : (["rgba(255, 255, 255, 0.45)", "rgba(255, 255, 255, 0.18)"] as const);
 
-  const dragZoneBg = isDark
-    ? "rgba(30, 41, 59, 0.5)"
-    : isAmber
-    ? "rgba(254, 243, 199, 0.4)"
-    : "rgba(255, 255, 255, 0.3)";
+  // Keep the handle area on the same continuous material as the sheet body.
+  const dragZoneBg = "transparent";
 
   const dragZoneBorderColor = isDark
     ? "rgba(255, 255, 255, 0.1)"
@@ -219,8 +218,10 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
         >
           {Platform.OS !== "web" && (
             <BlurView
-              intensity={Platform.OS === "android" ? 50 : 85}
+              intensity={Platform.OS === "android" ? 40 : 85}
               tint={effectiveTint}
+              blurTarget={Platform.OS === "android" ? undefined : (blurTarget ?? undefined)}
+              blurMethod={Platform.OS === "android" ? "none" : undefined}
               pointerEvents="none"
               style={StyleSheet.absoluteFill}
             />
@@ -284,14 +285,13 @@ const styles = createThemedStyles({
   },
   swipeDragZone: {
     width: "100%",
-    minHeight: 28,
-    paddingTop: 8,
-    paddingBottom: 6,
+    minHeight: 36,
+    paddingTop: 12,
+    paddingBottom: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.6)",
+    backgroundColor: "transparent",
+    borderBottomWidth: 0,
   },
   grabHandle: {
     width: 48,
@@ -299,4 +299,3 @@ const styles = createThemedStyles({
     borderRadius: 3,
   },
 });
-

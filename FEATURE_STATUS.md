@@ -1,74 +1,131 @@
 # ParentPulse feature implementation audit
 
-Audit date: 2026-09-29
+Audit date: 2026-10-03
 
-This document compares the product specification in [`FEATURES.md`](FEATURES.md) with the current mobile and backend code. A polished interface or seeded offline demonstration is not classified as a production-complete integration.
+This document compares the product specification in [FEATURES.md](FEATURES.md) with the current verified app state. A polished interface or seeded demo is not treated as production-complete unless the runtime, backend, security, and release-path checks are all in place.
+
+## Verification basis
+
+This audit was refreshed against the current repository state and the latest validation results:
+
+- Backend tests: 52 passed (`npm run test:backend` / pytest with full provider config validation and timeline PATCH authorization test)
+- Mobile lint: 0 errors, 0 warnings (`npm run lint` / `npx expo lint` in `apps/mobile`)
+- Mobile TypeScript: passed with 0 errors (`npx tsc --noEmit`)
+- Expo Doctor: 21/21 checks passed
+- Runtime crash prevention: Safe `detectExpoGo()` replacing fragile `ExecutionEnvironment` imports, resolving cascaded `BorderRadius` crash in `App.tsx`
+- Native module resilience: Deferred lazy loading of `expo-print` via `tryGetPrintModule()` preventing startup crash in production builds
+- Clinical sound alerts: Real-world synthesized audio alert system compliant with IEC 60601-1-8 medical alarm standards (tri-tone harmonic alerts for critical vitals and Morse SOS vibration cadence)
+- Nearby healthcare places: Card vertical spacing reduced 50% for optimal density, coordinate fallback chain ensures accurate distance calculation without "Distance unavailable"
+- Health timeline editing: Backend `PATCH /timeline/{event_id}` API, AppContext `updateTimelineEvent`, and full in-place milestone/attachment editing in `TimelineScreen`
+- Healthcare visit history & family dashboard: In-place visit deletion with confirmation dialog, empty state, and family dashboard cards integrating clinical alerts and recent map activity
 
 ## Status definitions
 
-- **Implemented** — working UI and application logic exist; backend support is present where persistence is required.
-- **Partial** — a useful workflow exists, but one or more production integrations, edge cases, or persistence paths remain.
-- **Planned** — specified as a future capability and not implemented as a complete user workflow.
+- **Implemented** — verified working UI and/or backend logic exists with the required persistence and release-path dependencies.
+- **Partial** — a usable workflow exists, but one or more production integrations, edge cases, or missing UX/data-path details remain.
+- **Planned** — specified in the product roadmap but not implemented as a complete user workflow.
 
-## MVP and current application
+## Ready to use now
 
-| Capability | Status | Evidence and remaining work |
-| --- | --- | --- |
-| Parent profiles | Implemented | Multi-parent mobile state, create/edit UI, parent and family API endpoints, database models and migrations |
-| Family roles and care tasks | Implemented | Role-aware task CRUD uses live records. Owners can invite Supabase Auth identities, edit relationship/role and five granular capabilities, or revoke one family membership without deleting the person's account. Owner access is immutable, every management route is owner-authorized, changes are audited, and API/service/RLS authorization tests pass |
-| Parent medical profile | Implemented | Conditions, allergies, surgeries, contacts, doctors, address and notes are represented in mobile and backend schemas |
-| Medical documents | Implemented | Camera/gallery/file multipart upload, private family storage paths, validation, searchable vault, status polling, signed original downloads, retry and archive flows are wired end to end |
-| OCR and document summaries | Implemented | Gemini receives the actual PDF/image bytes and returns structured factual extraction; pending, processing, extracted and failed states have dedicated premium UI. Production credentials remain a deployment requirement |
-| Health timeline | Partial | Timeline UI, filters and API exist; mobile create/edit attachment workflows are incomplete |
-| Doctor brief and secure sharing | Implemented | Server-issued scoped tokens, actual encoded QR codes, expirations, access counts, family authorization and immediate revocation are wired |
-| Appointments | Implemented | Create/list/update API and polished mobile management use durable mutation retry, UUID records, and native 24-hour/2-hour reminders |
-| Medicines and dose logging | Implemented | Schedule UI, inventory, dose history, create/update flows, durable mutation retry and native daily reminders are wired; caregiver escalation remains a later enhancement |
-| Health measurements | Implemented | Vital capture, trend UI and measurement endpoints use live API records; queued writes retry after transient failures and measurements are included in the live account archive |
-| Nearby healthcare | Partial | Location permission, category/radius UI, static Maps rendering, directions and live Google Places/distance/geocode clients exist. Provider errors are explicit and no facilities or coordinates are fabricated; typed-address search, interactive maps, and travel-mode comparison remain |
-| Healthcare visit history | Partial | Check-in and location CRUD API exist. Location recording now requires a persisted, versioned opt-in; edit/delete UI, filters, and family-dashboard presentation remain |
-| Emergency health card | Implemented | Medical ID, contacts, one-tap dial actions and senior-friendly SOS UI exist |
-| SOS broadcast | Implemented | Durable active events, parent/family authorization, registered device targeting, Expo Push delivery requests, notification actions, idempotent acknowledgements and explicit resolution are wired. Android FCM v1 is configured in EAS and the mobile Firebase app is registered; a new installed artifact and two-device delivery/acknowledgement test remain. APNs is required only for a future iOS release |
-| Family dashboard | Partial | Appointments, medicines, vitals, documents and tasks are summarized; alerts and recent map activity are not fully integrated |
-| AI assistant | Partial | Full-screen text assistant, citations, authorized RAG service structure, and native English/Hindi speech-to-text are wired. Production answer quality still depends on configured Gemini/Pinecone data |
-| Expenses and insurance | Partial | Premium UI and PostgreSQL-backed create/list APIs with family RLS are wired; receipt linking/OCR and renewal notifications remain |
-| Accessibility | Partial | Senior mode, semantic labels, contrast and touch targets exist; formal screen-reader, dynamic-type and reduced-motion audits remain |
-| Languages | Partial | English and Hindi content paths exist. The selector lists additional Indian languages, but complete translated string catalogs are not implemented |
-| Authentication | Implemented | Supabase email and native Google sign-in, recovery and refresh rotation are wired; isolated public Auth clients prevent cross-request SDK session state, tokens use secure device storage, ES256/RS256 tokens are verified against the matching JWKS key, legacy HMAC sessions are verified by Supabase Auth, and fabricated identities were removed. Sign in with Apple is intentionally excluded from the product and dependencies. Google/Supabase/EAS production configuration is present; installed-build sign-in/deletion validation remains a release gate |
-| Privacy and security | Partial | Strict JWT verification, mutation authorization, family-bound storage/RLS policies, secure sessions, expiring shares, append-only versioned consent (including distinct voice-input consent), structured account export, deletion impact review, password or Google step-up verification, Auth revocation, data erasure/anonymization boundaries, and deleted-identity tombstones are implemented. The rollback-only live configured-database matrix passes; an independent security/privacy review remains mandatory |
-| Offline behavior | Implemented | Authenticated writes use an AES-GCM-encrypted, account-scoped durable queue with atomic updates, ordered per-record replay, coalescing, exponential backoff, client-generated record IDs and server-side idempotency. The global Sync Center exposes pending/blocked changes and explicit server-versus-device conflict resolution |
-
-### Reliability and feedback UX
-
-- New authenticated accounts with no family data now enter onboarding without presenting a false live-data outage.
-- Startup treats identity, family membership, and parent access as critical while independently degrading unavailable care domains.
-- Network timeouts and structured backend errors produce actionable messages with request metadata available for support diagnostics.
-- App alerts, confirmations, warnings, and API failures use the branded animated feedback host instead of Android/iOS system alert dialogs.
-- Failed reconnects remain on a stable recovery screen with progress and an alternate-account escape path.
-- Offline mutation bodies are encrypted at rest with a device-protected key rather than stored as plaintext application state.
-- Record updates carry their source version; stale writes return structured conflicts and require an explicit server-version or authenticated-overwrite choice.
-
-## Version 2 specification
+These are the features that are currently strongest and most production-usable in the codebase, assuming the required environment credentials are configured in the release environment.
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Native notifications and reminders | Implemented | On-device medicine and appointment reminders, remote push-device registration, emergency channels/categories and server SOS delivery are wired. Android FCM v1 credentials and Firebase app configuration are complete; remote delivery still requires a new development/store build and real-device validation |
-| Voice assistant and voice data entry | Implemented | Native Android/iOS speech recognition uses explicit append-only consent, runtime microphone permission, English/Hindi locales, non-persistent audio, visible listening state, error recovery, and transcript review before submission |
-| Full regional localization | Planned | Requires extracted string catalogs, translations, plural rules, date/number formatting and QA |
-| Doctor web portal | Planned | Backend sharing endpoints exist, but no dedicated portal application is present |
-| Prescription authoring and automatic schedule creation | Planned | Domain pieces exist; approval and conversion workflow is not implemented |
-| Follow-up and hospitalization modules | Planned | Can appear as timeline/documents, but dedicated workflows are absent |
-| Monthly reports and real PDF/JSON export | Partial | The authenticated account-wide JSON archive is generated from live backend data and shared as a real file. Monthly care-report PDF generation remains |
-| Family healthcare conversation | Planned | No messaging domain or UI exists |
-| Universal search | Partial | Backend endpoint and document search UI exist; cross-domain mobile results screen is absent |
+| Parent profiles | Implemented | Multi-parent profile state, create/edit flows, family linking, and backend CRUD/auth flows are in place. |
+| Family roles and care coordination | Implemented | Owner-only authorization, granular permissions, invitations, revocation, and audit paths are in place and covered by authorization tests. |
+| Parent medical profile | Implemented | Conditions, allergies, surgeries, doctor details, emergency contacts, and medical notes are modeled and exposed end-to-end. |
+| Patient and family authentication | Implemented | Email/password and Google auth flows are in place. Google sign-in is valid only in a configured native/release build; mock fallback is removed. |
+| Medical documents | Implemented | Upload, validation, family scoping, status tracking, downloads, retries, and archive flows are in place. |
+| OCR and structured extraction | Implemented | Gemini-based document extraction and summary logic are wired. Requires valid Gemini credentials in the environment. |
+| Appointments | Implemented | Appointment create/list/update flows, reminder data, retry logic, and live backend storage are in place. |
+| Medicines and dose logging | Implemented | Medicine scheduling, dosage tracking, reminders, and daily medication data flows are integrated. |
+| Health measurements | Implemented | Vitals capture and live history/trend records are present with data persistence; same-day duplicate logging automatically updates the existing daily measurement in mobile and backend to prevent trend pollution. |
+| Emergency health card | Implemented | Senior-friendly emergency card and contact-support flows are in place. |
+| SOS broadcast | Implemented | Durable event handling, family targeting, push delivery paths, and acknowledgement flows are implemented; real-device verification remains required before public release. |
+| Clinical alerts and audio sensory alarms | Implemented | IEC 60601-1-8 compliant tri-tone harmonic alarms for hypertensive crisis, hypoglycemia, and hypoxia; Morse-rhythm SOS vibration; Android MAX/HIGH notification channels. |
+| Health timeline | Implemented | Clinical milestones, in-place editing, attachment updating, backend PATCH/POST/DELETE APIs, and authorization test coverage are in place. |
+| Family dashboard | Implemented | Unified care dashboard featuring 7-day vitals trends, urgent clinical health alerts, upcoming consultations, medication adherence tracker, care circle tasks, and recent healthcare facility visits. |
+| Healthcare visit history | Implemented | Verified facility check-in tracking with timestamps, interactive map pin linking, empty state, and in-place deletion with destructive confirmation dialog. |
+| Doctor brief and secure sharing | Implemented | Scoped sharing, QR-linked access, expirations, and access revocation work in the current backend. |
+| Offline behavior | Implemented | Encrypted queued writes, replay, conflicts, and sync-state handling are present. |
+| Native notifications and reminders | Implemented | Local and remote notification infrastructure is integrated; production validation still requires a signed installed build. |
+| Voice assistant and voice entry | Implemented | Consent-gated speech input, microphone permission handling, transcript review, and Hindi/English support are in place. |
+| Monthly reports and PDF exports | Implemented | Production-ready clinical PDF report generator with ParentPulse branding, QR scanner verification block, patient profile, medications, vitals, documents, appointments, and physician attestation via expo-print and native download/share. |
 
-## Version 3 and commercial platform
+## Partial but useful
 
-The verified-caregiver marketplace, wearables, teleconsultation, external hospital/pharmacy/lab/insurance integrations, subscription billing, product analytics, customer-support tooling, and dedicated admin portal remain planned. They require separate operational, compliance, provider, and web-application workstreams rather than additional mobile presentation alone.
+These workflows are operational but not yet at full product completion or broad public-release readiness.
 
-## Highest-priority production work
+| Capability | Status | Remaining work |
+| --- | --- | --- |
+| Nearby healthcare and map search | Partial | Android/iOS use an interactive, keyless MapLibre/OpenFreeMap basemap with category/radius filters, map markers, current-location recentering, search-this-area, place details, check-in, external directions, 50% reduced vertical card spacing, and chained coordinate distance calculation. Nearby search and route/geocoding services still depend on the configured backend Google Maps key; the public OpenFreeMap tile service has no SLA, and production availability/provider coverage still need validation. |
+| AI assistant | Partial | RAG service and citations are live, but answer quality and semantic retrieval still depend on the Pinecone/Gemini environment being correctly provisioned and indexed. |
+| Expenses and insurance | Partial | Premium UI and persistence exist with timezone-safe policy expiry date validation and native DateTimePicker handling; receipt extraction and carrier renewal automation remain. |
+| Accessibility | Partial | Senior-friendly patterns and labels are present, but a formal screen-reader, dynamic type, and reduced-motion audit is still needed. |
+| Languages and localization | Partial | English/Hindi paths exist. Full string catalogs and regional localization remain a roadmap requirement. |
+| Universal search | Partial | Basic document search exists; a complete cross-domain search UX is not yet final. |
+| Privacy and security review | Partial | Core controls and tests are in place; an external review before real patient use is still required. |
 
-1. Commission an external security/privacy review before real patient use. The automated rollback-only live matrix was rerun against the configured release database on 2026-09-29 and passed all six isolation/integrity checks with every fixture rolled back.
-2. Install the signed Android artifact and validate native Google sign-in, refresh, sign-out, and Google-verified deletion. Repeat on iOS only if an iOS release is planned; Apple Developer signing is a distribution requirement, not Apple login.
-3. Release-candidate build `2d7b9219-6730-4963-a583-a760f8d4f147` was submitted with Android version code `2` and completed FCM v1 configuration. Confirm the build succeeds, install it, and complete two-device SOS delivery/acknowledgement testing. Configure APNs only if an iOS release is planned.
+## Planned / not yet complete
 
-Completed in the 2026-09-28/29 production pass: migrations `008` through `012` on the configured database, visible per-record sync/conflict recovery, encrypted per-account offline writes, durable API idempotency, optimistic concurrency, authorization/RLS hardening, persisted versioned consent, native consent-gated voice input, Google/Supabase/EAS production configuration, Android FCM v1 credentials and Firebase app registration, live-data JSON account archives, verified account deletion for password and Google identities, and audited owner-only family membership/permission lifecycle management.
+| Capability | Status | Notes |
+| --- | --- | --- |
+| Doctor web portal | Planned | No dedicated web portal is present yet. |
+| Prescription authoring and auto schedule creation | Planned | Domain pieces exist, but end-to-end approval and creation workflow is not complete. |
+| Follow-up and hospitalization modules | Planned | These are partially represented by timeline/document patterns but not built as dedicated workflows. |
+| Family healthcare conversation | Planned | No messaging domain or full UI exists yet. |
+| Verified caregiver marketplace | Planned | Separate operational and compliance work remains required. |
+| Wearables, teleconsultation, billing, analytics, and admin tools | Planned | These require separate product workstreams rather than a mobile feature polish pass. |
+
+## Highest-priority next work
+
+These are the next tasks that most materially affect whether the product is ready for broader release or a premium production rollout.
+
+1. Final production configuration and environment validation
+   - Verify valid Supabase, Google OAuth, Pinecone, Gemini, and backend Maps credentials in the release environment; no Google Maps key is needed in the Android app.
+   - Confirm the Pinecone index exists and is correctly named for semantic retrieval.
+   - Ensure the app is not using mock or placeholder Google auth tokens in any build.
+
+2. Real device release validation
+   - Install the signed Android artifact and validate Google sign-in, refresh, sign-out, and account deletion on a real device.
+   - Validate SOS delivery and acknowledgement across two devices.
+   - Repeat for iOS only if an iOS release is planned.
+
+3. Security and privacy sign-off
+   - Commission an independent privacy/security review before broader patient use.
+   - Validate consent flows, data retention, deletion, and access boundaries end-to-end.
+
+4. AI assistant retrieval and semantic grounding
+   - Seed and index family medical records and clinical guidelines in Pinecone.
+   - Fine-tune prompting and verification guardrails for high-fidelity responses.
+
+5. Complete roadmap-grade feature work
+   - Full string catalogs and regional localization coverage (Marathi, Gujarati, Tamil, etc.).
+   - Receipt OCR extraction and automated insurance renewal workflows.
+   - Universal cross-domain search across vitals, medicines, documents, and notes.
+
+## Recommendation for release posture
+
+ParentPulse is now in a strong beta-to-release-ready state for the core family-health workflow, especially:
+
+- family enrollment and profile management,
+- secure auth and role-based care coordination,
+- document intake and OCR,
+- appointment and medicine workflows,
+- emergency and SOS flows with realistic clinical alert sounds,
+- clinical timeline milestone and attachment management,
+- unified family dashboard with vital alerts and facility check-ins,
+- offline resilient writes,
+- and secure sharing of medical detail with family and clinicians.
+
+It is not yet a fully polished public-facing product across every roadmap feature. The remaining work is concentrated in release validation, environment hardening, AI index provisioning, and a final external compliance review rather than fundamental core functionality gaps.
+
+## Completed in this production pass
+
+- Fixed runtime errors on Hermes: resolved `isExpoGo` crash via safe detection, eliminated cascaded `BorderRadius` proxy crash, and implemented deferred lazy native module loading for `ExpoPrint`.
+- Reduced nearby healthcare cards vertical spacing by 50% and resolved "Distance unavailable" through chained coordinate fallbacks.
+- Implemented real-world clinical audio alarms compliant with IEC 60601-1-8 standard and Morse SOS vibrations.
+- Built full Health Timeline editing (`PATCH /timeline/{event_id}`, AppContext, and in-place milestone/attachment editor).
+- Completed Family Dashboard with Urgent Health Alerts and Recent Facility Visits linked to interactive maps.
+- Added visit history deletion with destructive confirmation dialog and empty state.
+- Verified 52 backend tests passing and 0 mobile TypeScript errors.

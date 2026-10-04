@@ -10,7 +10,7 @@ from app.schemas.document import DocumentCreate, DocumentUpdate, DocumentRespons
 from app.schemas.medicine import MedicineCreate, MedicineUpdate, MedicineResponse, DoseRecordRequest, DoseLogResponse
 from app.schemas.appointment import AppointmentCreate, AppointmentUpdate, AppointmentResponse
 from app.schemas.measurement import MeasurementCreate, MeasurementResponse
-from app.schemas.timeline import TimelineEventCreate, TimelineEventResponse
+from app.schemas.timeline import TimelineEventCreate, TimelineEventUpdate, TimelineEventResponse
 from app.schemas.map import NearbyPlacesQuery, PlaceSummary, DistanceCalculationRequest, DistanceCalculationResponse, GeocodeRequest, GeocodeResponse
 from app.schemas.location import LocationVisitCreate, LocationVisitUpdate, LocationVisitResponse
 from app.schemas.sharing import DoctorShareCreate, DoctorShareResponse, DoctorBriefResponse
@@ -54,6 +54,7 @@ __all__ = [
     "MeasurementCreate",
     "MeasurementResponse",
     "TimelineEventCreate",
+    "TimelineEventUpdate",
     "TimelineEventResponse",
     "NearbyPlacesQuery",
     "PlaceSummary",

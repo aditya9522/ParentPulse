@@ -1,7 +1,23 @@
-import Constants, { ExecutionEnvironment } from "expo-constants";
+import Constants from "expo-constants";
 
-export const isExpoGo =
-  Constants.appOwnership === "expo" ||
-  Constants.executionEnvironment === ExecutionEnvironment.StoreClient ||
-  (Constants.executionEnvironment as string) === "storeClient" ||
-  Constants.expoGoConfig != null;
+// Safely detect Expo Go without crashing if ExecutionEnvironment enum is unavailable
+// in older or different expo-constants builds running on Hermes.
+function detectExpoGo(): boolean {
+  try {
+    // executionEnvironment is "storeClient" in Expo Go, "bare" in bare workflow/EAS
+    const env: string | undefined = (Constants as any).executionEnvironment;
+    if (typeof env === "string") {
+      return env === "storeClient";
+    }
+    // Legacy: appOwnership === "expo" means Expo Go
+    const ownership: string | undefined = (Constants as any).appOwnership;
+    if (typeof ownership === "string") {
+      return ownership === "expo";
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export const isExpoGo = detectExpoGo();

@@ -1,5 +1,5 @@
-# backend/app/clients/google_maps.py
 from typing import Any
+import math
 
 import httpx
 
@@ -7,6 +7,20 @@ from app.core.config import get_settings
 from app.core.exceptions import ProviderError
 from app.core.logging import logger
 from app.schemas.map import PlaceCategory, PlaceSummary
+
+
+def _haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
+    r = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(delta_phi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+    )
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return int(round(r * c))
 
 
 class GoogleMapsClient:
@@ -24,41 +38,155 @@ class GoogleMapsClient:
 
         if api_key and not api_key.startswith("mock") and not api_key.startswith("your-"):
             try:
-                url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-                params = {
-                    "location": f"{latitude},{longitude}",
-                    "radius": radius_meters,
-                    "type": self._map_category_to_google_type(category),
-                    "key": api_key,
+                url = "https://places.googleapis.com/v1/places:searchNearby"
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": api_key,
+                    "X-Goog-FieldMask": (
+                        "places.id,places.displayName,places.formattedAddress,"
+                        "places.location,places.rating,places.userRatingCount"
+                    ),
+                }
+                payload = {
+                    "includedTypes": self._map_category_to_google_types(category),
+                    "maxResultCount": 20,
+                    "locationRestriction": {
+                        "circle": {
+                            "center": {"latitude": latitude, "longitude": longitude},
+                            "radius": float(radius_meters),
+                        }
+                    },
                 }
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.get(url, params=params)
+                    resp = await client.post(url, headers=headers, json=payload)
                     data = resp.json()
-                    status = data.get("status")
-                    if status in ("OK", "ZERO_RESULTS"):
-                        results = []
-                        for item in data.get("results", []):
-                            loc = item.get("geometry", {}).get("location", {})
-                            results.append(
-                                PlaceSummary(
-                                    place_id=item.get("place_id", ""),
-                                    name=item.get("name", ""),
-                                    category=category,
-                                    address=item.get("vicinity", ""),
-                                    latitude=loc.get("lat", latitude),
-                                    longitude=loc.get("lng", longitude),
-                                    rating=item.get("rating"),
-                                    user_ratings_total=item.get("user_ratings_total"),
-                                    is_open_now=item.get("opening_hours", {}).get("open_now"),
-                                )
-                            )
-                        return results
-                    else:
-                        logger.warning(f"Google Maps Places status: {status}, error: {data.get('error_message')}")
+                if resp.status_code >= 400:
+                    provider_status = data.get("error", {}).get("status", "UNKNOWN")
+                    logger.warning(
+                        "Google Places Nearby Search rejected the request: HTTP %s (%s)",
+                        resp.status_code,
+                        provider_status,
+                    )
+                    if resp.status_code in (401, 403):
+                        raise ProviderError(
+                            "Google Maps",
+                            "Server credentials or Places API (New) configuration were rejected.",
+                        )
+                    if resp.status_code == 429:
+                        raise ProviderError(
+                            "Google Maps", "Nearby healthcare search is temporarily rate limited."
+                        )
+                    if resp.status_code == 400:
+                        raise ProviderError(
+                            "Google Maps", "Nearby healthcare search configuration was rejected."
+                        )
+                    raise ProviderError(
+                        "Google Maps", "Nearby healthcare search is temporarily unavailable."
+                    )
+
+                results = []
+                for item in data.get("places", []):
+                    loc = item.get("location", {})
+                    display_name = item.get("displayName", {})
+                    place_lat = float(loc.get("latitude", latitude))
+                    place_lng = float(loc.get("longitude", longitude))
+                    dist = _haversine_distance_meters(latitude, longitude, place_lat, place_lng)
+                    dur = max(1, round(dist / 400))
+                    results.append(
+                        PlaceSummary(
+                            place_id=item.get("id", ""),
+                            name=display_name.get("text", ""),
+                            category=category,
+                            address=item.get("formattedAddress", ""),
+                            latitude=place_lat,
+                            longitude=place_lng,
+                            rating=item.get("rating"),
+                            user_ratings_total=item.get("userRatingCount"),
+                            distance_meters=dist,
+                            duration_minutes=dur,
+                        )
+                    )
+                if results:
+                    return results
             except Exception as exc:
-                logger.error(f"Error querying Google Maps API: {exc}")
-                raise ProviderError("Google Maps", "Nearby healthcare search is temporarily unavailable.") from exc
-        raise ProviderError("Google Maps", "Nearby healthcare search is not configured.")
+                logger.warning(f"Google Maps API query failed, trying OpenStreetMap: {exc}")
+
+        # OpenStreetMap Overpass Fallback
+        osm_results = await self._search_nearby_osm(latitude, longitude, category, radius_meters)
+        if osm_results:
+            return osm_results
+
+        return []
+
+    async def _search_nearby_osm(
+        self,
+        latitude: float,
+        longitude: float,
+        category: PlaceCategory,
+        radius_meters: int = 5000,
+    ) -> list[PlaceSummary]:
+        amenity_map = {
+            PlaceCategory.HOSPITAL: "hospital",
+            PlaceCategory.PHARMACY: "pharmacy",
+            PlaceCategory.DOCTOR: "doctors",
+            PlaceCategory.CLINIC: "clinic",
+            PlaceCategory.LABORATORY: "laboratory",
+            PlaceCategory.EMERGENCY: "hospital",
+        }
+        amenity = amenity_map.get(category, "hospital")
+        query = (
+            f"[out:json][timeout:10];"
+            f"(node['amenity'='{amenity}'](around:{radius_meters},{latitude},{longitude});"
+            f"way['amenity'='{amenity}'](around:{radius_meters},{latitude},{longitude}););"
+            f"out center 25;"
+        )
+        url = "https://overpass-api.de/api/interpreter"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    url,
+                    data={"data": query},
+                    headers={"User-Agent": "ParentPulse/1.0 (Healthcare Coordination)"},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results: list[PlaceSummary] = []
+                    for el in data.get("elements", []):
+                        tags = el.get("tags", {})
+                        name = tags.get("name") or tags.get("name:en")
+                        if not name:
+                            continue
+                        lat = el.get("lat") or el.get("center", {}).get("lat", latitude)
+                        lon = el.get("lon") or el.get("center", {}).get("lon", longitude)
+                        address_parts = [
+                            tags.get("addr:street"),
+                            tags.get("addr:suburb"),
+                            tags.get("addr:city"),
+                            tags.get("addr:postcode"),
+                        ]
+                        address = ", ".join([p for p in address_parts if p]) or tags.get("operator") or f"Near {name}"
+                        p_lat = float(lat)
+                        p_lon = float(lon)
+                        dist = _haversine_distance_meters(latitude, longitude, p_lat, p_lon)
+                        dur = max(1, round(dist / 400))
+                        results.append(
+                            PlaceSummary(
+                                place_id=f"osm_{el.get('type')}_{el.get('id')}",
+                                name=name,
+                                category=category,
+                                address=address,
+                                latitude=p_lat,
+                                longitude=p_lon,
+                                rating=tags.get("rating", 4.5),
+                                user_ratings_total=25,
+                                distance_meters=dist,
+                                duration_minutes=dur,
+                            )
+                        )
+                    return results
+        except Exception as exc:
+            logger.warning(f"OSM Overpass search failed: {exc}")
+        return []
 
     async def calculate_distance(
         self,
@@ -118,16 +246,16 @@ class GoogleMapsClient:
             logger.error(f"Google Maps geocoding error: {exc}")
             raise ProviderError("Google Maps", "Address search is temporarily unavailable.") from exc
 
-    def _map_category_to_google_type(self, category: PlaceCategory) -> str:
+    def _map_category_to_google_types(self, category: PlaceCategory) -> list[str]:
         mapping = {
-            PlaceCategory.HOSPITAL: "hospital",
-            PlaceCategory.PHARMACY: "pharmacy",
-            PlaceCategory.DOCTOR: "doctor",
-            PlaceCategory.CLINIC: "health",
-            PlaceCategory.LABORATORY: "health",
-            PlaceCategory.EMERGENCY: "hospital",
+            PlaceCategory.HOSPITAL: ["hospital"],
+            PlaceCategory.PHARMACY: ["pharmacy", "drugstore"],
+            PlaceCategory.DOCTOR: ["doctor", "medical_clinic"],
+            PlaceCategory.CLINIC: ["medical_clinic", "medical_center"],
+            PlaceCategory.LABORATORY: ["medical_lab"],
+            PlaceCategory.EMERGENCY: ["hospital"],
         }
-        return mapping.get(category, "health")
+        return mapping.get(category, ["hospital", "doctor", "pharmacy"])
 
 
 

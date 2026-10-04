@@ -23,11 +23,13 @@ import {
   Info,
 } from "lucide-react-native";
 import { useApp } from "../context/AppContext";
-import { Colors, Spacing, Shadows, Gradients, createThemedStyles } from "../theme";
+import { Colors, Spacing, Shadows, Gradients, BorderRadius, createThemedStyles } from "../theme";
+import { evaluateVitalCriticality, playCriticalVitalAlert } from "../services/soundService";
 
 export const LogVitalModal: React.FC = () => {
   const {
     activeParent,
+    measurements,
     logVitalModalVisible,
     setLogVitalModalVisible,
     logNewMeasurement,
@@ -43,6 +45,16 @@ export const LogVitalModal: React.FC = () => {
   const [bloodSugar, setBloodSugar] = useState("110");
   const [heartRate, setHeartRate] = useState("72");
   const [notes, setNotes] = useState(isHindi ? "सुबह की जांच" : "Morning check");
+
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const existingToday = measurements.find((m) => {
+    if (m.vital_type !== selectedType) return false;
+    const mDate = m.recorded_at ? new Date(m.recorded_at) : null;
+    const localStr = mDate && !Number.isNaN(mDate.getTime())
+      ? `${mDate.getFullYear()}-${String(mDate.getMonth() + 1).padStart(2, "0")}-${String(mDate.getDate()).padStart(2, "0")}`
+      : (m.recorded_at || "").slice(0, 10);
+    return localStr === todayDateStr;
+  });
 
   const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
     try {
@@ -76,6 +88,10 @@ export const LogVitalModal: React.FC = () => {
 
   const handleSave = () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+    let primaryVal = 0;
+    let secondaryVal: number | undefined;
+    let displayVal = "";
+
     if (selectedType === "blood_pressure") {
       const sys = parseFloat(systolic);
       const dia = parseFloat(diastolic);
@@ -88,24 +104,60 @@ export const LogVitalModal: React.FC = () => {
         );
         return;
       }
+      primaryVal = sys;
+      secondaryVal = dia;
+      displayVal = `${sys}/${dia} mmHg`;
       logNewMeasurement("blood_pressure", sys, dia, notes);
     } else if (selectedType === "blood_sugar") {
       const bs = parseFloat(bloodSugar);
       if (!bs) return;
+      primaryVal = bs;
+      displayVal = `${bs} mg/dL`;
       logNewMeasurement("blood_sugar", bs, undefined, notes);
     } else {
       const hr = parseFloat(heartRate);
       if (!hr) return;
+      primaryVal = hr;
+      displayVal = `${hr} bpm`;
       logNewMeasurement("heart_rate", hr, undefined, notes);
     }
 
+    const criticality = evaluateVitalCriticality(selectedType, primaryVal, secondaryVal);
+    if (criticality.isCritical) {
+      void playCriticalVitalAlert(
+        selectedType === "blood_pressure"
+          ? (isHindi ? "रक्तचाप" : "Blood Pressure")
+          : selectedType === "blood_sugar"
+            ? (isHindi ? "ब्लड शुगर" : "Blood Sugar")
+            : (isHindi ? "हृदय गति" : "Heart Rate"),
+        displayVal,
+        criticality.title
+      );
+    }
+
     setLogVitalModalVisible(false);
-    Alert.alert(
-      isHindi ? "सफलतापूर्वक दर्ज!" : "Recorded!",
-      isHindi
-        ? "माप सफलतापूर्वक दर्ज की गई और फ़ैमिली डैशबोर्ड में सिंक हो गई।"
-        : "Measurement logged and synced with family dashboard."
-    );
+
+    if (criticality.isCritical) {
+      Alert.alert(
+        `🚨 ${criticality.title}`,
+        `${criticality.detail}\n\n${
+          isHindi
+            ? "यह रीडिंग रिकॉर्ड कर ली गई है और परिवार को सतर्क कर दिया गया है।"
+            : "This reading has been recorded and the care circle has been alerted."
+        }`
+      );
+    } else {
+      Alert.alert(
+        existingToday ? (isHindi ? "अपडेट हो गया!" : "Updated!") : (isHindi ? "सफलतापूर्वक दर्ज!" : "Recorded!"),
+        existingToday
+          ? (isHindi
+            ? "आज की माप को नए मान के साथ सफलतापूर्वक अपडेट कर दिया गया।"
+            : "Today's measurement was updated with the new reading and synced.")
+          : (isHindi
+            ? "माप सफलतापूर्वक दर्ज की गई और फ़ैमिली डैशबोर्ड में सिंक हो गई।"
+            : "Measurement logged and synced with family dashboard.")
+      );
+    }
   };
 
   return (
@@ -204,6 +256,17 @@ export const LogVitalModal: React.FC = () => {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           >
+            {existingToday && (
+              <View style={styles.existingNotice}>
+                <Info size={14} color={Colors.primaryDark} />
+                <Text style={styles.existingNoticeText}>
+                  {isHindi
+                    ? "आज की माप पहले से मौजूद है — यह मान आज के रिकॉर्ड को अपडेट करेगा।"
+                    : "A log for today already exists — saving will update today's record."}
+                </Text>
+              </View>
+            )}
+
             {/* Form Inputs with Steppers */}
             {selectedType === "blood_pressure" && (
               <View>
@@ -389,7 +452,9 @@ export const LogVitalModal: React.FC = () => {
               >
                 <CheckCircle2 size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
                 <Text style={styles.saveBtnText}>
-                  {isHindi ? "माप सुरक्षित करें" : "Save Measurement"}
+                  {existingToday
+                    ? (isHindi ? "आज की माप अपडेट करें" : "Update Today's Measurement")
+                    : (isHindi ? "माप सुरक्षित करें" : "Save Measurement")}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -400,6 +465,25 @@ export const LogVitalModal: React.FC = () => {
 };
 
 const styles = createThemedStyles({
+  existingNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: "rgba(13, 148, 136, 0.25)",
+  },
+  existingNoticeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.primaryDark,
+    flex: 1,
+    lineHeight: 16,
+  },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.6)",

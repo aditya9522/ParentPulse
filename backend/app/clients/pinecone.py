@@ -11,6 +11,14 @@ class PineconeClient:
         self.settings = get_settings()
         self._index: Any | None = None
 
+    @staticmethod
+    def _is_missing_index_error(exc: Exception) -> bool:
+        status_code = getattr(exc, "status_code", None)
+        if status_code == 404:
+            return True
+        text = str(exc).lower()
+        return "not found" in text and ("pinecone" in text or "index" in text or "resource" in text)
+
     def _get_index(self):
         api_key = self.settings.pinecone_api_key.get_secret_value()
         if not api_key or api_key.startswith("mock"):
@@ -32,6 +40,12 @@ class PineconeClient:
         except ProviderError:
             raise
         except Exception as exc:
+            if self._is_missing_index_error(exc):
+                logger.warning(
+                    "Pinecone index %s was not found; skipping semantic indexing for this document.",
+                    self.settings.pinecone_index_name,
+                )
+                return
             logger.error(f"Pinecone upsert failed: {exc}")
             raise ProviderError("Pinecone", "Document indexing is temporarily unavailable.") from exc
 
@@ -51,6 +65,12 @@ class PineconeClient:
         except ProviderError:
             raise
         except Exception as exc:
+            if self._is_missing_index_error(exc):
+                logger.warning(
+                    "Pinecone index %s is unavailable; semantic document search will be disabled for this request.",
+                    self.settings.pinecone_index_name,
+                )
+                return []
             logger.error(f"Pinecone query failed: {exc}")
             raise ProviderError("Pinecone", "Semantic document search is temporarily unavailable.") from exc
 

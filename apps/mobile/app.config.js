@@ -1,9 +1,10 @@
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim();
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim();
 const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-const googleMapsApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim();
+const mapStyleUrl = process.env.EXPO_PUBLIC_MAP_STYLE_URL?.trim();
 const shareBaseUrl = process.env.EXPO_PUBLIC_SHARE_BASE_URL?.trim();
 const isProductionBuild = process.env.EAS_BUILD_PROFILE === "production";
+const { version: appVersion } = require("./package.json");
 
 const isGoogleClientId = (value) =>
   typeof value === "string" &&
@@ -15,7 +16,6 @@ if (isProductionBuild) {
   if (!apiUrl) missing.push("EXPO_PUBLIC_API_URL");
   if (!googleWebClientId) missing.push("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
   if (!googleIosClientId) missing.push("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID");
-  if (!googleMapsApiKey) missing.push("EXPO_PUBLIC_GOOGLE_MAPS_API_KEY");
   if (!shareBaseUrl) missing.push("EXPO_PUBLIC_SHARE_BASE_URL");
   if (missing.length) {
     throw new Error(
@@ -28,6 +28,9 @@ if (isProductionBuild) {
   }
   if (!shareBaseUrl.startsWith("https://")) {
     throw new Error("EXPO_PUBLIC_SHARE_BASE_URL must use HTTPS in production builds.");
+  }
+  if (mapStyleUrl && !mapStyleUrl.startsWith("https://")) {
+    throw new Error("EXPO_PUBLIC_MAP_STYLE_URL must use HTTPS in production builds.");
   }
 }
 
@@ -49,13 +52,13 @@ const expo = {
   name: "Parent Pulse",
   slug: "parentpulse",
   scheme: "parentpulse",
-  version: "1.0.2",
+  version: appVersion,
   orientation: "default",
   icon: "./assets/icon.png",
   splash: {
     image: "./assets/icon.png",
     resizeMode: "contain",
-    backgroundColor: "#043F3B",
+    backgroundColor: "#F8FAFC",
   },
   userInterfaceStyle: "light",
   ios: {
@@ -78,8 +81,14 @@ const expo = {
   },
   web: { favicon: "./assets/favicon.png" },
   plugins: [
-    ["expo-splash-screen", { image: "./assets/icon.png", imageWidth: 180, resizeMode: "contain", backgroundColor: "#043F3B" }],
+    ["expo-splash-screen", { image: "./assets/icon.png", imageWidth: 180, resizeMode: "contain", backgroundColor: "#F8FAFC" }],
     "expo-secure-store",
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission: "Allow ParentPulse to use your location while finding nearby healthcare.",
+      },
+    ],
     ["expo-notifications", { icon: "./assets/notification-icon-android.png", color: "#0D9488", defaultChannel: "care-reminders" }],
     "expo-sharing",
     [
@@ -91,6 +100,7 @@ const expo = {
       },
     ],
     "@react-native-community/datetimepicker",
+    "@maplibre/maplibre-react-native",
   ],
   extra: { eas: { projectId: "6a6e447c-14f9-4f77-8e93-eabb445c82aa" } },
   owner: "aditya010p",

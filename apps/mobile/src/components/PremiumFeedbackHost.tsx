@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Modal, Platform, Text, TouchableOpacity, View } from "react-native";
+import { Animated, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FeedbackEvent, FeedbackTone, subscribeToAppAlerts } from "../services/appAlert";
 import { Colors, Shadows, Spacing, createThemedStyles } from "../theme";
+import { useApp } from "../context/AppContext";
+import { useGlassBlurTarget } from "./GlassBlurProvider";
 
 const TONE: Record<FeedbackTone, { color: string; soft: string; icon: keyof typeof Ionicons.glyphMap }> = {
   success: { color: "#047857", soft: "#ECFDF5", icon: "checkmark-circle" },
@@ -13,13 +16,39 @@ const TONE: Record<FeedbackTone, { color: string; soft: string; icon: keyof type
   info: { color: "#175CD3", soft: "#EFF8FF", icon: "information-circle" },
 };
 
+const FrostLayer: React.FC<{
+  isDark: boolean;
+  blurTarget: React.RefObject<View | null> | null;
+}> = ({ isDark, blurTarget }) => Platform.OS === "web" ? null : (
+  <BlurView
+    pointerEvents="none"
+    intensity={Platform.OS === "android" ? 40 : 88}
+    tint={isDark ? "dark" : "light"}
+    blurTarget={Platform.OS === "android" ? undefined : (blurTarget ?? undefined)}
+    blurMethod={Platform.OS === "android" ? "none" : undefined}
+    style={StyleSheet.absoluteFill}
+  />
+);
+
 export const PremiumFeedbackHost: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { themeMode } = useApp();
+  const blurTarget = useGlassBlurTarget();
   const [events, setEvents] = useState<FeedbackEvent[]>([]);
   const translateY = useRef(new Animated.Value(-24)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const current = events[0];
   const palette = useMemo(() => TONE[current?.tone || "info"], [current?.tone]);
+  const isDark = themeMode === "dark";
+  const surfaceColor = isDark
+    ? "rgba(15, 23, 42, 0.91)"
+    : themeMode === "amber"
+      ? "rgba(255, 251, 245, 0.91)"
+      : "rgba(255, 255, 255, 0.89)";
+  const surfaceBorder = isDark ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.96)";
+  const webGlassStyle = Platform.OS === "web"
+    ? ({ backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)" } as any)
+    : undefined;
 
   useEffect(() => subscribeToAppAlerts((event) => {
     setEvents((pending) => [...pending, event]);
@@ -49,7 +78,8 @@ export const PremiumFeedbackHost: React.FC = () => {
     <>
       {current?.kind === "toast" && (
         <View pointerEvents="box-none" style={[styles.toastLayer, { top: Math.max(insets.top, Platform.OS === "android" ? 12 : 8) + 8 }]}>
-          <Animated.View style={[styles.toast, { opacity, transform: [{ translateY }] }]}>
+          <Animated.View style={[styles.toast, webGlassStyle, { backgroundColor: surfaceColor, borderColor: surfaceBorder, opacity, transform: [{ translateY }] }]}>
+            <FrostLayer isDark={isDark} blurTarget={blurTarget} />
             <View style={[styles.iconWrap, { backgroundColor: palette.soft }]}>
               <Ionicons name={palette.icon} size={22} color={palette.color} />
             </View>
@@ -72,7 +102,8 @@ export const PremiumFeedbackHost: React.FC = () => {
         onRequestClose={dismiss}
       >
         <View style={styles.backdrop}>
-          <View style={styles.dialog}>
+          <View style={[styles.dialog, webGlassStyle, { backgroundColor: surfaceColor, borderColor: surfaceBorder }]}>
+            <FrostLayer isDark={isDark} blurTarget={blurTarget} />
             <View style={[styles.dialogIcon, { backgroundColor: palette.soft }]}>
               <Ionicons name={palette.icon} size={28} color={palette.color} />
             </View>

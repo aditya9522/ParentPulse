@@ -32,14 +32,18 @@ The Expo application uses responsive glass surfaces, safe-area-aware navigation,
 | Authorization | Family membership and per-capability checks for document, medicine, appointment, and doctor-share mutations; owners can auditably invite, edit, and revoke individual care-circle memberships without deleting identities |
 | Production data | Authenticated startup loads the current user, family memberships, parent profiles, and every care domain from the API; new accounts enter onboarding cleanly and optional service failures do not hide healthy live records |
 | Offline writes | AES-GCM-encrypted, account-scoped mutation queue with atomic persistence, backoff, coalescing, visible Sync Center recovery, optimistic conflict resolution, stable client record IDs, and durable API idempotency |
-| Medical vault | Camera, gallery, and file uploads; MIME/size validation; private Supabase Storage; real Gemini multimodal extraction; processing/failure/retry states; signed original downloads |
+| Medical vault | Camera, gallery, and file uploads; MIME/size validation; private Supabase Storage; real Gemini multimodal extraction; stable polling with race-condition protections; direct in-app native image/document viewing without external browser redirects; signed original downloads |
 | Secure sharing | Server-issued scoped tokens, actual encoded QR codes, expiry, access counts, and immediate revocation |
 | Reminders | Native daily medicine reminders and appointment reminders at 24 hours and 2 hours, enabled through explicit permission UI |
-| Emergency delivery | Durable family SOS events, per-device Expo Push registration, high-priority alerts, actionable acknowledgements, explicit resolution, and honest provider-ticket reporting |
+| Emergency delivery | Durable family SOS events, per-device Expo Push registration, high-priority alerts, actionable acknowledgements, explicit resolution, real-world IEC 60601-1-8 standard harmonic audio alarms, Morse-cadence vibration, and honest provider-ticket reporting |
+| Health timeline | Clinical event tracking with in-place milestone and attachment editing, document associations, categorized filtering, and authenticated backend PATCH/POST/DELETE API synchronization |
+| Family dashboard | Unified eldercare dashboard with 7-day vitals trends, urgent clinical alerts evaluated against medical guidelines, consultation spotlight, care circle tasks, and recent healthcare facility visits linked to map check-ins |
+| Nearby healthcare & maps | Interactive keyless OpenFreeMap basemap, 50% optimized vertical card spacing, chained coordinate distance calculation, place details, external directions, and verified visit log tracking with deletion controls |
 | Data integrity | Collision-resistant UUIDs, record-version concurrency checks, durable duplicate protection, production configuration validation, private storage paths, and capability-bound Storage/RLS policies |
 | Account controls | Append-only versioned privacy choices, live account-wide JSON file export, deletion impact review, password re-verification, owned-circle erasure, shared-record anonymization, Supabase Auth revocation, and deleted-identity tombstones |
 | Voice input | Native English/Hindi speech-to-text with separate append-only consent, OS permissions, non-persistent audio, visible listening state, and transcript review before submission |
-| UI | Premium vault and sharing experiences, branded in-app feedback/dialogs, full-screen AI assistant, stable bottom navigation, back icons, glassmorphic surfaces, and predictable swipe dismissal |
+| Health reports | Real-time production-ready clinical health summary PDF generator using expo-print; incorporates ParentPulse branding, QR scanner verification block, demographics, Rx schedule, vitals history, and physician attestation with native download/share |
+| UI | Premium vault and sharing experiences, branded in-app feedback/dialogs, full-screen AI assistant, frosted glassic blur bottom navigation aligned with notification overlays, top-left back and top-right close modal navigation, dark-theme access scope cards, in-place emergency contact management, and predictable swipe dismissal |
 
 The application contains no bundled family or clinical records. New accounts start with an empty care circle, and onboarding only completes after the production API persists the family and parent profile. See [FEATURE_STATUS.md](FEATURE_STATUS.md) for the evidence-based completion audit and remaining work.
 
@@ -92,14 +96,14 @@ The supported authentication methods are email/password and Google. Sign in with
 ```powershell
 npm install
 Copy-Item apps/mobile/.env.example apps/mobile/.env
-npm run dev:mobile
+cd apps/mobile
+npx expo run:android
 ```
 
 Configure public mobile values:
 
 ```dotenv
 EXPO_PUBLIC_API_URL=https://parentpulse-yjnj.onrender.com/api/v1
-EXPO_PUBLIC_GOOGLE_MAPS_API_KEY=your_restricted_client_key
 EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your_web_oauth_client.apps.googleusercontent.com
 EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your_ios_oauth_client.apps.googleusercontent.com
 EXPO_PUBLIC_SHARE_BASE_URL=https://parentpulse-yjnj.onrender.com/api/v1/sharing/doctor-brief
@@ -108,6 +112,20 @@ EXPO_PUBLIC_SHARE_BASE_URL=https://parentpulse-yjnj.onrender.com/api/v1/sharing/
 For an Android emulator, use `http://10.0.2.2:8000/api/v1`. A physical device must be able to reach the backend over the local network or HTTPS.
 
 `EXPO_PUBLIC_` values are embedded into the client. Never put service-role, database, AI, or signing secrets in the mobile environment file.
+
+The nearby healthcare map uses MapLibre Native with the OpenFreeMap Liberty style and requires no Google Maps key or billing account. MapLibre contains native code, so Expo Go is not supported for the map. After installing dependencies and building/installing the development client, start Metro from `apps/mobile` with `npx expo start --dev-client` (or from the repository root with `npm run dev:mobile:client`):
+
+```powershell
+cd apps/mobile
+npx expo run:android
+npx expo start --dev-client
+# Or build an Android development APK with EAS:
+npx eas-cli@latest build --platform android --profile development
+```
+
+The map shows required OpenFreeMap/OpenMapTiles/OpenStreetMap attribution. OpenFreeMap's public tiles are offered without a usage key, but have no SLA; choose a hosted or self-managed tile provider with a service commitment before relying on maps for a high-availability production deployment. The backend's `GOOGLE_MAPS_API_KEY` is separate and still powers nearby healthcare search, geocoding, and travel calculations.
+
+If Metro displays `MLRNCameraModule could not be found`, the app is running in Expo Go or in an older development binary that does not include MapLibre. `npm run dev:mobile:clear` only restarts Metro; it does not rebuild native code. Build/install the ParentPulse development client with `npx expo run:android` (local Android SDK required) or `npx eas-cli@latest build --platform android --profile development`, then open the installed **ParentPulse** app and run `npm run dev:mobile:clear` from the repository root. Do not open the project in Expo Go for the interactive native map.
 
 Google authentication uses Android Credential Manager and the native iOS Google Sign-In SDK through `react-native-nitro-google-signin`. Register `com.parentpulse.app`, the EAS upload SHA-1, and the Google Play signing SHA-1 in Google Cloud; configure the same web client in Supabase Auth. The Google button is intentionally hidden when both public client IDs are not present. Production builds fail closed when either ID or the HTTPS API endpoint is missing.
 
@@ -174,7 +192,7 @@ cd apps/mobile
 npx eas-cli@latest build --platform android --profile preview
 ```
 
-The `preview` profile uses internal distribution and embeds the production API URL. Configure `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` in the EAS `preview` environment before building if live maps are required in the shared APK.
+The `preview` profile uses internal distribution and embeds the production API URL. No Google Maps key is required in the EAS mobile environment; the backend's Google Maps key remains configured only in the backend environment.
 
 ## Backend setup
 
@@ -319,7 +337,7 @@ npx expo-doctor
 npx expo export --platform web
 ```
 
-The current production-readiness pass has mobile strict TypeScript and lint green, 36 backend tests passing, and the configured-database rollback-only RLS matrix passing all six checks. Expo Doctor previously passed all 21 checks; rerun it after dependency or native-config changes.
+The current production-readiness pass has mobile strict TypeScript and lint green (0 errors, 0 warnings), 52 backend tests passing (including automated production configuration environment validation and timeline patch authorization), and the configured-database rollback-only RLS matrix passing all six checks. Expo Doctor previously passed all 21 checks; rerun it after dependency or native-config changes.
 
 ## Remaining release gates
 

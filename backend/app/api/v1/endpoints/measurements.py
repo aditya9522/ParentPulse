@@ -24,6 +24,35 @@ async def log_vital_measurement(
 ):
     await verify_parent_access(session, current_user.id, data.parent_id)
     recorded_at = data.recorded_at or datetime.now(timezone.utc)
+
+    # Check if a measurement of the same vital category already exists for this parent on the same calendar day
+    start_of_day = datetime(recorded_at.year, recorded_at.month, recorded_at.day, 0, 0, 0, tzinfo=timezone.utc)
+    end_of_day = datetime(recorded_at.year, recorded_at.month, recorded_at.day, 23, 59, 59, 999999, tzinfo=timezone.utc)
+    stmt = (
+        select(Measurement)
+        .where(
+            and_(
+                Measurement.parent_id == data.parent_id,
+                Measurement.vital_type == data.vital_type.value,
+                Measurement.recorded_at >= start_of_day,
+                Measurement.recorded_at <= end_of_day,
+            )
+        )
+        .order_by(Measurement.recorded_at.desc())
+    )
+    res = await session.execute(stmt)
+    existing = res.scalars().first()
+
+    if existing:
+        existing.value_numeric = data.value_numeric
+        existing.value_secondary = data.value_secondary
+        existing.unit = data.unit
+        existing.recorded_at = recorded_at
+        existing.notes = data.notes
+        existing.recorded_by = current_user.id
+        await session.flush()
+        return build_response(MeasurementResponse.model_validate(existing))
+
     measurement = Measurement(
         parent_id=data.parent_id,
         vital_type=data.vital_type.value,

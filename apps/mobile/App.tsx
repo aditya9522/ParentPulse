@@ -179,7 +179,7 @@ const MainApp: React.FC = () => {
         >
           <GlassView
             variant="nav"
-            intensity={85}
+            intensity={95}
             style={[styles.bottomBarContainer, seniorMode && styles.seniorBottomBarContainer]}
           >
             <View style={styles.bottomBar}>
@@ -288,10 +288,10 @@ export default function App() {
           <GlassBlurProvider key={appSessionKey}>
             <AppProvider>
               <MainApp />
+              <PremiumFeedbackHost />
             </AppProvider>
           </GlassBlurProvider>
         </AppErrorBoundary>
-        <PremiumFeedbackHost />
         {showLaunchScreen && <BrandLaunchScreen onFinished={finishLaunch} />}
       </View>
     </SafeAreaProvider>
@@ -338,7 +338,6 @@ const styles = createThemedStyles({
     paddingVertical: 6,
     paddingHorizontal: 6,
     minHeight: 62,
-    backgroundColor: "transparent",
     width: "100%",
     maxWidth: 640,
   },
@@ -364,7 +363,10 @@ const styles = createThemedStyles({
     paddingVertical: 8,
   },
   tabButtonActive: {
-    backgroundColor: "rgba(13, 148, 136, 0.12)",
+    backgroundColor: "rgba(13, 148, 136, 0.14)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(13, 148, 136, 0.28)",
   },
   activeIndicatorDot: {
     position: "absolute",
@@ -390,4 +392,3 @@ const styles = createThemedStyles({
     marginTop: 3,
   },
 });
-

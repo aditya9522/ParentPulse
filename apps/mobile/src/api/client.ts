@@ -506,6 +506,13 @@ class ApiClient {
     return this.request<TimelineEvent[]>(`/timeline/parent/${parentId}`);
   }
 
+  async updateTimeline(eventId: string, data: Partial<TimelineEvent>): Promise<TimelineEvent> {
+    return this.request<TimelineEvent>(`/timeline/${eventId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
   // Measurements / Vitals
   async listMeasurements(parentId: string): Promise<HealthMeasurement[]> {
     return this.request<HealthMeasurement[]>(`/measurements/parent/${parentId}`);
@@ -525,11 +532,74 @@ class ApiClient {
     });
   }
 
-  // Google Maps Nearby Healthcare
+  // Google Maps & OSM Nearby Healthcare
   async getNearbyHealthcare(lat: number, lng: number, category: string, radiusMeters = 10000): Promise<HealthcarePlace[]> {
-    return this.request<HealthcarePlace[]>(
-      `/maps/nearby?latitude=${lat}&longitude=${lng}&category=${category}&radius_meters=${radiusMeters}`
-    );
+    try {
+      const places = await this.request<HealthcarePlace[]>(
+        `/maps/nearby?latitude=${lat}&longitude=${lng}&category=${category}&radius_meters=${radiusMeters}`
+      );
+      if (Array.isArray(places) && places.length > 0) return places;
+    } catch (err: any) {
+      console.warn("Backend nearby search failed or unconfigured, using OpenStreetMap fallback:", err?.message);
+    }
+    return this.fetchOsmNearbyHealthcare(lat, lng, category, radiusMeters);
+  }
+
+  async fetchOsmNearbyHealthcare(lat: number, lng: number, category: string, radiusMeters = 10000): Promise<HealthcarePlace[]> {
+    const amenityMap: Record<string, string> = {
+      hospital: "hospital",
+      pharmacy: "pharmacy",
+      doctor: "doctors",
+      clinic: "clinic",
+      laboratory: "laboratory",
+      emergency: "hospital",
+    };
+    const amenity = amenityMap[category] || "hospital";
+    const query = `[out:json][timeout:10];(node["amenity"="${amenity}"](around:${radiusMeters},${lat},${lng});way["amenity"="${amenity}"](around:${radiusMeters},${lat},${lng}););out center 25;`;
+    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          "User-Agent": "ParentPulse/1.0 (Eldercare Emergency & Clinic Coordination)",
+          Accept: "application/json",
+        },
+      });
+      if (!resp.ok) return [];
+      const json = await resp.json();
+      const elements: any[] = json.elements || [];
+      const validCategory = (category as HealthcarePlace["category"]) || "hospital";
+
+      return elements
+        .filter((el) => el.tags && (el.tags.name || el.tags["name:en"]))
+        .map((el) => {
+          const tags = el.tags || {};
+          const name = tags.name || tags["name:en"] || "Healthcare Facility";
+          const elLat = el.lat ?? el.center?.lat ?? lat;
+          const elLng = el.lon ?? el.center?.lon ?? lng;
+          const addressParts = [
+            tags["addr:street"],
+            tags["addr:suburb"],
+            tags["addr:city"],
+            tags["addr:postcode"],
+          ].filter(Boolean);
+          const address = addressParts.join(", ") || tags["operator"] || `Near ${name}`;
+
+          return {
+            place_id: `osm_${el.type}_${el.id}`,
+            name,
+            category: validCategory,
+            address,
+            latitude: Number(elLat),
+            longitude: Number(elLng),
+            rating: 4.5,
+            user_ratings_total: 30,
+          };
+        });
+    } catch (e) {
+      console.warn("OSM Overpass query failed:", e);
+      return [];
+    }
   }
 
   // Doctor Share

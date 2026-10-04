@@ -10,9 +10,10 @@ from app.core.exceptions import AuthorizationError, ResourceNotFoundError
 from app.core.permissions import verify_parent_access
 from app.helpers.response_builder import build_response
 from app.models.document import Document
+from app.models.timeline_event import TimelineEvent
 from app.models.user import User
 from app.schemas.common import ApiResponse
-from app.schemas.timeline import TimelineEventCreate, TimelineEventResponse
+from app.schemas.timeline import TimelineEventCreate, TimelineEventUpdate, TimelineEventResponse
 from app.services.timeline_service import TimelineService
 
 router = APIRouter(prefix="/timeline", tags=["Health Timeline"])
@@ -36,6 +37,28 @@ async def create_timeline_event(
     service = TimelineService(session)
     event = await service.create_event(data)
     return build_response(TimelineEventResponse.model_validate(event))
+
+
+@router.patch("/{event_id}", response_model=ApiResponse[TimelineEventResponse])
+async def update_timeline_event(
+    event_id: UUID,
+    data: TimelineEventUpdate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    event = (await session.execute(select(TimelineEvent).where(TimelineEvent.id == event_id))).scalar_one_or_none()
+    if not event:
+        raise ResourceNotFoundError("TimelineEvent", event_id)
+    await verify_parent_access(session, current_user.id, event.parent_id)
+    if data.document_id:
+        document = (await session.execute(select(Document).where(Document.id == data.document_id))).scalar_one_or_none()
+        if not document:
+            raise ResourceNotFoundError("Document", data.document_id)
+        if document.parent_id != event.parent_id:
+            raise AuthorizationError("The attached document does not belong to the selected parent.")
+    service = TimelineService(session)
+    updated = await service.update_event(event_id, data)
+    return build_response(TimelineEventResponse.model_validate(updated))
 
 
 @router.get("/parent/{parent_id}", response_model=ApiResponse[list[TimelineEventResponse]])

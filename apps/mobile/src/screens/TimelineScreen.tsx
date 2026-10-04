@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Plus,
   Trash2,
+  Pencil,
   X,
   FileText,
 } from "lucide-react-native";
@@ -31,6 +32,7 @@ export const TimelineScreen: React.FC = () => {
     activeParent,
     timeline,
     addTimelineEvent,
+    updateTimelineEvent,
     deleteTimelineEvent,
     documents,
     seniorMode,
@@ -40,6 +42,7 @@ export const TimelineScreen: React.FC = () => {
 
   const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<TimelineEvent | null>(null);
 
   // Form State
@@ -93,6 +96,7 @@ export const TimelineScreen: React.FC = () => {
     try {
       if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch {}
+    setEditingEvent(null);
     setEventTitle("");
     setEventType("doctor_visit");
     setEventDate(new Date().toISOString().slice(0, 10));
@@ -100,6 +104,21 @@ export const TimelineScreen: React.FC = () => {
     setFacilityName(activeParent.primary_doctors[0]?.hospital_or_clinic || "");
     setEventDesc("");
     setSelectedDocId(null);
+    setAddModalVisible(true);
+  };
+
+  const handleEditMilestone = (event: TimelineEvent) => {
+    try {
+      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
+    setEditingEvent(event);
+    setEventTitle(event.title);
+    setEventType(event.event_type);
+    setEventDate(event.event_date ? event.event_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setDoctorName(event.doctor_name || "");
+    setFacilityName(event.facility_name || "");
+    setEventDesc(event.description || "");
+    setSelectedDocId(event.document_id || null);
     setAddModalVisible(true);
   };
 
@@ -113,19 +132,33 @@ export const TimelineScreen: React.FC = () => {
       if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {}
 
-    const newMilestone: TimelineEvent = {
-      id: Crypto.randomUUID(),
-      parent_id: activeParent.id,
-      title: eventTitle.trim(),
-      event_type: eventType,
-      event_date: eventDate || new Date().toISOString().slice(0, 10),
-      doctor_name: doctorName.trim() || undefined,
-      facility_name: facilityName.trim() || undefined,
-      description: eventDesc.trim() || (isHindi ? "क्लिनिकल माइलस्टोन दर्ज किया गया" : "Recorded clinical milestone"),
-      document_id: selectedDocId || undefined,
-    };
-
-    addTimelineEvent(newMilestone);
+    if (editingEvent) {
+      const updated: TimelineEvent = {
+        ...editingEvent,
+        title: eventTitle.trim(),
+        event_type: eventType,
+        event_date: eventDate || editingEvent.event_date,
+        doctor_name: doctorName.trim() || undefined,
+        facility_name: facilityName.trim() || undefined,
+        description: eventDesc.trim() || (isHindi ? "क्लिनिकल माइलस्टोन दर्ज किया गया" : "Recorded clinical milestone"),
+        document_id: selectedDocId || undefined,
+      };
+      updateTimelineEvent(updated);
+      setEditingEvent(null);
+    } else {
+      const newMilestone: TimelineEvent = {
+        id: Crypto.randomUUID(),
+        parent_id: activeParent.id,
+        title: eventTitle.trim(),
+        event_type: eventType,
+        event_date: eventDate || new Date().toISOString().slice(0, 10),
+        doctor_name: doctorName.trim() || undefined,
+        facility_name: facilityName.trim() || undefined,
+        description: eventDesc.trim() || (isHindi ? "क्लिनिकल माइलस्टोन दर्ज किया गया" : "Recorded clinical milestone"),
+        document_id: selectedDocId || undefined,
+      };
+      addTimelineEvent(newMilestone);
+    }
     setAddModalVisible(false);
   };
 
@@ -283,6 +316,14 @@ export const TimelineScreen: React.FC = () => {
                         <Text style={styles.eventDate}>{dateStr}</Text>
                       </View>
                       <TouchableOpacity
+                        style={styles.editBtn}
+                        onPress={() => handleEditMilestone(event)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel="Edit milestone"
+                      >
+                        <Pencil size={13} color={Colors.primaryDark} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
                         style={styles.deleteBtn}
                         onPress={() => setEventToDelete(event)}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -339,7 +380,9 @@ export const TimelineScreen: React.FC = () => {
       >
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>
-            {isHindi ? "नया स्वास्थ्य माइलस्टोन जोड़ें" : "Record Health Milestone"}
+            {editingEvent
+              ? (isHindi ? "माइलस्टोन संपादित करें" : "Edit Health Milestone")
+              : (isHindi ? "नया स्वास्थ्य माइलस्टोन जोड़ें" : "Record Health Milestone")}
           </Text>
           <TouchableOpacity onPress={() => setAddModalVisible(false)} style={styles.modalCloseBtn}>
             <X size={18} color={Colors.textMuted} />
@@ -476,7 +519,9 @@ export const TimelineScreen: React.FC = () => {
             <LinearGradient colors={Gradients.primary} style={styles.submitBtnGradient}>
               <CheckCircle2 size={18} color="#FFFFFF" />
               <Text style={styles.submitBtnText}>
-                {isHindi ? "माइलस्टोन सहेजें" : "Save Clinical Milestone"}
+                {editingEvent
+                  ? (isHindi ? "अपडेट सहेजें" : "Update Milestone")
+                  : (isHindi ? "माइलस्टोन सहेजें" : "Save Clinical Milestone")}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -724,6 +769,11 @@ const styles = createThemedStyles({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  editBtn: {
+    padding: 3,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: Colors.primaryLight,
   },
   deleteBtn: {
     padding: 3,

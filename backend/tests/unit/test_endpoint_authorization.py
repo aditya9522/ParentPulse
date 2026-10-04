@@ -49,6 +49,30 @@ async def test_timeline_create_requires_parent_access(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_timeline_update_requires_parent_access(monkeypatch):
+    event_id = uuid4()
+    parent_id = uuid4()
+    mock_event = SimpleNamespace(id=event_id, parent_id=parent_id)
+    session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = mock_event
+    session.execute.return_value = mock_result
+
+    verifier = AsyncMock(side_effect=AuthorizationError())
+    monkeypatch.setattr(timeline, "verify_parent_access", verifier)
+
+    with pytest.raises(AuthorizationError):
+        await timeline.update_timeline_event(
+            event_id=event_id,
+            data=SimpleNamespace(document_id=None, title="New Title"),
+            current_user=SimpleNamespace(id=uuid4()),
+            session=session,
+        )
+
+    verifier.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_caregiver_assignment_requires_family_owner(monkeypatch):
     family_id = uuid4()
     monkeypatch.setattr(
