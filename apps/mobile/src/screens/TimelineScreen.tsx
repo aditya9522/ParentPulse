@@ -1,6 +1,7 @@
 // apps/mobile/src/screens/TimelineScreen.tsx
 import React, { useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Platform } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   Stethoscope,
   FlaskConical,
@@ -27,6 +28,22 @@ import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, Glass, c
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 import { ConfirmationModal } from "../components/ConfirmationModal";
 
+const formatDateToYMD = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const parseYMDToDate = (ymdStr: string): Date => {
+  if (!ymdStr) return new Date();
+  const parts = ymdStr.split("-").map(Number);
+  if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  return new Date();
+};
+
 export const TimelineScreen: React.FC = () => {
   const {
     activeParent,
@@ -48,7 +65,8 @@ export const TimelineScreen: React.FC = () => {
   // Form State
   const [eventTitle, setEventTitle] = useState("");
   const [eventType, setEventType] = useState<TimelineEventType>("doctor_visit");
-  const [eventDate, setEventDate] = useState(new Date().toISOString().slice(0, 10));
+  const [eventDate, setEventDate] = useState(() => formatDateToYMD(new Date()));
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [doctorName, setDoctorName] = useState("");
   const [facilityName, setFacilityName] = useState("");
   const [eventDesc, setEventDesc] = useState("");
@@ -99,7 +117,7 @@ export const TimelineScreen: React.FC = () => {
     setEditingEvent(null);
     setEventTitle("");
     setEventType("doctor_visit");
-    setEventDate(new Date().toISOString().slice(0, 10));
+    setEventDate(formatDateToYMD(new Date()));
     setDoctorName(activeParent.primary_doctors[0]?.name || "");
     setFacilityName(activeParent.primary_doctors[0]?.hospital_or_clinic || "");
     setEventDesc("");
@@ -114,7 +132,7 @@ export const TimelineScreen: React.FC = () => {
     setEditingEvent(event);
     setEventTitle(event.title);
     setEventType(event.event_type);
-    setEventDate(event.event_date ? event.event_date.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setEventDate(event.event_date ? event.event_date.slice(0, 10) : formatDateToYMD(new Date()));
     setDoctorName(event.doctor_name || "");
     setFacilityName(event.facility_name || "");
     setEventDesc(event.description || "");
@@ -423,17 +441,56 @@ export const TimelineScreen: React.FC = () => {
             })}
           </View>
 
-          {/* Event Date */}
+          {/* Event Date with DatePicker */}
           <Text style={styles.fieldLabel}>
-            {isHindi ? "तारीख (YYYY-MM-DD)" : "Date (YYYY-MM-DD)"}
+            {isHindi ? "घटना / परामर्श की तारीख" : "Event / Consultation Date"}
           </Text>
-          <TextInput
-            style={styles.input}
-            value={eventDate}
-            onChangeText={setEventDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={Colors.textMuted}
-          />
+          <TouchableOpacity
+            style={styles.datePickerTrigger}
+            onPress={() => setShowDatePicker(true)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={isHindi ? "तारीख चुनें" : "Select milestone date"}
+          >
+            <View style={styles.datePickerTriggerLeft}>
+              <View style={styles.calendarIconCircle}>
+                <Calendar size={16} color={Colors.primary} />
+              </View>
+              <Text style={styles.datePickerValueText}>
+                {eventDate
+                  ? parseYMDToDate(eventDate).toLocaleDateString(isHindi ? "hi-IN" : "en-US", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : (isHindi ? "तारीख चुनें" : "Select date")}
+              </Text>
+            </View>
+            <View style={styles.datePickerChangeBadge}>
+              <Text style={styles.datePickerChangeHint}>
+                {isHindi ? "बदलें" : "Change"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={parseYMDToDate(eventDate)}
+              mode="date"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              onChange={(event, selectedDate) => {
+                setShowDatePicker(Platform.OS === "ios");
+                if (event.type === "dismissed") {
+                  setShowDatePicker(false);
+                  return;
+                }
+                if (selectedDate) {
+                  setShowDatePicker(false);
+                  setEventDate(formatDateToYMD(selectedDate));
+                }
+              }}
+            />
+          )}
 
           {/* Doctor Name */}
           <Text style={styles.fieldLabel}>
@@ -909,5 +966,46 @@ const styles = createThemedStyles({
     color: "#FFFFFF",
     fontSize: Typography.sizes.sm,
     fontWeight: Typography.weights.bold,
+  },
+  datePickerTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 4,
+  },
+  datePickerTriggerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  calendarIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  datePickerValueText: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.textPrimary,
+  },
+  datePickerChangeBadge: {
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.xs,
+  },
+  datePickerChangeHint: {
+    fontSize: Typography.sizes.xxs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primaryDark,
   },
 });

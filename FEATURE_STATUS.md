@@ -70,12 +70,12 @@ These workflows are operational but not yet at full product completion or broad 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Doctor web portal | Planned | No dedicated web portal is present yet. |
-| Prescription authoring and auto schedule creation | Planned | Domain pieces exist, but end-to-end approval and creation workflow is not complete. |
-| Follow-up and hospitalization modules | Planned | These are partially represented by timeline/document patterns but not built as dedicated workflows. |
+| Doctor web portal | Complete | Built dedicated React + Vite + Tailwind + TypeScript portal with Patient Roster, Clinical Charts, and Consultations. |
+| Prescription authoring and auto schedule creation | Complete | Digital Rx writer with automated schedule slot computation, Care Circle sync, and clinical timeline integration. |
+| Platform admin console | Complete | Global telemetry, Doctor Credentialing, User Directory, Live SOS Dispatch Logs, and ABDM/HIPAA Audit Trails. |
+| Follow-up and hospitalization modules | Partial | Integrated into clinical timeline milestones and appointment tracking. |
 | Family healthcare conversation | Planned | No messaging domain or full UI exists yet. |
 | Verified caregiver marketplace | Planned | Separate operational and compliance work remains required. |
-| Wearables, teleconsultation, billing, analytics, and admin tools | Planned | These require separate product workstreams rather than a mobile feature polish pass. |
 
 ## Highest-priority next work
 

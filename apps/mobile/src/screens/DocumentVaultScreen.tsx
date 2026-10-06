@@ -15,6 +15,7 @@ import { MedicalDocument } from "../types";
 import { Colors, Shadows, Spacing, createThemedStyles } from "../theme";
 import { SwipeableBottomSheet } from "../components/SwipeableBottomSheet";
 import { ConfirmationModal } from "../components/ConfirmationModal";
+import { ModalBlurBackdrop } from "../components/ModalBlurBackdrop";
 
 const FILTERS = ["all", "prescription", "lab_report", "radiology", "discharge_summary"] as const;
 
@@ -415,8 +416,9 @@ export const DocumentVaultScreen: React.FC = () => {
       </View>
     </SwipeableBottomSheet>
 
-    <Modal visible={uploading} transparent animationType="fade">
+    <Modal visible={uploading} transparent animationType="fade" statusBarTranslucent>
       <View style={styles.progressOverlay}>
+        <ModalBlurBackdrop intensity={Platform.OS === "android" ? 35 : 75} />
         <View style={styles.progressCard}>
           <View style={styles.progressIcon}>
             {uploadMessage.startsWith("Upload complete") || uploadMessage.includes("पूर्ण") ? (
@@ -678,8 +680,8 @@ const styles = createThemedStyles({
   pickerIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surfaceAlt, alignItems: "center", justifyContent: "center" },
   pickerTitle: { fontSize: 13, fontWeight: "800", color: Colors.textPrimary },
   pickerSubtitle: { fontSize: 10, color: Colors.textMuted, marginTop: 3 },
-  progressOverlay: { flex: 1, backgroundColor: "rgba(5,20,25,.64)", alignItems: "center", justifyContent: "center", padding: 28 },
-  progressCard: { width: "100%", maxWidth: 360, borderRadius: 26, backgroundColor: "rgba(255,255,255,0.88)", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.95)", padding: 26, alignItems: "center" },
+  progressOverlay: { flex: 1, backgroundColor: "transparent", alignItems: "center", justifyContent: "center", padding: 28 },
+  progressCard: { width: "100%", maxWidth: 360, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.92)", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.95)", padding: 28, alignItems: "center", ...Shadows.cardElevated },
   progressIcon: { width: 62, height: 62, borderRadius: 22, backgroundColor: Colors.primaryFaint, alignItems: "center", justifyContent: "center" },
   progressTitle: { fontSize: 19, fontWeight: "900", color: Colors.textPrimary, marginTop: 15 },
   progressText: { textAlign: "center", fontSize: 12, lineHeight: 18, color: Colors.textMuted, marginTop: 7 },

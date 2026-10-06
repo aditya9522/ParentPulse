@@ -8,6 +8,7 @@ import { FeedbackEvent, FeedbackTone, subscribeToAppAlerts } from "../services/a
 import { Colors, Shadows, Spacing, createThemedStyles } from "../theme";
 import { useApp } from "../context/AppContext";
 import { useGlassBlurTarget } from "./GlassBlurProvider";
+import { ModalBlurBackdrop } from "./ModalBlurBackdrop";
 
 const TONE: Record<FeedbackTone, { color: string; soft: string; icon: keyof typeof Ionicons.glyphMap }> = {
   success: { color: "#047857", soft: "#ECFDF5", icon: "checkmark-circle" },
@@ -102,6 +103,7 @@ export const PremiumFeedbackHost: React.FC = () => {
         onRequestClose={dismiss}
       >
         <View style={styles.backdrop}>
+          <ModalBlurBackdrop intensity={Platform.OS === "android" ? 35 : 75} />
           <View style={[styles.dialog, webGlassStyle, { backgroundColor: surfaceColor, borderColor: surfaceBorder }]}>
             <FrostLayer isDark={isDark} blurTarget={blurTarget} />
             <View style={[styles.dialogIcon, { backgroundColor: palette.soft }]}>
@@ -142,7 +144,7 @@ const styles = createThemedStyles({
   toastTitle: { color: Colors.textPrimary, fontSize: 14, fontWeight: "900" },
   toastMessage: { color: Colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 3 },
   closeButton: { width: 34, height: 34, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  backdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: "rgba(15,23,42,0.48)" },
+  backdrop: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: "transparent" },
   dialog: { width: "100%", maxWidth: 430, padding: 24, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.88)", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.95)", ...Shadows.card, elevation: 0 },
   dialogIcon: { width: 54, height: 54, borderRadius: 18, alignItems: "center", justifyContent: "center", marginBottom: 18 },
   dialogTitle: { color: Colors.textPrimary, fontSize: 21, lineHeight: 27, fontWeight: "900" },

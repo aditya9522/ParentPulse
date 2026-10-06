@@ -108,3 +108,14 @@ async def test_ai_chat_endpoint(client, monkeypatch):
     finally:
         app.dependency_overrides.pop(get_current_user, None)
 
+
+@pytest.mark.asyncio
+async def test_admin_audit_logs_endpoint(client):
+    response = await client.get("/api/v1/admin/audit-logs", headers={"Origin": "http://localhost:5173"})
+    assert response.status_code == 200
+    json_data = response.json()
+    assert "data" in json_data
+    assert isinstance(json_data["data"], list)
+    # Verify CORS header is returned
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+

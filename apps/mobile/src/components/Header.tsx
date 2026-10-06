@@ -145,12 +145,14 @@ export const Header: React.FC = () => {
                 <Text style={styles.relationChipText}>
                   {activeParent.gender === "male"
                     ? (isHindi ? "पिताजी" : "Father")
-                    : (isHindi ? "माताजी" : "Mother")}
+                    : activeParent.gender === "female"
+                    ? (isHindi ? "माताजी" : "Mother")
+                    : (isHindi ? "अभिभावक" : "Parent")}
                 </Text>
               </View>
             </View>
-            <Text style={[styles.parentSubDetails, { color: dynTextMuted }]}>
-              {isHindi ? "रक्त समूह" : "Blood Group"}: {activeParent.blood_group} • Gurugram, India
+            <Text style={[styles.parentSubDetails, { color: dynTextMuted }]} numberOfLines={1}>
+              {isHindi ? "रक्त समूह" : "Blood Group"}: {activeParent.blood_group || "N/A"} • {activeParent.address ? activeParent.address.split(",")[0] : (isHindi ? "केयर हब" : "Care Hub")}
             </Text>
           </View>
 

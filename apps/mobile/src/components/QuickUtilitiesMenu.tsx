@@ -28,6 +28,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../context/AppContext";
 import { GlassView } from "./GlassView";
+import { ModalBlurBackdrop } from "./ModalBlurBackdrop";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, createThemedStyles } from "../theme";
 
 export const QuickUtilitiesMenu: React.FC = () => {
@@ -149,11 +150,13 @@ export const QuickUtilitiesMenu: React.FC = () => {
       <Modal
         visible={isOpen}
         transparent
+        statusBarTranslucent
         animationType="none"
         onRequestClose={() => toggleMenu(false)}
       >
         <TouchableWithoutFeedback onPress={() => toggleMenu(false)}>
           <View style={styles.modalBackdrop}>
+            <ModalBlurBackdrop opacity={menuOpacity} intensity={Platform.OS === "android" ? 30 : 65} />
             <TouchableWithoutFeedback>
               <Animated.View
                 style={[
@@ -491,7 +494,7 @@ const styles = createThemedStyles({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    backgroundColor: "transparent",
     justifyContent: "flex-end",
     alignItems: "flex-end",
     paddingRight: 16,

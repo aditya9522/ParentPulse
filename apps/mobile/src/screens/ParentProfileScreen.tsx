@@ -1,4 +1,3 @@
-// apps/mobile/src/screens/ParentProfileScreen.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -52,6 +51,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
   // Edit Modal State
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [fullName, setFullName] = useState(activeParent.full_name);
+  const [gender, setGender] = useState<"male" | "female" | "other">(activeParent.gender || "other");
   const [phone, setPhone] = useState(activeParent.phone_number);
   const [address, setAddress] = useState(activeParent.address);
   const [bloodGroup, setBloodGroup] = useState(activeParent.blood_group);
@@ -96,6 +96,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
 
     updateActiveParentProfile({
       full_name: fullName.trim(),
+      gender,
       phone_number: phone.trim(),
       address: address.trim(),
       blood_group: bloodGroup.trim(),
@@ -300,6 +301,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             onPress={() => {
               triggerHaptic();
               setFullName(activeParent.full_name);
+              setGender(activeParent.gender || "other");
               setPhone(activeParent.phone_number);
               setAddress(activeParent.address);
               setBloodGroup(activeParent.blood_group);
@@ -316,7 +318,12 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
         </View>
 
         {/* Parent Switcher Carousel */}
-        <View style={styles.switcherRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.switcherScrollContent}
+          style={styles.switcherScrollView}
+        >
           {parentList.map((p) => {
             const isSelected = p.id === activeParent.id;
             return (
@@ -330,12 +337,12 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
               >
                 <User size={13} color={isSelected ? Colors.primaryDark : Colors.textMuted} />
                 <Text style={[styles.switchChipText, isSelected && styles.switchChipTextActive]}>
-                  {p.full_name} ({p.gender === "male" ? (isHindi ? "पिताजी" : "Father") : (isHindi ? "माताजी" : "Mother")})
+                  {p.full_name} ({p.gender === "male" ? (isHindi ? "पिताजी" : "Father") : p.gender === "female" ? (isHindi ? "माताजी" : "Mother") : (isHindi ? "अभिभावक" : "Parent")})
                 </Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -364,7 +371,7 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
 
               <Text style={styles.heroSubText}>
                 {calculateAge(activeParent.date_of_birth)} {isHindi ? "वर्षीय" : "years"} •{" "}
-                {activeParent.gender === "male" ? (isHindi ? "पुरुष" : "Male") : (isHindi ? "महिला" : "Female")} • DOB: {activeParent.date_of_birth}
+                {activeParent.gender === "male" ? (isHindi ? "पुरुष (पिता)" : "Male") : activeParent.gender === "female" ? (isHindi ? "महिला (माता)" : "Female") : (isHindi ? "अन्य (अभिभावक)" : "Other")} • DOB: {activeParent.date_of_birth}
               </Text>
 
               <View style={styles.heroContactRow}>
@@ -653,6 +660,37 @@ export const ParentProfileScreen: React.FC<{ onBack?: () => void }> = ({ onBack 
             <Text style={styles.inputLabel}>{isHindi ? "पूरा नाम" : "Full Name"}</Text>
             <TextInput style={styles.textInput} value={fullName} onChangeText={setFullName} />
 
+            <Text style={styles.inputLabel}>{isHindi ? "लिंग एवं पहचान" : "Gender & Identity"}</Text>
+            <View style={styles.genderRow}>
+              {[
+                { id: "male" as const, label: isHindi ? "पुरुष (पिता)" : "Male", icon: "man" as const },
+                { id: "female" as const, label: isHindi ? "महिला (माता)" : "Female", icon: "woman" as const },
+                { id: "other" as const, label: isHindi ? "अन्य" : "Other", icon: "person" as const },
+              ].map((g) => {
+                const isSelected = gender === g.id;
+                return (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={[styles.genderChip, isSelected && styles.genderChipActive]}
+                    onPress={() => {
+                      triggerHaptic();
+                      setGender(g.id);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={g.icon}
+                      size={15}
+                      color={isSelected ? "#FFFFFF" : Colors.primaryDark}
+                    />
+                    <Text style={[styles.genderChipText, isSelected && styles.genderChipTextActive]}>
+                      {g.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             <Text style={styles.inputLabel}>{isHindi ? "फ़ोन नंबर" : "Phone Number"}</Text>
             <TextInput style={styles.textInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
 
@@ -922,9 +960,13 @@ const styles = createThemedStyles({
     fontWeight: Typography.weights.bold,
     color: Colors.primaryDark,
   },
-  switcherRow: {
+  switcherScrollView: {
+    marginVertical: 2,
+  },
+  switcherScrollContent: {
     flexDirection: "row",
     gap: 8,
+    alignItems: "center",
   },
   switchChip: {
     flexDirection: "row",
@@ -952,7 +994,7 @@ const styles = createThemedStyles({
   },
   content: {
     padding: Spacing.md,
-    paddingBottom: 100,
+    paddingBottom: 150,
   },
   heroCard: {
     borderRadius: BorderRadius.xl,
@@ -1413,5 +1455,35 @@ const styles = createThemedStyles({
     marginBottom: Spacing.lg,
     borderRadius: BorderRadius.lg,
     overflow: "hidden",
+  },
+  genderRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  genderChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surfaceAlt,
+    borderWidth: 1.2,
+    borderColor: Colors.border,
+  },
+  genderChipActive: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primaryDark,
+  },
+  genderChipText: {
+    fontSize: 12,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textSecondary,
+  },
+  genderChipTextActive: {
+    color: "#FFFFFF",
   },
 });

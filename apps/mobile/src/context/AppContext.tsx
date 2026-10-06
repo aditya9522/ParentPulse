@@ -101,16 +101,23 @@ const emptyParentData = (profile: ParentProfile = EMPTY_PARENT_PROFILE): ParentD
   doseLogs: [],
 });
 
-const normalizeParentProfile = (p: any): ParentProfile => ({
-  ...EMPTY_PARENT_PROFILE,
-  ...p,
-  allergies: Array.isArray(p?.allergies) ? p.allergies : [],
-  chronic_conditions: Array.isArray(p?.chronic_conditions) ? p.chronic_conditions : [],
-  disabilities: Array.isArray(p?.disabilities) ? p.disabilities : [],
-  surgeries: Array.isArray(p?.surgeries) ? p.surgeries : [],
-  emergency_contacts: Array.isArray(p?.emergency_contacts) ? p.emergency_contacts : [],
-  primary_doctors: Array.isArray(p?.primary_doctors) ? p.primary_doctors : [],
-});
+const normalizeParentProfile = (p: any): ParentProfile => {
+  const rawGender = typeof p?.gender === "string" ? p.gender.trim().toLowerCase() : "";
+  const gender: "male" | "female" | "other" =
+    rawGender === "male" || rawGender === "female" || rawGender === "other" ? rawGender : "other";
+
+  return {
+    ...EMPTY_PARENT_PROFILE,
+    ...p,
+    gender,
+    allergies: Array.isArray(p?.allergies) ? p.allergies : [],
+    chronic_conditions: Array.isArray(p?.chronic_conditions) ? p.chronic_conditions : [],
+    disabilities: Array.isArray(p?.disabilities) ? p.disabilities : [],
+    surgeries: Array.isArray(p?.surgeries) ? p.surgeries : [],
+    emergency_contacts: Array.isArray(p?.emergency_contacts) ? p.emergency_contacts : [],
+    primary_doctors: Array.isArray(p?.primary_doctors) ? p.primary_doctors : [],
+  };
+};
 
 const EMPTY_CURRENT_USER: UserProfile = {
   id: "",

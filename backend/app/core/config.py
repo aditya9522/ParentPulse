@@ -14,9 +14,11 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     allowed_origins: list[str] = [
         "http://localhost:3000",
+        "http://localhost:5173",
         "http://localhost:8081",
         "http://localhost:19006",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
         "http://127.0.0.1:8081",
     ]
 

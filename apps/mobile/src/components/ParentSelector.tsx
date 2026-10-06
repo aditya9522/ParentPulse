@@ -1,6 +1,6 @@
 // apps/mobile/src/components/ParentSelector.tsx
 import React from "react";
-import { View, Text, TouchableOpacity, Image } from "react-native";
+import { View, Text, TouchableOpacity, Image, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, createThemedStyles } from "../theme";
@@ -64,15 +64,44 @@ export const ParentSelector: React.FC = () => {
         </View>
       </View>
 
-      <View style={styles.tabRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.scrollContent,
+          parentList.length <= 1 && styles.scrollContentSingle,
+        ]}
+        style={styles.scrollView}
+      >
         {parentList.map((parent) => {
           const isSelected = parent.id === activeParent.id;
-          const isFather = parent.gender === "male";
+          const isMale = parent.gender === "male";
+          const isFemale = parent.gender === "female";
+
+          const calculatedAge = (() => {
+            try {
+              const y = new Date(parent.date_of_birth).getFullYear();
+              const currentYear = new Date().getFullYear();
+              if (y > 1900 && y <= currentYear) return currentYear - y;
+            } catch {}
+            return 70;
+          })();
+
+          const roleLabel = isMale
+            ? (language === "hi" ? `पिताजी • ${calculatedAge} वर्ष` : `Father • Age ${calculatedAge}`)
+            : isFemale
+            ? (language === "hi" ? `माताजी • ${calculatedAge} वर्ष` : `Mother • Age ${calculatedAge}`)
+            : (language === "hi" ? `अभिभावक • ${calculatedAge} वर्ष` : `Parent • Age ${calculatedAge}`);
+
+          const honorific = isMale ? "(Papa)" : isFemale ? "(Maa)" : "";
+
           return (
             <TouchableOpacity
               key={parent.id}
               style={[
                 styles.parentTab,
+                parentList.length > 1 && styles.parentTabFixed,
+                parentList.length <= 1 && styles.parentTabSingle,
                 Shadows.card,
                 { backgroundColor: tabBg, borderColor: tabBorder },
                 isSelected && styles.parentTabActive,
@@ -83,30 +112,41 @@ export const ParentSelector: React.FC = () => {
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
             >
-              {isFather ? (
+              {isMale ? (
                 <Image
                   source={require("../../assets/parent_avatar.jpg")}
                   style={[styles.avatarImage, isSelected && styles.avatarImageActive]}
                 />
               ) : (
                 <View style={[styles.avatarCircle, isSelected && styles.avatarCircleActive]}>
-                  <Ionicons name="person" size={18} color={isSelected ? "#FFFFFF" : Colors.primaryDark} />
+                  <Ionicons name={isFemale ? "woman" : "person"} size={18} color={isSelected ? "#FFFFFF" : Colors.primaryDark} />
                 </View>
               )}
 
               <View style={styles.tabTextContainer}>
-                <Text style={[styles.tabName, isSelected && styles.tabNameActive, isSelected && { color: selectedTextColor }]} numberOfLines={1}>
-                  {parent.full_name.split(" ")[0]} {isFather ? "(Papa)" : "(Maa)"}
+                <Text
+                  style={[
+                    styles.tabName,
+                    isSelected && styles.tabNameActive,
+                    isSelected && { color: selectedTextColor },
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {parent.full_name.split(" ")[0]} {honorific}
                 </Text>
-                <Text style={styles.tabRole}>
-                  {isFather
-                    ? (language === "hi" ? "पिताजी • 72 वर्ष" : "Father • Age 72")
-                    : (language === "hi" ? "माताजी • 68 वर्ष" : "Mother • Age 68")}
+                <Text style={styles.tabRole} numberOfLines={1} ellipsizeMode="tail">
+                  {roleLabel}
                 </Text>
               </View>
 
               {isSelected && (
-                <Ionicons name="checkmark-circle" size={18} color={selectedTextColor} />
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={selectedTextColor}
+                  style={styles.checkIcon}
+                />
               )}
             </TouchableOpacity>
           );
@@ -126,7 +166,7 @@ export const ParentSelector: React.FC = () => {
             {language === "hi" ? "नया" : "Add"}
           </Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* Critical Health Alerts Ribbon */}
       <View style={[styles.alertRibbon, { backgroundColor: alertBg, borderColor: alertBorder }]}>
@@ -147,13 +187,13 @@ export const ParentSelector: React.FC = () => {
 
 const styles = createThemedStyles({
   container: {
-    paddingHorizontal: Spacing.md,
     paddingTop: Spacing.sm,
   },
   titleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingHorizontal: Spacing.md,
     marginBottom: Spacing.sm,
   },
   sectionTitle: {
@@ -180,16 +220,23 @@ const styles = createThemedStyles({
     fontWeight: Typography.weights.bold,
     color: Colors.primaryDeep,
   },
-  tabRow: {
-    flexDirection: "row",
+  scrollView: {
+    marginVertical: 2,
+  },
+  scrollContent: {
+    paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
+    alignItems: "center",
+  },
+  scrollContentSingle: {
+    flexGrow: 1,
   },
   parentTab: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255, 255, 255, 0.65)",
-    padding: Spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: BorderRadius.lg,
     borderWidth: 1.2,
     borderColor: "rgba(255, 255, 255, 0.85)",
@@ -198,6 +245,14 @@ const styles = createThemedStyles({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 0,
+    minHeight: 58,
+  },
+  parentTabFixed: {
+    width: 174,
+  },
+  parentTabSingle: {
+    flex: 1,
+    minWidth: 200,
   },
   parentTabActive: {
     borderColor: Colors.primary,
@@ -208,7 +263,7 @@ const styles = createThemedStyles({
     width: 36,
     height: 36,
     borderRadius: 18,
-    marginRight: Spacing.xs,
+    marginRight: 8,
     borderWidth: 1.5,
     borderColor: Colors.border,
   },
@@ -222,7 +277,7 @@ const styles = createThemedStyles({
     backgroundColor: "rgba(241, 245, 249, 0.8)",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: Spacing.xs,
+    marginRight: 8,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.8)",
   },
@@ -231,9 +286,10 @@ const styles = createThemedStyles({
   },
   tabTextContainer: {
     flex: 1,
+    marginRight: 4,
   },
   tabName: {
-    fontSize: Typography.sizes.xs,
+    fontSize: 12.5,
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
   },
@@ -243,11 +299,17 @@ const styles = createThemedStyles({
   tabRole: {
     fontSize: 10,
     color: Colors.textMuted,
+    marginTop: 2,
+  },
+  checkIcon: {
+    marginLeft: 2,
   },
   alertRibbon: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginTop: Spacing.sm,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.xs,
+    marginHorizontal: Spacing.md,
     backgroundColor: "rgba(254, 243, 199, 0.85)",
     padding: Spacing.sm,
     borderRadius: BorderRadius.md,
@@ -272,16 +334,16 @@ const styles = createThemedStyles({
     lineHeight: 15,
   },
   addParentBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.md,
+    minHeight: 58,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.lg,
     backgroundColor: "rgba(255, 255, 255, 0.8)",
     borderWidth: 1.2,
     borderColor: "rgba(13, 148, 136, 0.4)",
     borderStyle: "dashed" as const,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     justifyContent: "center",
   },
   addParentIconCircle: {
@@ -293,7 +355,7 @@ const styles = createThemedStyles({
     alignItems: "center",
   },
   addParentBtnText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: Typography.weights.bold,
     color: Colors.primaryDark,
   },

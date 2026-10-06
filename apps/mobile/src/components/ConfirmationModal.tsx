@@ -5,6 +5,7 @@ import * as Haptics from "expo-haptics";
 import { AlertTriangle, Trash2, Info } from "lucide-react-native";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, createThemedStyles } from "../theme";
 import { useApp } from "../context/AppContext";
+import { ModalBlurBackdrop } from "./ModalBlurBackdrop";
 
 interface ConfirmationModalProps {
   visible: boolean;
@@ -86,8 +87,9 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   const messageColor = isDark ? "#94A3B8" : Colors.textSecondary;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleCancel}>
       <View style={styles.overlay}>
+        <ModalBlurBackdrop intensity={Platform.OS === "android" ? 35 : 75} />
         <View style={[styles.dialogBox, { backgroundColor: modalBoxBg, borderColor: modalBoxBorder }]}>
           {/* Top Decorative Icon */}
           <View style={[styles.iconCircle, { backgroundColor: getIconBg() }]}>
@@ -125,7 +127,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 const styles = createThemedStyles({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.65)",
+    backgroundColor: "transparent",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: Spacing.xl,

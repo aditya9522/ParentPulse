@@ -40,6 +40,7 @@ import {
 } from "lucide-react-native";
 import { Colors, Typography, Spacing, BorderRadius, Shadows, createThemedStyles } from "../theme";
 import { useApp } from "../context/AppContext";
+import { ModalBlurBackdrop } from "./ModalBlurBackdrop";
 import { apiClient } from "../api/client";
 import { DocumentType } from "../types";
 
@@ -266,8 +267,9 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
   const isUrl = scannedQrData && (scannedQrData.startsWith("http://") || scannedQrData.startsWith("https://"));
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={handleResetAndClose}>
+    <Modal visible={visible} animationType="slide" transparent={true} statusBarTranslucent onRequestClose={handleResetAndClose}>
       <View style={styles.modalBackdrop}>
+        <ModalBlurBackdrop intensity={Platform.OS === "android" ? 35 : 75} />
         <TouchableOpacity style={styles.dismissArea} activeOpacity={1} onPress={handleResetAndClose} />
         <Animated.View
           {...sheetPanResponder.panHandlers}
@@ -625,7 +627,7 @@ export const ScannerModal: React.FC<ScannerModalProps> = ({
 const styles = createThemedStyles({
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    backgroundColor: "transparent",
     justifyContent: "flex-end",
   },
   dismissArea: {

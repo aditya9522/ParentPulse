@@ -6,9 +6,11 @@ import {
   TouchableOpacity,
   Linking,
   Image,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { useApp } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Gradients, createThemedStyles } from "../theme";
 import { ParentSelector } from "../components/ParentSelector";
@@ -42,6 +44,8 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
     setActiveScreen,
   } = useApp();
 
+  const isHindi = language === "hi";
+
   const [addApptModalVisible, setAddApptModalVisible] = useState(false);
   const [apptToDelete, setApptToDelete] = useState<Appointment | null>(null);
   const [expandedWellness, setExpandedWellness] = useState<boolean>(false);
@@ -50,6 +54,12 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
 
   const nextAppointment = appointments[0];
   const parentTasks = tasks.filter((t) => t.parent_id === activeParent.id);
+
+  const triggerHaptic = (style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Light) => {
+    if (Platform.OS !== "web") {
+      void Haptics.impactAsync(style);
+    }
+  };
 
   const vitalAlerts = useMemo(() => {
     const alerts: {
@@ -94,52 +104,70 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
   const isAllMedsTaken = totalMeds > 0 && takenMedsCount >= totalMeds;
 
   const vitalDefinitions = {
-    bp: { type: "blood_pressure", title: "Blood Pressure", unit: "mmHg" },
-    sugar: { type: "blood_sugar", title: "Blood Glucose", unit: "mg/dL" },
-    pulse: { type: "heart_rate", title: "Heart Rate", unit: "bpm" },
+    bp: { type: "blood_pressure", title: isHindi ? "रक्तचाप" : "Blood Pressure", unit: "mmHg" },
+    sugar: { type: "blood_sugar", title: isHindi ? "रक्त शर्करा" : "Blood Glucose", unit: "mg/dL" },
+    pulse: { type: "heart_rate", title: isHindi ? "हृदय गति" : "Heart Rate", unit: "bpm" },
   } as const;
-  const SPARKLINE_DATA = Object.fromEntries(Object.entries(vitalDefinitions).map(([key, definition]) => {
-    const records = measurements
-      .filter((item) => item.vital_type === definition.type)
-      .sort((a, b) => {
-        const ta = Date.parse(a.recorded_at);
-        const tb = Date.parse(b.recorded_at);
-        return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb);
-      })
-      .slice(-7);
-    const maximum = Math.max(...records.map((item) => item.value_numeric), 1);
-    return [key, {
-      title: `${definition.title} · Recent records`,
-      unit: definition.unit,
-      days: records.map((item) => {
-        const parsed = Date.parse(item.recorded_at);
-        const date = isNaN(parsed) ? new Date() : new Date(parsed);
-        return {
-          day: date.toLocaleDateString(undefined, { weekday: "short" }),
-          val: `${item.value_numeric}${item.value_secondary != null ? `/${item.value_secondary}` : ""}`,
-          height: Math.max(12, Math.round((item.value_numeric / maximum) * 100)),
-        };
-      }),
-    }];
-  })) as Record<"bp" | "sugar" | "pulse", { title: string; unit: string; days: { day: string; val: string; height: number }[] }>;
+
+  const SPARKLINE_DATA = Object.fromEntries(
+    Object.entries(vitalDefinitions).map(([key, definition]) => {
+      const records = measurements
+        .filter((item) => item.vital_type === definition.type)
+        .sort((a, b) => {
+          const ta = Date.parse(a.recorded_at);
+          const tb = Date.parse(b.recorded_at);
+          return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb);
+        })
+        .slice(-7);
+      const maximum = Math.max(...records.map((item) => item.value_numeric), 1);
+      return [
+        key,
+        {
+          title: `${definition.title} · ${isHindi ? "हालिया रिकॉर्ड्स" : "7-Day Trend"}`,
+          unit: definition.unit,
+          days: records.map((item) => {
+            const parsed = Date.parse(item.recorded_at);
+            const date = isNaN(parsed) ? new Date() : new Date(parsed);
+            return {
+              day: date.toLocaleDateString(undefined, { weekday: "short" }),
+              val: `${item.value_numeric}${item.value_secondary != null ? `/${item.value_secondary}` : ""}`,
+              height: Math.max(14, Math.round((item.value_numeric / maximum) * 100)),
+            };
+          }),
+        },
+      ];
+    })
+  ) as Record<"bp" | "sugar" | "pulse", { title: string; unit: string; days: { day: string; val: string; height: number }[] }>;
+
   const selectedSeries = SPARKLINE_DATA[selectedVitalTab];
-  const selectedRecord = selectedSeries.days[Math.min(selectedDayIndex, Math.max(0, selectedSeries.days.length - 1))];
-  const latestVital = (type: string, unit: string) => {
+  const selectedRecord =
+    selectedSeries.days[Math.min(selectedDayIndex, Math.max(0, selectedSeries.days.length - 1))];
+
+  const latestVital = (type: string, fallbackName: string) => {
     const record = [...measurements].reverse().find((item) => item.vital_type === type);
-    return record ? `${record.value_numeric}${record.value_secondary != null ? `/${record.value_secondary}` : ""} ${record.unit}` : `No ${unit} data`;
+    return record
+      ? `${record.value_numeric}${record.value_secondary != null ? `/${record.value_secondary}` : ""} ${record.unit}`
+      : (isHindi ? "कोई डेटा नहीं" : `No ${fallbackName}`);
   };
 
   return (
     <View style={styles.screenWrapper}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Cared Parents Switcher & Alert Bar */}
         <ParentSelector />
 
-        {/* Wellness & Care Score Card (Interactive Expandable) */}
-        <View style={styles.scoreContainer}>
+        {/* 1. Daily Wellness Index Card (Interactive & Expandable) */}
+        <View style={styles.section}>
           <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => setExpandedWellness(!expandedWellness)}
+            activeOpacity={0.92}
+            onPress={() => {
+              triggerHaptic();
+              setExpandedWellness(!expandedWellness);
+            }}
           >
             <LinearGradient
               colors={Gradients.primaryHero}
@@ -150,24 +178,25 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               <View style={styles.scoreTopRow}>
                 <View>
                   <Text style={styles.scoreBadgeText}>
-                    {language === "hi" ? "दैनिक स्वास्थ्य स्कोर" : "Daily Wellness Index"}
+                    {isHindi ? "दैनिक स्वास्थ्य सूचकांक" : "DAILY WELLNESS INDEX"}
                   </Text>
                   <Text style={styles.scoreValue}>
-                    {adherenceRate}<Text style={styles.scorePercent}>%</Text>
+                    {adherenceRate}
+                    <Text style={styles.scorePercent}>%</Text>
                   </Text>
                 </View>
 
                 <View style={styles.scoreRightActions}>
                   <View style={styles.scoreStatusPill}>
-                    <Ionicons name="checkmark-circle" size={14} color="#D1FAE5" />
+                    <Ionicons name="checkmark-circle" size={13} color="#D1FAE5" />
                     <Text style={styles.scoreStatusPillText}>
-                      {language === "hi" ? "लाइव रिकॉर्ड" : "Live records"}
+                      {isHindi ? "लाइव सिंक" : "Live Sync"}
                     </Text>
                   </View>
                   <View style={styles.expandChevron}>
                     <Ionicons
                       name={expandedWellness ? "chevron-up" : "chevron-down"}
-                      size={16}
+                      size={15}
                       color="#FFFFFF"
                     />
                   </View>
@@ -175,9 +204,13 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               </View>
 
               <Text style={styles.scoreDescription}>
-                {language === "hi"
-                  ? (totalMeds > 0 ? `आज ${takenMedsCount}/${totalMeds} दवाइयां ली गई दर्ज हैं।` : "कोई सक्रिय दवा शेड्यूल दर्ज नहीं है।")
-                  : totalMeds > 0 ? `${takenMedsCount} of ${totalMeds} medicines marked taken today.` : "No active medicine schedule has been recorded."}
+                {isHindi
+                  ? (totalMeds > 0
+                      ? `आज ${takenMedsCount}/${totalMeds} दवाइयां ली गईं। परिवार सर्कल सुरक्षित है।`
+                      : "कोई सक्रिय दवा शेड्यूल दर्ज नहीं है।")
+                  : totalMeds > 0
+                  ? `${takenMedsCount} of ${totalMeds} medications taken today. Care circle synced.`
+                  : "No medication scheduled for today."}
               </Text>
 
               {/* Interactive Expanded Health Metrics Drawer */}
@@ -186,27 +219,27 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   <View style={styles.expandedDivider} />
                   <View style={styles.expandedMetricsGrid}>
                     <View style={styles.expandedMetricItem}>
-                      <Ionicons name="medkit" size={16} color="#6EE7B7" />
+                      <Ionicons name="medkit" size={15} color="#6EE7B7" />
                       <Text style={styles.expandedMetricVal}>{takenMedsCount}/{totalMeds}</Text>
-                      <Text style={styles.expandedMetricLbl}>Meds Taken</Text>
+                      <Text style={styles.expandedMetricLbl}>{isHindi ? "दवाइयां" : "Meds Taken"}</Text>
                     </View>
 
                     <View style={styles.expandedMetricItem}>
-                      <Ionicons name="pulse" size={16} color="#93C5FD" />
-                      <Text style={styles.expandedMetricVal}>{latestVital("blood_pressure", "blood pressure")}</Text>
-                      <Text style={styles.expandedMetricLbl}>Resting BP</Text>
+                      <Ionicons name="pulse" size={15} color="#93C5FD" />
+                      <Text style={styles.expandedMetricVal}>{latestVital("blood_pressure", "BP")}</Text>
+                      <Text style={styles.expandedMetricLbl}>{isHindi ? "रक्तचाप" : "Resting BP"}</Text>
                     </View>
 
                     <View style={styles.expandedMetricItem}>
-                      <Ionicons name="flame" size={16} color="#FDE047" />
+                      <Ionicons name="flame" size={15} color="#FDE047" />
                       <Text style={styles.expandedMetricVal}>{latestVital("blood_sugar", "glucose")}</Text>
-                      <Text style={styles.expandedMetricLbl}>Blood glucose</Text>
+                      <Text style={styles.expandedMetricLbl}>{isHindi ? "शर्करा" : "Glucose"}</Text>
                     </View>
 
                     <View style={styles.expandedMetricItem}>
-                      <Ionicons name="cloud-done" size={16} color="#C4B5FD" />
-                      <Text style={styles.expandedMetricVal}>Live</Text>
-                      <Text style={styles.expandedMetricLbl}>FastAPI Sync</Text>
+                      <Ionicons name="cloud-done" size={15} color="#C4B5FD" />
+                      <Text style={styles.expandedMetricVal}>Active</Text>
+                      <Text style={styles.expandedMetricLbl}>{isHindi ? "फास्टएपीआई" : "FastAPI Sync"}</Text>
                     </View>
                   </View>
                 </View>
@@ -215,141 +248,180 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Modern 5-Item Quick Action Dock */}
-        <View style={styles.quickActionsGrid}>
-          {/* Emergency SOS Button */}
+        {/* 2. Professional Quick Actions Dock */}
+        <View style={styles.actionsSection}>
+          {/* Prominent Emergency SOS Button */}
           <TouchableOpacity
-            style={styles.actionBtnWrapper}
-            onPress={() => setSosModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <LinearGradient colors={Gradients.sos} style={[styles.actionBtnGradient, Shadows.glowRed]}>
-              <Ionicons name="shield" size={20} color="#FFFFFF" />
-              <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "आपातकाल" : "SOS"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Log Vitals Button */}
-          <TouchableOpacity
-            style={styles.actionBtnWrapper}
-            onPress={() => setLogVitalModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <LinearGradient colors={Gradients.primary} style={[styles.actionBtnGradient, Shadows.card]}>
-              <Ionicons name="add-circle" size={20} color="#FFFFFF" />
-              <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "वाइटल" : "Vitals"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Real Camera Document / QR Scanner Button */}
-          <TouchableOpacity
-            style={styles.actionBtnWrapper}
+            style={styles.sosActionBtn}
             onPress={() => {
-              setScannerMode("document");
-              setScannerModalVisible(true);
+              triggerHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+              setSosModalVisible(true);
             }}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
+            accessibilityLabel="Emergency SOS Alert"
           >
-            <LinearGradient colors={Gradients.teal} style={[styles.actionBtnGradient, Shadows.card]}>
-              <Ionicons name="camera" size={20} color="#FFFFFF" />
-              <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "स्कैनर" : "Scan Rx"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Ask AI Assistant */}
-          <TouchableOpacity
-            style={styles.actionBtnWrapper}
-            onPress={() => setAiAssistantModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <LinearGradient colors={Gradients.ai} style={[styles.actionBtnGradient, Shadows.card]}>
-              <Ionicons name="sparkles" size={20} color="#FFFFFF" />
-              <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "AI चैट" : "Ask AI"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Doctor Share QR */}
-          <TouchableOpacity
-            style={styles.actionBtnWrapper}
-            onPress={() => setDoctorShareModalVisible(true)}
-            activeOpacity={0.8}
-          >
-            <LinearGradient colors={Gradients.doctor} style={[styles.actionBtnGradient, Shadows.card]}>
-              <Ionicons name="qr-code" size={20} color="#FFFFFF" />
-              <Text style={styles.actionBtnTitle} numberOfLines={1}>
-                {language === "hi" ? "डॉक्टर QR" : "Doc QR"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Urgent Health & Clinical Alerts */}
-        {vitalAlerts.length > 0 && (
-          <View style={[styles.alertSectionContainer, Shadows.card]}>
-            <View style={styles.alertHeaderRow}>
-              <View
-                style={[
-                  styles.alertIconCircle,
-                  { backgroundColor: vitalAlerts[0].isCritical ? "#FEE2E2" : "#FEF3C7" },
-                ]}
-              >
-                <Ionicons
-                  name={vitalAlerts[0].isCritical ? "alert-circle" : "warning"}
-                  size={20}
-                  color={vitalAlerts[0].isCritical ? "#DC2626" : "#D97706"}
-                />
+            <LinearGradient
+              colors={Gradients.sos}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.sosActionGradient}
+            >
+              <View style={styles.sosIconCircle}>
+                <Ionicons name="shield" size={17} color="#FFFFFF" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.alertHeaderTitle}>
-                  {vitalAlerts[0].isCritical
-                    ? (language === "hi" ? "महत्वपूर्ण स्वास्थ्य चेतावनी" : "Critical Health Alert")
-                    : (language === "hi" ? "वाइटल ध्यान देने योग्य" : "Vital Sign Notice")}
+                <Text style={styles.sosActionTitle}>
+                  {isHindi ? "आपातकालीन एसओएस" : "EMERGENCY SOS"}
                 </Text>
-                <Text style={styles.alertHeaderSub}>
-                  {vitalAlerts[0].title} • {vitalAlerts[0].valStr}
+                <Text style={styles.sosActionSub}>
+                  {isHindi ? "1-टैप सायरन व लोकेशन अलर्ट" : "Broadcast live GPS beacon"}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={[
-                  styles.alertActionBtn,
-                  { backgroundColor: vitalAlerts[0].isCritical ? "#DC2626" : "#D97706" },
-                ]}
-                onPress={() => setLogVitalModalVisible(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.alertActionBtnText}>
-                  {language === "hi" ? "जाँचें" : "Review"}
-                </Text>
-              </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.7)" />
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* 4 Sleek Frosted Utility Tiles */}
+          <View style={styles.utilityGrid}>
+            {/* Log Vitals */}
+            <TouchableOpacity
+              style={styles.utilityTile}
+              onPress={() => {
+                triggerHaptic();
+                setLogVitalModalVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.utilityIconWrap, { backgroundColor: Colors.primaryFaint }]}>
+                <Ionicons name="add-circle" size={19} color={Colors.primaryDark} />
+              </View>
+              <Text style={styles.utilityTitle} numberOfLines={1}>
+                {isHindi ? "वाइटल दर्ज करें" : "Log Vitals"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Document / Prescription Scanner */}
+            <TouchableOpacity
+              style={styles.utilityTile}
+              onPress={() => {
+                triggerHaptic();
+                setScannerMode("document");
+                setScannerModalVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.utilityIconWrap, { backgroundColor: "#E0F2FE" }]}>
+                <Ionicons name="camera" size={19} color="#0284C7" />
+              </View>
+              <Text style={styles.utilityTitle} numberOfLines={1}>
+                {isHindi ? "पर्चा स्कैन" : "Scan Rx"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* AI Clinical Assistant */}
+            <TouchableOpacity
+              style={styles.utilityTile}
+              onPress={() => {
+                triggerHaptic();
+                setAiAssistantModalVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.utilityIconWrap, { backgroundColor: "#F3E8FF" }]}>
+                <Ionicons name="sparkles" size={19} color="#7C3AED" />
+              </View>
+              <Text style={styles.utilityTitle} numberOfLines={1}>
+                {isHindi ? "एआई सहायक" : "Ask AI"}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Doctor Share QR */}
+            <TouchableOpacity
+              style={styles.utilityTile}
+              onPress={() => {
+                triggerHaptic();
+                setDoctorShareModalVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.utilityIconWrap, { backgroundColor: "#EEF2FF" }]}>
+                <Ionicons name="qr-code" size={19} color="#4F46E5" />
+              </View>
+              <Text style={styles.utilityTitle} numberOfLines={1}>
+                {isHindi ? "डॉक्टर क्यूआर" : "Doc QR"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 3. Urgent Health & Clinical Alerts (if any) */}
+        {vitalAlerts.length > 0 && (
+          <View style={styles.section}>
+            <View style={[styles.alertCard, Shadows.card]}>
+              <View style={styles.alertHeaderRow}>
+                <View
+                  style={[
+                    styles.alertIconCircle,
+                    { backgroundColor: vitalAlerts[0].isCritical ? "#FEE2E2" : "#FEF3C7" },
+                  ]}
+                >
+                  <Ionicons
+                    name={vitalAlerts[0].isCritical ? "alert-circle" : "warning"}
+                    size={19}
+                    color={vitalAlerts[0].isCritical ? "#DC2626" : "#D97706"}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.alertHeaderTitle}>
+                    {vitalAlerts[0].isCritical
+                      ? (isHindi ? "महत्वपूर्ण स्वास्थ्य चेतावनी" : "Critical Health Alert")
+                      : (isHindi ? "वाइटल ध्यान देने योग्य" : "Vital Sign Notice")}
+                  </Text>
+                  <Text style={styles.alertHeaderSub} numberOfLines={1}>
+                    {vitalAlerts[0].title} • {vitalAlerts[0].valStr}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.alertActionBtn,
+                    { backgroundColor: vitalAlerts[0].isCritical ? "#DC2626" : "#D97706" },
+                  ]}
+                  onPress={() => setLogVitalModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.alertActionBtnText}>
+                    {isHindi ? "जाँचें" : "Review"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.alertDetailText}>{vitalAlerts[0].detail}</Text>
             </View>
-            <Text style={styles.alertDetailText}>{vitalAlerts[0].detail}</Text>
           </View>
         )}
 
-        {/* Interactive 7-Day Vitals Analytics & Trend Visualizer */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderWithoutPadding}>
-            <View style={styles.sectionHeaderTitleRow}>
-              <Ionicons name="analytics" size={18} color={Colors.primaryDark} />
-              <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                {language === "hi" ? "वाइटल ट्रेंड विश्लेषण" : "7-Day Vitals Analytics"}
+        {/* 4. Unified Vitals Hub & 7-Day Analytics */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionEyebrow}>
+                {isHindi ? "क्लिनिकल सिग्नल्स" : "HEALTH SIGNALS"}
               </Text>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="pulse" size={17} color={Colors.primaryDark} />
+                <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
+                  {isHindi ? "वाइटल्स एवं बायोमेट्रिक्स" : "Vitals & Biometrics"}
+                </Text>
+              </View>
             </View>
+
             <TouchableOpacity
               onPress={() => setLogVitalModalVisible(true)}
-              style={styles.addVitalChip}
+              style={styles.headerActionPill}
+              activeOpacity={0.8}
             >
-              <Ionicons name="add" size={14} color={Colors.primaryDark} />
-              <Text style={styles.addVitalChipText}>
-                {language === "hi" ? "रीडिंग दर्ज करें" : "Log"}
+              <Ionicons name="add" size={13} color={Colors.primaryDark} />
+              <Text style={styles.headerActionPillText}>
+                {isHindi ? "रीडिंग दर्ज करें" : "Log Vital"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -357,22 +429,25 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
           {/* Metric Selector Tabs */}
           <View style={styles.vitalTabsRow}>
             {[
-              { id: "bp" as const, label: "Blood Pressure", val: latestVital("blood_pressure", "blood pressure") },
-              { id: "sugar" as const, label: "Glucose", val: latestVital("blood_sugar", "glucose") },
-              { id: "pulse" as const, label: "Heart Rate", val: latestVital("heart_rate", "heart rate") },
+              { id: "bp" as const, label: isHindi ? "रक्तचाप" : "Blood Pressure", val: latestVital("blood_pressure", "BP") },
+              { id: "sugar" as const, label: isHindi ? "शर्करा" : "Glucose", val: latestVital("blood_sugar", "glucose") },
+              { id: "pulse" as const, label: isHindi ? "पल्स" : "Heart Rate", val: latestVital("heart_rate", "pulse") },
             ].map((tab) => {
               const isSelected = selectedVitalTab === tab.id;
               return (
                 <TouchableOpacity
                   key={tab.id}
                   style={[styles.vitalTabBtn, isSelected && styles.vitalTabBtnActive]}
-                  onPress={() => setSelectedVitalTab(tab.id)}
+                  onPress={() => {
+                    triggerHaptic();
+                    setSelectedVitalTab(tab.id);
+                  }}
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.vitalTabBtnLabel, isSelected && styles.vitalTabBtnLabelActive]}>
                     {tab.label}
                   </Text>
-                  <Text style={[styles.vitalTabBtnVal, isSelected && styles.vitalTabBtnValActive]}>
+                  <Text style={[styles.vitalTabBtnVal, isSelected && styles.vitalTabBtnValActive]} numberOfLines={1}>
                     {tab.val}
                   </Text>
                 </TouchableOpacity>
@@ -388,14 +463,16 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   {selectedSeries.title}
                 </Text>
                 <Text style={styles.sparklineTarget}>
-                  Recorded values · {selectedSeries.unit}
+                  {isHindi ? "रिकॉर्डेड मान" : "Measured values"} · {selectedSeries.unit}
                 </Text>
               </View>
-              {selectedRecord && <View style={styles.activeDayPill}>
-                <Text style={styles.activeDayPillText}>
-                  {selectedRecord.day}: {selectedRecord.val}
-                </Text>
-              </View>}
+              {selectedRecord && (
+                <View style={styles.activeDayPill}>
+                  <Text style={styles.activeDayPillText}>
+                    {selectedRecord.day}: {selectedRecord.val}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Bar Chart Bars */}
@@ -424,51 +501,54 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   </TouchableOpacity>
                 );
               })}
-              {selectedSeries.days.length === 0 && <Text style={styles.scoreDescription}>No measurements recorded for this vital.</Text>}
+              {selectedSeries.days.length === 0 && (
+                <Text style={styles.emptyInlineNote}>
+                  {isHindi ? "इस वाइटल के लिए कोई रिकॉर्ड नहीं मिला।" : "No measurements recorded for this vital yet."}
+                </Text>
+              )}
             </View>
           </View>
+
+          {/* Clean Latest Vitals Strip */}
+          {measurements.length > 0 && (
+            <View style={styles.vitalsRow}>
+              {measurements.slice(0, 2).map((m) => (
+                <VitalBadge key={m.id} measurement={m} />
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* Latest Vitals Quick Cards */}
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionHeaderTitleRow}>
-            <Ionicons name="pulse" size={18} color={Colors.primaryDark} />
-            <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-              {language === "hi" ? "ताज़ा वाइटल रीडिंग" : "Latest Vitals"}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.vitalsRow}>
-          {measurements.slice(0, 2).map((m) => (
-            <VitalBadge key={m.id} measurement={m} />
-          ))}
-        </View>
-
-        {/* Upcoming Doctor Appointment Spotlight Card */}
+        {/* 5. Upcoming Doctor Consultation Spotlight */}
         {nextAppointment && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeaderWithoutPadding}>
-              <View style={styles.sectionHeaderTitleRow}>
-                <Ionicons name="calendar" size={18} color={Colors.secondary} />
-                <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                  {language === "hi" ? "आगामी परामर्श" : "Consultation"}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionEyebrow}>
+                  {isHindi ? "परामर्श" : "SCHEDULED CARE"}
                 </Text>
+                <View style={styles.sectionTitleRow}>
+                  <Ionicons name="calendar" size={17} color={Colors.secondary} />
+                  <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
+                    {isHindi ? "आगामी परामर्श" : "Doctor Consultation"}
+                  </Text>
+                </View>
               </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+
+              <View style={styles.headerRightActions}>
                 <TouchableOpacity
                   onPress={() => setAddApptModalVisible(true)}
-                  style={styles.addApptSmallBtn}
+                  style={styles.headerActionPill}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="add" size={13} color="#FFFFFF" />
-                  <Text style={styles.addApptSmallBtnText}>
-                    {language === "hi" ? "जोड़ें" : "Add"}
+                  <Ionicons name="add" size={13} color={Colors.primaryDark} />
+                  <Text style={styles.headerActionPillText}>
+                    {isHindi ? "जोड़ें" : "Add"}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => onNavigateTab("timeline")}>
                   <Text style={styles.sectionLink}>
-                    {language === "hi" ? "सभी देखें" : "View All"}
+                    {isHindi ? "सभी" : "View All"}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -476,7 +556,6 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
 
             <View style={[styles.appointmentCard, Shadows.card]}>
               <View style={styles.apptTop}>
-                {/* Doctor Avatar Image */}
                 <Image
                   source={require("../../assets/doctor_avatar.jpg")}
                   style={styles.doctorAvatarImage}
@@ -492,7 +571,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   </View>
 
                   <Text style={styles.apptSpecialty}>{nextAppointment.specialty}</Text>
-                  <Text style={styles.apptFacility}>
+                  <Text style={styles.apptFacility} numberOfLines={1}>
                     <Ionicons name="business-outline" size={12} color={Colors.textMuted} />{" "}
                     {nextAppointment.hospital_clinic_name}
                   </Text>
@@ -502,31 +581,34 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               {/* Date & Location Pill Bar */}
               <View style={styles.apptScheduleBar}>
                 <View style={styles.scheduleItem}>
-                  <Ionicons name="calendar-outline" size={14} color={Colors.primaryDeep} />
+                  <Ionicons name="calendar-outline" size={13} color={Colors.primaryDeep} />
                   <Text style={styles.scheduleItemText}>
                     {(() => {
                       const ts = Date.parse(nextAppointment.appointment_date);
                       if (isNaN(ts)) return nextAppointment.appointment_date || "Upcoming";
                       const d = new Date(ts);
-                      return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) +
-                        " • " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+                      return (
+                        d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) +
+                        " • " +
+                        d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+                      );
                     })()}
                   </Text>
                 </View>
                 <View style={styles.scheduleItem}>
-                  <Ionicons name="location-outline" size={14} color={Colors.secondaryDark} />
+                  <Ionicons name="location-outline" size={13} color={Colors.secondaryDark} />
                   <Text style={styles.scheduleItemText} numberOfLines={1}>
                     {nextAppointment.hospital_clinic_name || activeParent.address || "Clinic"}
                   </Text>
                 </View>
               </View>
 
-              {nextAppointment.reason && (
-                <Text style={styles.apptReason}>
+              {nextAppointment.reason ? (
+                <Text style={styles.apptReason} numberOfLines={2}>
                   <Text style={{ fontWeight: "700" }}>Note: </Text>
                   {nextAppointment.reason}
                 </Text>
-              )}
+              ) : null}
 
               {/* Quick Action Buttons */}
               <View style={styles.apptActions}>
@@ -535,9 +617,9 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   onPress={() => Linking.openURL("tel:+919822334455")}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="call" size={15} color={Colors.primaryDeep} />
+                  <Ionicons name="call" size={14} color={Colors.primaryDeep} />
                   <Text style={styles.callDoctorText}>
-                    {language === "hi" ? "कॉल करें" : "Call Clinic"}
+                    {isHindi ? "कॉल करें" : "Call Clinic"}
                   </Text>
                 </TouchableOpacity>
 
@@ -546,9 +628,9 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   onPress={() => onNavigateTab("maps")}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="navigate" size={15} color="#FFFFFF" />
+                  <Ionicons name="navigate" size={14} color="#FFFFFF" />
                   <Text style={styles.mapBtnText}>
-                    {language === "hi" ? "दिशा-निर्देश" : "Directions"}
+                    {isHindi ? "दिशा-निर्देश" : "Directions"}
                   </Text>
                 </TouchableOpacity>
 
@@ -558,26 +640,83 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                   activeOpacity={0.7}
                   accessibilityLabel="Cancel consultation"
                 >
-                  <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                  <Ionicons name="trash-outline" size={15} color="#DC2626" />
                 </TouchableOpacity>
               </View>
             </View>
           </View>
         )}
 
-        {/* Today's Family Care Coordination Tasks */}
-        {parentTasks.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionHeaderWithoutPadding}>
-              <View style={styles.sectionHeaderTitleRow}>
-                <Ionicons name="checkbox" size={18} color={Colors.primaryDark} />
+        {/* 6. Today's Medication Schedule */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionEyebrow}>
+                {isHindi ? "दैनिक दिनचर्या" : "DAILY ROUTINE"}
+              </Text>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="medkit" size={17} color={Colors.primaryDark} />
                 <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                  {language === "hi" ? "पारिवारिक देखभाल कार्य" : "Today's Family Tasks"}
+                  {isHindi ? "आज का दवा शेड्यूल" : "Medicine Checklist"}
                 </Text>
               </View>
+            </View>
+
+            <TouchableOpacity onPress={() => onNavigateTab("medicines")}>
+              <Text style={styles.sectionLink}>
+                {isHindi ? `प्रबंधन (${medicines.length})` : `Manage (${medicines.length})`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 100% Adherence Celebration Banner */}
+          {isAllMedsTaken && (
+            <View style={[styles.allMedsCelebration, Shadows.subtle]}>
+              <LinearGradient
+                colors={["#10B981", "#059669"]}
+                style={styles.celebrationGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Ionicons name="sparkles" size={19} color="#FFFFFF" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.celebrationTitle}>
+                    {isHindi ? "दैनिक दवाइयां 100% पूर्ण!" : "100% Adherence Today!"}
+                  </Text>
+                  <Text style={styles.celebrationSub}>
+                    {isHindi
+                      ? `आज की सभी ${totalMeds} दवाइयां समय पर ली गई हैं। फैमिली सर्कल सिंक है।`
+                      : `All ${totalMeds} scheduled doses marked taken. Family circle synced.`}
+                  </Text>
+                </View>
+              </LinearGradient>
+            </View>
+          )}
+
+          {medicines.map((med) => (
+            <MedicineCard key={med.id} medicine={med} />
+          ))}
+        </View>
+
+        {/* 7. Today's Family Care Coordination Tasks */}
+        {parentTasks.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionEyebrow}>
+                  {isHindi ? "केयर सर्कल" : "CARE CIRCLE"}
+                </Text>
+                <View style={styles.sectionTitleRow}>
+                  <Ionicons name="checkbox" size={17} color={Colors.primaryDark} />
+                  <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
+                    {isHindi ? "पारिवारिक देखभाल कार्य" : "Today's Care Tasks"}
+                  </Text>
+                </View>
+              </View>
+
               <TouchableOpacity onPress={() => setActiveScreen("family")}>
                 <Text style={styles.sectionLink}>
-                  {language === "hi" ? `केयर हब (${parentTasks.length})` : `Care Circle (${parentTasks.length})`}
+                  {isHindi ? `सर्कल (${parentTasks.length})` : `Tasks (${parentTasks.length})`}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -588,12 +727,15 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 <TouchableOpacity
                   key={task.id}
                   style={[styles.taskItemCard, isCompleted && styles.taskItemCardCompleted]}
-                  onPress={() => toggleTaskCompleted(task.id)}
+                  onPress={() => {
+                    triggerHaptic();
+                    toggleTaskCompleted(task.id);
+                  }}
                   activeOpacity={0.8}
                 >
                   <View style={[styles.taskCheckCircle, isCompleted && styles.taskCheckCircleDone]}>
                     {isCompleted ? (
-                      <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                      <Ionicons name="checkmark" size={13} color="#FFFFFF" />
                     ) : (
                       <View style={styles.taskCheckInnerDot} />
                     )}
@@ -633,63 +775,24 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
           </View>
         )}
 
-        {/* Today's Medicine Checklist */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderWithoutPadding}>
-            <View style={styles.sectionHeaderTitleRow}>
-              <Ionicons name="medkit" size={18} color={Colors.primaryDark} />
-              <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                {language === "hi" ? "आज का दवा शेड्यूल" : "Today's Medicine Schedule"}
+        {/* 8. Recent Medical Documents Preview */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionEyebrow}>
+                {isHindi ? "हेल्थ वॉल्ट" : "RECORDS VAULT"}
               </Text>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="folder-open" size={17} color="#6366F1" />
+                <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
+                  {isHindi ? "हालिया मेडिकल रिकॉर्ड्स" : "Recent Health Records"}
+                </Text>
+              </View>
             </View>
-            <TouchableOpacity onPress={() => onNavigateTab("medicines")}>
-              <Text style={styles.sectionLink}>
-                {language === "hi" ? `प्रबंधन (${medicines.length})` : `Manage (${medicines.length})`}
-              </Text>
-            </TouchableOpacity>
-          </View>
 
-          {/* 100% Adherence Celebration Banner */}
-          {isAllMedsTaken && (
-            <View style={[styles.allMedsCelebration, Shadows.subtle]}>
-              <LinearGradient
-                colors={["#10B981", "#059669"]}
-                style={styles.celebrationGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Ionicons name="sparkles" size={20} color="#FFFFFF" />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.celebrationTitle}>
-                    {language === "hi" ? "दैनिक दवाइयां 100% पूर्ण!" : "100% Medication Adherence Today"}
-                  </Text>
-                  <Text style={styles.celebrationSub}>
-                    {language === "hi"
-                      ? `आज की सभी ${totalMeds} दवाइयां समय पर ली गई हैं। फैमिली केयर सर्कल सुरक्षित है।`
-                      : `All ${totalMeds} scheduled doses marked taken. Family circle synchronized.`}
-                  </Text>
-                </View>
-              </LinearGradient>
-            </View>
-          )}
-
-          {medicines.map((med) => (
-            <MedicineCard key={med.id} medicine={med} />
-          ))}
-        </View>
-
-        {/* Recent Medical Documents Preview */}
-        <View style={[styles.sectionContainer, { marginBottom: 20 }]}>
-          <View style={styles.sectionHeaderWithoutPadding}>
-            <View style={styles.sectionHeaderTitleRow}>
-              <Ionicons name="folder-open" size={18} color="#6366F1" />
-              <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                {language === "hi" ? "हालिया मेडिकल रिकॉर्ड्स" : "Recent Health Records"}
-              </Text>
-            </View>
             <TouchableOpacity onPress={() => onNavigateTab("documents")}>
               <Text style={styles.sectionLink}>
-                {language === "hi" ? `वॉल्ट (${documents.length})` : `Vault (${documents.length})`}
+                {isHindi ? `वॉल्ट (${documents.length})` : `Vault (${documents.length})`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -704,7 +807,7 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               <View style={styles.docIconBox}>
                 <Ionicons
                   name={doc.document_type === "lab_report" ? "flask" : "document-text"}
-                  size={22}
+                  size={20}
                   color={Colors.primaryDark}
                 />
               </View>
@@ -721,28 +824,34 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 <Text style={styles.docDate}>
                   {doc.document_date} • {doc.doctor_name || "Diagnostic Lab"}
                 </Text>
-                {doc.summary && (
+                {doc.summary ? (
                   <Text numberOfLines={2} style={styles.docSummaryText}>
                     {doc.summary}
                   </Text>
-                )}
+                ) : null}
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Recent Healthcare Facility Activity & Map Link */}
-        <View style={[styles.sectionContainer, { marginBottom: 20 }]}>
-          <View style={styles.sectionHeaderWithoutPadding}>
-            <View style={styles.sectionHeaderTitleRow}>
-              <Ionicons name="location" size={18} color={Colors.primaryDark} />
-              <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
-                {language === "hi" ? "हालिया स्वास्थ्य केंद्र विज़िट्स" : "Recent Facility Visits"}
+        {/* 9. Healthcare Facilities Activity & Map Access */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionEyebrow}>
+                {isHindi ? "नज़दीकी सुविधाएं" : "HEALTHCARE ACCESS"}
               </Text>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="location" size={17} color={Colors.primaryDark} />
+                <Text style={[styles.sectionTitle, seniorMode && styles.seniorSectionTitle]}>
+                  {isHindi ? "स्वास्थ्य केंद्र विज़िट्स" : "Healthcare Activity"}
+                </Text>
+              </View>
             </View>
+
             <TouchableOpacity onPress={() => onNavigateTab("maps")}>
               <Text style={styles.sectionLink}>
-                {language === "hi" ? "नक्शा खोलें" : "Open Map"}
+                {isHindi ? "नक्शा खोलें" : "Open Map"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -756,14 +865,14 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
                 activeOpacity={0.8}
               >
                 <View style={styles.visitPreviewIconBox}>
-                  <Ionicons name="business" size={20} color={Colors.primaryDark} />
+                  <Ionicons name="business" size={18} color={Colors.primaryDark} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.visitPreviewName} numberOfLines={1}>{v.place_name}</Text>
                   <Text style={styles.visitPreviewAddress} numberOfLines={1}>{v.address}</Text>
                   <Text style={styles.visitPreviewTime}>{v.visited_at} • {v.category}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                <Ionicons name="chevron-forward" size={15} color={Colors.textMuted} />
               </TouchableOpacity>
             ))
           ) : (
@@ -773,14 +882,14 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
               activeOpacity={0.85}
             >
               <View style={styles.mapPromptIconBox}>
-                <Ionicons name="map-outline" size={22} color={Colors.primaryDeep} />
+                <Ionicons name="map-outline" size={20} color={Colors.primaryDeep} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.mapPromptTitle}>
-                  {language === "hi" ? "नज़दीकी अस्पताल व फ़ार्मेसी खोजें" : "Explore Nearby Healthcare"}
+                  {isHindi ? "नज़दीकी अस्पताल व फ़ार्मेसी खोजें" : "Explore Nearby Healthcare"}
                 </Text>
                 <Text style={styles.mapPromptSub}>
-                  {language === "hi"
+                  {isHindi
                     ? "इंटरैक्टिव मैप पर डॉक्टर, अस्पताल व आपातकालीन केंद्र देखें और चेक-इन दर्ज करें।"
                     : "Interactive map with verified clinics, pharmacies, and 1-tap check-in logging."}
                 </Text>
@@ -799,14 +908,14 @@ export const HomeScreen: React.FC<{ onNavigateTab: (tab: string) => void }> = ({
       {/* Confirmation Modal for Cancelling Appointment */}
       <ConfirmationModal
         visible={!!apptToDelete}
-        title={language === "hi" ? "परामर्श रद्द करें?" : "Cancel Consultation?"}
+        title={isHindi ? "परामर्श रद्द करें?" : "Cancel Consultation?"}
         message={
-          language === "hi"
+          isHindi
             ? `क्या आप निश्चित हैं कि आप ${apptToDelete?.doctor_name} (${apptToDelete?.specialty}) के साथ परामर्श रद्द करना चाहते हैं?`
             : `Are you sure you want to cancel the scheduled visit with ${apptToDelete?.doctor_name} (${apptToDelete?.specialty})? Caregivers will be notified.`
         }
-        confirmText={language === "hi" ? "रद्द करें" : "Cancel Visit"}
-        cancelText={language === "hi" ? "रखें" : "Keep Visit"}
+        confirmText={isHindi ? "रद्द करें" : "Cancel Visit"}
+        cancelText={isHindi ? "रखें" : "Keep Visit"}
         isDestructive={true}
         iconType="warning"
         onConfirm={() => {
@@ -831,15 +940,79 @@ const styles = createThemedStyles({
     backgroundColor: "transparent",
   },
   content: {
-    paddingBottom: 110,
+    paddingBottom: 160,
   },
-  scoreContainer: {
+  section: {
+    marginTop: 22,
+    marginBottom: 4,
     paddingHorizontal: Spacing.md,
-    marginTop: Spacing.sm,
+  },
+  actionsSection: {
+    marginTop: 18,
+    marginBottom: 4,
+    paddingHorizontal: Spacing.md,
+    gap: 10,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: 10,
+  },
+  sectionEyebrow: {
+    fontSize: 9,
+    fontWeight: Typography.weights.extraBold,
+    letterSpacing: 0.8,
+    color: Colors.primaryDark,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: Typography.weights.extraBold,
+    color: Colors.textPrimary,
+    letterSpacing: -0.3,
+  },
+  seniorSectionTitle: {
+    fontSize: Typography.seniorSizes.md,
+  },
+  seniorTitle: {
+    fontSize: Typography.seniorSizes.sm,
+  },
+  sectionLink: {
+    fontSize: 12.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primaryDark,
+  },
+  headerRightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  headerActionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(204, 251, 241, 0.85)",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.9)",
+  },
+  headerActionPillText: {
+    fontSize: 11,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primaryDeep,
   },
   scoreCard: {
     padding: Spacing.lg,
-    borderRadius: BorderRadius.xl,
+    borderRadius: 26,
     borderWidth: 1.2,
     borderColor: "rgba(255, 255, 255, 0.35)",
     position: "relative",
@@ -852,10 +1025,10 @@ const styles = createThemedStyles({
   },
   scoreBadgeText: {
     color: "#CCFBF1",
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.semibold,
+    fontSize: 9.5,
+    fontWeight: Typography.weights.extraBold,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.7,
   },
   scoreValue: {
     color: "#FFFFFF",
@@ -864,350 +1037,50 @@ const styles = createThemedStyles({
     letterSpacing: -1,
   },
   scorePercent: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: Typography.weights.semibold,
-  },
-  scoreStatusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.35)",
-  },
-  scoreStatusPillText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: Typography.weights.bold,
-  },
-  scoreDescription: {
-    color: "#E6FFFA",
-    fontSize: Typography.sizes.xs,
-    lineHeight: 18,
-    marginTop: Spacing.xs,
-  },
-  quickActionsGrid: {
-    flexDirection: "row",
-    paddingHorizontal: Spacing.md,
-    marginTop: Spacing.md,
-    gap: 8,
-  },
-  actionBtnWrapper: {
-    flex: 1,
-  },
-  actionBtnGradient: {
-    paddingVertical: 14,
-    borderRadius: BorderRadius.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.35)",
-  },
-  actionBtnTitle: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: Typography.weights.extraBold,
-    letterSpacing: 0.2,
-  },
-  sectionContainer: {
-    marginTop: Spacing.lg,
-    paddingHorizontal: Spacing.md,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  sectionHeaderWithoutPadding: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.sm,
-  },
-  sectionHeaderTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  sectionTitle: {
-    fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textPrimary,
-  },
-  seniorSectionTitle: {
-    fontSize: Typography.seniorSizes.md,
-  },
-  seniorTitle: {
-    fontSize: Typography.seniorSizes.sm,
-  },
-  sectionLink: {
-    fontSize: 13,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primaryDark,
-  },
-  addVitalChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    backgroundColor: "rgba(204, 251, 241, 0.8)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.85)",
-  },
-  addVitalChipText: {
-    fontSize: 11,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primaryDeep,
-  },
-  vitalsRow: {
-    flexDirection: "row",
-    paddingHorizontal: Spacing.md,
-    gap: 10,
-  },
-  appointmentCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.68)",
-    padding: Spacing.md,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.85)",
-    position: "relative",
-    overflow: "hidden",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 0,
-  },
-  apptTop: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  doctorAvatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: Spacing.md,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-  },
-  apptInfo: {
-    flex: 1,
-  },
-  doctorNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  apptDoctor: {
-    fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textPrimary,
-  },
-  confirmedPill: {
-    backgroundColor: "rgba(209, 250, 229, 0.85)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
-  },
-  confirmedPillText: {
-    fontSize: 10,
-    fontWeight: Typography.weights.bold,
-    color: Colors.successDark,
-  },
-  apptSpecialty: {
-    fontSize: 12,
-    color: Colors.primaryDark,
-    fontWeight: Typography.weights.semibold,
-  },
-  apptFacility: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  apptScheduleBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(241, 245, 249, 0.75)",
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
-  },
-  scheduleItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  scheduleItemText: {
-    fontSize: 11,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.textSecondary,
-  },
-  apptReason: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 8,
-    lineHeight: 16,
-  },
-  apptActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: Spacing.md,
-  },
-  callDoctorBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "rgba(204, 251, 241, 0.8)",
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
-  },
-  callDoctorText: {
-    fontSize: 12,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primaryDeep,
-  },
-  mapBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: Colors.primaryDark,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
-    ...Shadows.glowTeal,
-  },
-  mapBtnText: {
-    fontSize: 12,
-    fontWeight: Typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  deleteApptBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.md,
-    backgroundColor: "rgba(254, 226, 226, 0.8)",
-    borderWidth: 1,
-    borderColor: "rgba(252, 165, 165, 0.8)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  addApptSmallBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    backgroundColor: Colors.secondaryDark,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.full,
-  },
-  addApptSmallBtnText: {
-    fontSize: 11,
-    fontWeight: Typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  docPreviewCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.68)",
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.85)",
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: Spacing.sm,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 0,
-  },
-  docIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: BorderRadius.md,
-    backgroundColor: "rgba(204, 251, 241, 0.8)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: Spacing.md,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.9)",
-  },
-  docInfo: {
-    flex: 1,
-  },
-  docHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  docTitle: {
-    fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textPrimary,
-    flex: 1,
-    marginRight: 6,
-  },
-  ocrChip: {
-    backgroundColor: "rgba(243, 232, 255, 0.85)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
-  },
-  ocrChipText: {
-    fontSize: 10,
-    fontWeight: Typography.weights.bold,
-    color: "#7E22CE",
-  },
-  docDate: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  docSummaryText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
-    lineHeight: 16,
   },
   scoreRightActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
+  scoreStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.35)",
+  },
+  scoreStatusPillText: {
+    color: "#FFFFFF",
+    fontSize: 10.5,
+    fontWeight: Typography.weights.bold,
+  },
   expandChevron: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
     alignItems: "center",
   },
+  scoreDescription: {
+    color: "#E6FFFA",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6,
+  },
   expandedWellnessBox: {
-    marginTop: Spacing.sm,
+    marginTop: 6,
   },
   expandedDivider: {
     height: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
     marginVertical: 10,
   },
   expandedMetricsGrid: {
@@ -1219,221 +1092,90 @@ const styles = createThemedStyles({
     gap: 2,
   },
   expandedMetricVal: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: Typography.weights.bold,
     color: "#FFFFFF",
   },
   expandedMetricLbl: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: "rgba(255, 255, 255, 0.8)",
   },
-  vitalTabsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: Spacing.sm,
+
+  /* Sleek Emergency SOS Pill */
+  sosActionBtn: {
+    borderRadius: 18,
+    overflow: "hidden",
+    ...Shadows.glowRed,
   },
-  vitalTabBtn: {
-    flex: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.65)",
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: BorderRadius.md,
+  sosActionGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.8)",
+    borderColor: "rgba(255, 255, 255, 0.35)",
+  },
+  sosIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
     alignItems: "center",
+    justifyContent: "center",
   },
-  vitalTabBtnActive: {
-    backgroundColor: Colors.primaryLight,
-    borderColor: Colors.primary,
+  sosActionTitle: {
+    color: "#FFFFFF",
+    fontSize: 12.5,
+    fontWeight: Typography.weights.extraBold,
+    letterSpacing: 0.5,
   },
-  vitalTabBtnLabel: {
+  sosActionSub: {
+    color: "rgba(255, 255, 255, 0.88)",
     fontSize: 10,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.textMuted,
-  },
-  vitalTabBtnLabelActive: {
-    color: Colors.primaryDark,
-    fontWeight: Typography.weights.bold,
-  },
-  vitalTabBtnVal: {
-    fontSize: 12,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textPrimary,
-    marginTop: 2,
-  },
-  vitalTabBtnValActive: {
-    color: Colors.primaryDeep,
-  },
-  sparklineCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.68)",
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.85)",
-    ...Shadows.subtle,
-    elevation: 0,
-  },
-  sparklineHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: Spacing.md,
-  },
-  sparklineTitle: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textPrimary,
-  },
-  sparklineTarget: {
-    fontSize: 10,
-    color: Colors.textMuted,
     marginTop: 1,
   },
-  activeDayPill: {
-    backgroundColor: Colors.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.full,
-  },
-  activeDayPillText: {
-    fontSize: 11,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primaryDeep,
-  },
-  sparklineBarsRow: {
+
+  /* 4-Item Utility Grid */
+  utilityGrid: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "flex-end",
-    height: 70,
-    paddingTop: 8,
+    gap: 8,
   },
-  sparklineCol: {
+  utilityTile: {
+    flex: 1,
     alignItems: "center",
-    width: 32,
-  },
-  sparklineBarTrack: {
-    width: 14,
-    height: 50,
-    backgroundColor: "rgba(241, 245, 249, 0.9)",
-    borderRadius: 7,
-    justifyContent: "flex-end",
-    overflow: "hidden",
-  },
-  sparklineBarFill: {
-    width: "100%",
-    backgroundColor: Colors.primaryDark,
-    borderRadius: 7,
-  },
-  sparklineBarFillActive: {
-    backgroundColor: Colors.secondary,
-  },
-  sparklineDayLabel: {
-    fontSize: 10,
-    color: Colors.textMuted,
-    marginTop: 4,
-    fontWeight: Typography.weights.medium,
-  },
-  sparklineDayLabelActive: {
-    color: Colors.primaryDark,
-    fontWeight: Typography.weights.bold,
-  },
-  taskItemCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.68)",
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: Spacing.sm,
-    borderWidth: 1.2,
-    borderColor: "rgba(255, 255, 255, 0.85)",
-    ...Shadows.subtle,
-    elevation: 0,
-  },
-  taskItemCardCompleted: {
-    backgroundColor: "rgba(240, 253, 250, 0.85)",
-    borderColor: Colors.successLight,
-  },
-  taskCheckCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: Colors.textSubtle,
     justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.95)",
+    ...Shadows.subtle,
+  },
+  utilityIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
   },
-  taskCheckCircleDone: {
-    backgroundColor: Colors.success,
-    borderColor: Colors.success,
-  },
-  taskCheckInnerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "transparent",
-  },
-  taskItemTitle: {
-    fontSize: Typography.sizes.xs,
+  utilityTitle: {
+    fontSize: 11,
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
+    textAlign: "center",
   },
-  taskItemTitleCompleted: {
-    textDecorationLine: "line-through",
-    color: Colors.textMuted,
-  },
-  taskItemSub: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  taskPriorityPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.xs,
-    backgroundColor: Colors.borderLight,
-  },
-  taskPriorityHigh: {
-    backgroundColor: Colors.emergencyLight,
-  },
-  taskPriorityText: {
-    fontSize: 9,
-    fontWeight: Typography.weights.bold,
-    color: Colors.textSecondary,
-  },
-  taskPriorityTextHigh: {
-    color: Colors.emergencyDark,
-  },
-  allMedsCelebration: {
-    borderRadius: BorderRadius.lg,
-    overflow: "hidden",
-    marginBottom: Spacing.sm,
-  },
-  celebrationGradient: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: Spacing.md,
-  },
-  celebrationTitle: {
-    fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.bold,
-    color: "#FFFFFF",
-  },
-  celebrationSub: {
-    fontSize: 11,
-    color: "rgba(255, 255, 255, 0.9)",
-    marginTop: 2,
-  },
-  alertSectionContainer: {
-    marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.md,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
+
+  /* Urgent Alert Card */
+  alertCard: {
+    padding: 14,
+    borderRadius: 18,
     backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.2)",
+    borderColor: "rgba(239, 68, 68, 0.25)",
   },
   alertHeaderRow: {
     flexDirection: "row",
@@ -1442,9 +1184,9 @@ const styles = createThemedStyles({
     marginBottom: 6,
   },
   alertIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1474,35 +1216,448 @@ const styles = createThemedStyles({
     lineHeight: 16,
     color: Colors.textMuted,
   },
+
+  /* Vitals Hub */
+  vitalTabsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+  },
+  vitalTabBtn: {
+    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.9)",
+    alignItems: "center",
+  },
+  vitalTabBtnActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  vitalTabBtnLabel: {
+    fontSize: 9.5,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.textMuted,
+  },
+  vitalTabBtnLabelActive: {
+    color: Colors.primaryDark,
+    fontWeight: Typography.weights.bold,
+  },
+  vitalTabBtnVal: {
+    fontSize: 12,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+    marginTop: 2,
+  },
+  vitalTabBtnValActive: {
+    color: Colors.primaryDeep,
+  },
+  sparklineCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.75)",
+    borderRadius: 20,
+    padding: Spacing.md,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.92)",
+    ...Shadows.subtle,
+  },
+  sparklineHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.md,
+  },
+  sparklineTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  sparklineTarget: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 1,
+  },
+  activeDayPill: {
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  activeDayPillText: {
+    fontSize: 10.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primaryDeep,
+  },
+  sparklineBarsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "flex-end",
+    height: 72,
+    paddingTop: 8,
+  },
+  sparklineCol: {
+    alignItems: "center",
+    width: 32,
+  },
+  sparklineBarTrack: {
+    width: 14,
+    height: 52,
+    backgroundColor: "rgba(241, 245, 249, 0.9)",
+    borderRadius: 7,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
+  sparklineBarFill: {
+    width: "100%",
+    backgroundColor: Colors.primaryDark,
+    borderRadius: 7,
+  },
+  sparklineBarFillActive: {
+    backgroundColor: Colors.secondary,
+  },
+  sparklineDayLabel: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 4,
+    fontWeight: Typography.weights.medium,
+  },
+  sparklineDayLabelActive: {
+    color: Colors.primaryDark,
+    fontWeight: Typography.weights.bold,
+  },
+  emptyInlineNote: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    textAlign: "center",
+    paddingVertical: 14,
+  },
+  vitalsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 10,
+  },
+
+  /* Consultation Card */
+  appointmentCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    padding: Spacing.md,
+    borderRadius: 20,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.92)",
+    ...Shadows.card,
+  },
+  apptTop: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  doctorAvatarImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  apptInfo: {
+    flex: 1,
+  },
+  doctorNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  apptDoctor: {
+    fontSize: 14.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  confirmedPill: {
+    backgroundColor: "rgba(209, 250, 229, 0.85)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.8)",
+  },
+  confirmedPillText: {
+    fontSize: 9.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.successDark,
+  },
+  apptSpecialty: {
+    fontSize: 11.5,
+    color: Colors.primaryDark,
+    fontWeight: Typography.weights.semibold,
+  },
+  apptFacility: {
+    fontSize: 10.5,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  apptScheduleBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(241, 245, 249, 0.8)",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.8)",
+  },
+  scheduleItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  scheduleItemText: {
+    fontSize: 10.5,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.textSecondary,
+  },
+  apptReason: {
+    fontSize: 11.5,
+    color: Colors.textSecondary,
+    marginTop: 8,
+    lineHeight: 16,
+  },
+  apptActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+  callDoctorBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "rgba(204, 251, 241, 0.85)",
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.8)",
+  },
+  callDoctorText: {
+    fontSize: 11.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primaryDeep,
+  },
+  mapBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: Colors.primaryDark,
+    paddingVertical: 9,
+    borderRadius: 12,
+    ...Shadows.glowTeal,
+  },
+  mapBtnText: {
+    fontSize: 11.5,
+    fontWeight: Typography.weights.bold,
+    color: "#FFFFFF",
+  },
+  deleteApptBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(254, 226, 226, 0.85)",
+    borderWidth: 1,
+    borderColor: "rgba(252, 165, 165, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  /* Daily Routine & Meds */
+  allMedsCelebration: {
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  celebrationGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+  },
+  celebrationTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: "#FFFFFF",
+  },
+  celebrationSub: {
+    fontSize: 10.5,
+    color: "rgba(255, 255, 255, 0.9)",
+    marginTop: 2,
+  },
+
+  /* Care Circle Tasks */
+  taskItemCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    padding: 12,
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.9)",
+    ...Shadows.subtle,
+  },
+  taskItemCardCompleted: {
+    backgroundColor: "rgba(240, 253, 250, 0.88)",
+    borderColor: Colors.successLight,
+  },
+  taskCheckCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: Colors.textSubtle,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  taskCheckCircleDone: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
+  },
+  taskCheckInnerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "transparent",
+  },
+  taskItemTitle: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+  },
+  taskItemTitleCompleted: {
+    textDecorationLine: "line-through",
+    color: Colors.textMuted,
+  },
+  taskItemSub: {
+    fontSize: 10.5,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  taskPriorityPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: Colors.borderLight,
+  },
+  taskPriorityHigh: {
+    backgroundColor: Colors.emergencyLight,
+  },
+  taskPriorityText: {
+    fontSize: 8.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textSecondary,
+  },
+  taskPriorityTextHigh: {
+    color: Colors.emergencyDark,
+  },
+
+  /* Documents Preview */
+  docPreviewCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.9)",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 8,
+    ...Shadows.subtle,
+  },
+  docIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(204, 251, 241, 0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.95)",
+  },
+  docInfo: {
+    flex: 1,
+  },
+  docHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  docTitle: {
+    fontSize: 12.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textPrimary,
+    flex: 1,
+    marginRight: 6,
+  },
+  ocrChip: {
+    backgroundColor: "rgba(243, 232, 255, 0.85)",
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.8)",
+  },
+  ocrChipText: {
+    fontSize: 9,
+    fontWeight: Typography.weights.bold,
+    color: "#7E22CE",
+  },
+  docDate: {
+    fontSize: 10.5,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  docSummaryText: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    lineHeight: 15,
+  },
+
+  /* Facilities & Activity */
   visitPreviewCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    padding: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    marginBottom: Spacing.xs,
+    gap: 10,
+    padding: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    borderRadius: 16,
+    marginBottom: 8,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.9)",
   },
   visitPreviewIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     backgroundColor: Colors.primaryLight,
     alignItems: "center",
     justifyContent: "center",
   },
   visitPreviewName: {
-    fontSize: Typography.sizes.xs,
+    fontSize: 12,
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
   },
   visitPreviewAddress: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: Colors.textSecondary,
     marginTop: 1,
   },
   visitPreviewTime: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: Colors.textMuted,
     marginTop: 2,
     textTransform: "capitalize",
@@ -1510,30 +1665,30 @@ const styles = createThemedStyles({
   mapPromptCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    padding: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    gap: 10,
+    padding: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    borderRadius: 18,
+    borderWidth: 1.2,
+    borderColor: "rgba(255, 255, 255, 0.9)",
   },
   mapPromptIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     backgroundColor: Colors.primaryLight,
     alignItems: "center",
     justifyContent: "center",
   },
   mapPromptTitle: {
-    fontSize: Typography.sizes.xs,
+    fontSize: 12.5,
     fontWeight: Typography.weights.bold,
     color: Colors.textPrimary,
   },
   mapPromptSub: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: Colors.textSecondary,
     marginTop: 2,
-    lineHeight: 16,
+    lineHeight: 15,
   },
 });

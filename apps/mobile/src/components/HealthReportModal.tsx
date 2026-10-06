@@ -466,7 +466,7 @@ export const HealthReportModal: React.FC = () => {
     <div class="demographics-grid">
       <div>
         <div class="demo-item-label">Age / Gender</div>
-        <div class="demo-item-val">${calculateAge(activeParent.date_of_birth)} · ${activeParent.gender || "Not specified"}</div>
+        <div class="demo-item-val">${calculateAge(activeParent.date_of_birth)} · ${activeParent.gender === "male" ? "Male" : activeParent.gender === "female" ? "Female" : activeParent.gender ? (activeParent.gender.charAt(0).toUpperCase() + activeParent.gender.slice(1)) : "Not specified"}</div>
       </div>
       <div>
         <div class="demo-item-label">Blood Group</div>

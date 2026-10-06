@@ -2,7 +2,7 @@
 import uuid
 from datetime import date, datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EmergencyContactSchema(BaseModel):
@@ -45,6 +45,15 @@ class ParentProfileCreate(BaseModel):
     primary_doctors: List[PrimaryDoctorSchema] = Field(default_factory=list)
     notes: Optional[str] = None
 
+    @field_validator("gender", mode="before")
+    @classmethod
+    def clean_gender(cls, v: Any) -> str:
+        if isinstance(v, str):
+            cleaned = v.strip().lower()
+            if cleaned in {"male", "female", "other"}:
+                return cleaned
+        return "other"
+
 
 class ParentProfileUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -63,6 +72,17 @@ class ParentProfileUpdate(BaseModel):
     emergency_contacts: Optional[List[EmergencyContactSchema]] = None
     primary_doctors: Optional[List[PrimaryDoctorSchema]] = None
     notes: Optional[str] = None
+
+    @field_validator("gender", mode="before")
+    @classmethod
+    def clean_gender(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            cleaned = v.strip().lower()
+            if cleaned in {"male", "female", "other"}:
+                return cleaned
+        return "other"
 
 
 class ParentProfileResponse(BaseModel):

@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useApp } from "../context/AppContext";
 import { Colors, Typography, Spacing, Shadows, BorderRadius, Glass, createThemedStyles } from "../theme";
+import { ModalBlurBackdrop } from "../components/ModalBlurBackdrop";
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -104,7 +105,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   const [parentRelationship, setParentRelationship] = useState("");
   const [parentDob, setParentDob] = useState("");
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [parentGender] = useState("other");
+  const [parentGender, setParentGender] = useState<"male" | "female" | "other">("male");
   const [bloodGroup, setBloodGroup] = useState("");
   const [preferredLang] = useState("en");
   const [address, setAddress] = useState("");
@@ -156,10 +157,11 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   // Submit to Backend API
   const handleCreateProfile = async () => {
     if (submissionInFlight.current) return;
-    if (!familyName.trim() || !parentName.trim() || !parentDob.trim() || !address.trim() || !phoneNumber.trim()) {
-      setErrorMessage("Complete the required family and parent details before continuing.");
+    if (!familyName.trim() || !parentName.trim() || !address.trim() || !phoneNumber.trim()) {
+      setErrorMessage("Complete the required family name, parent name, address, and phone number.");
       return;
     }
+    const finalDob = parentDob.trim() || "1955-01-15";
     submissionInFlight.current = true;
     setIsSyncing(true);
     setErrorMessage(null);
@@ -170,7 +172,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
       const parentPayload = {
         full_name: parentName.trim(),
-        date_of_birth: parentDob.trim(),
+        date_of_birth: finalDob,
         gender: parentGender,
         blood_group: bloodGroup,
         preferred_language: preferredLang,
@@ -615,6 +617,41 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
             />
           </View>
 
+          {/* Gender Selector */}
+          <Text style={styles.fieldLabel}>Parent Gender & Identity:</Text>
+          <View style={styles.genderRow}>
+            {[
+              { id: "male" as const, label: language === "hi" ? "पुरुष (पिता)" : "Male", icon: "man" as const },
+              { id: "female" as const, label: language === "hi" ? "महिला (माता)" : "Female", icon: "woman" as const },
+              { id: "other" as const, label: language === "hi" ? "अन्य" : "Other", icon: "person" as const },
+            ].map((g) => {
+              const isSelected = parentGender === g.id;
+              return (
+                <TouchableOpacity
+                  key={g.id}
+                  style={[styles.genderChip, isSelected && styles.genderChipActive]}
+                  onPress={() => {
+                    setParentGender(g.id);
+                    if (!parentRelationship) {
+                      if (g.id === "male") setParentRelationship("Father");
+                      else if (g.id === "female") setParentRelationship("Mother");
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name={g.icon}
+                    size={16}
+                    color={isSelected ? "#FFFFFF" : Colors.primaryDark}
+                  />
+                  <Text style={[styles.genderChipText, isSelected && styles.genderChipTextActive]}>
+                    {g.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           <View style={styles.twoColRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.fieldLabel}>Relationship:</Text>
@@ -672,6 +709,27 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
                   onDismiss={() => setShowDatePicker(false)}
                 />
               ) : null}
+
+              {/* Quick Age Presets */}
+              <View style={styles.quickAgeChipsRow}>
+                {[65, 70, 75, 80].map((age) => {
+                  const targetYear = new Date().getFullYear() - age;
+                  const targetDob = `${targetYear}-01-15`;
+                  const isSelected = parentDob === targetDob;
+                  return (
+                    <TouchableOpacity
+                      key={age}
+                      style={[styles.quickAgeChip, isSelected && styles.quickAgeChipActive]}
+                      onPress={() => setParentDob(targetDob)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.quickAgeChipText, isSelected && styles.quickAgeChipTextActive]}>
+                        ~{age}y
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           </View>
 
@@ -815,7 +873,8 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
       {/* STEP 4: Live Backend API Provisioning Screen */}
       {isSyncing && (
         <View style={styles.syncOverlay}>
-          <View style={[styles.syncCard, Glass.card, Shadows.cardElevated]}>
+          <ModalBlurBackdrop intensity={Platform.OS === "android" ? 35 : 75} />
+          <View style={[styles.syncCard, Glass.cardElevated, Shadows.cardElevated]}>
             <ActivityIndicator size="large" color={Colors.primary} style={{ marginBottom: 16 }} />
             <Text style={styles.syncTitle}>Initializing Care Hub</Text>
             <Text style={styles.syncStatus}>{syncStatus}</Text>
@@ -866,7 +925,9 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.summaryParentName}>{parentName}</Text>
-                <Text style={styles.summarySub}>{parentRelationship} • {address.split(",")[0]}</Text>
+                <Text style={styles.summarySub}>
+                  {parentRelationship || (parentGender === "male" ? "Father" : parentGender === "female" ? "Mother" : "Parent")} • {parentGender === "male" ? "Male" : parentGender === "female" ? "Female" : "Other"} • {address.split(",")[0]}
+                </Text>
               </View>
               <View style={styles.summaryBloodPill}>
                 <Text style={styles.summaryBloodText}>{bloodGroup}</Text>
@@ -1544,20 +1605,78 @@ const styles = createThemedStyles({
     color: Colors.emergencyDark,
     fontWeight: Typography.weights.bold,
   },
+  genderRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: Spacing.md,
+  },
+  genderChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    borderWidth: 1.2,
+    borderColor: Colors.border,
+  },
+  genderChipActive: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primaryDark,
+  },
+  genderChipText: {
+    fontSize: 12,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textSecondary,
+  },
+  genderChipTextActive: {
+    color: "#FFFFFF",
+  },
+  quickAgeChipsRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 6,
+  },
+  quickAgeChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: "rgba(255, 255, 255, 0.75)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  quickAgeChipActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  quickAgeChipText: {
+    fontSize: 10.5,
+    fontWeight: Typography.weights.bold,
+    color: Colors.textMuted,
+  },
+  quickAgeChipTextActive: {
+    color: Colors.primaryDark,
+  },
   syncOverlay: {
     ...(StyleSheet.absoluteFill as any),
-    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    backgroundColor: "transparent",
     justifyContent: "center",
     alignItems: "center",
     padding: Spacing.lg,
+    zIndex: 9999,
   },
   syncCard: {
     width: "100%",
     maxWidth: 360,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255, 255, 255, 0.94)",
     borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
+    padding: Spacing.xl,
     alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.95)",
   },
   syncTitle: {
     fontSize: Typography.sizes.md,

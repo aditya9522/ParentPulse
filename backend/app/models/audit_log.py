@@ -18,3 +18,7 @@ class AuditLog(Base, UUIDPrimaryKeyMixin):
     metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict, nullable=False)
     ip_address: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    @property
+    def timestamp(self) -> datetime:
+        return self.created_at

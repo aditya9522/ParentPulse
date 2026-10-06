@@ -20,6 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useApp } from "../context/AppContext";
 import { createThemedStyles } from "../theme";
 import { useGlassBlurTarget } from "./GlassBlurProvider";
+import { ModalBlurBackdrop } from "./ModalBlurBackdrop";
 
 interface SwipeableBottomSheetProps {
   visible: boolean;
@@ -189,10 +190,7 @@ export const SwipeableBottomSheet: React.FC<SwipeableBottomSheetProps> = ({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
       <View style={styles.modalBackdrop}>
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, styles.backdropTint, { opacity: backdropOpacity }]}
-        />
+        <ModalBlurBackdrop opacity={backdropOpacity} />
         {/* Top Dismissable Backdrop Area */}
         <TouchableOpacity
           style={styles.dismissArea}

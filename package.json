@@ -7,6 +7,10 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
   "scripts": {
     "dev:mobile": "npm --workspace=apps/mobile run start",
     "dev:mobile:clear": "npm --workspace=apps/mobile run start:clear",
@@ -16,6 +20,8 @@
     "web:mobile": "npm --workspace=apps/mobile run web",
     "dev:backend": "backend\\.venv\\Scripts\\python -m uvicorn app.main:app --reload --app-dir backend --host 0.0.0.0 --port 8000",
     "test:backend": "backend\\.venv\\Scripts\\pytest backend/tests",
+    "dev:web": "npm --workspace=web run dev",
+    "build:web": "npm --workspace=web run build",
     "build:packages": "npm --workspace=packages/shared-types run build"
   },
   "keywords": [
