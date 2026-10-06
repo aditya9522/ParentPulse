@@ -1,8 +1,7 @@
-# Netlify Configuration for ParentPulse Web Portal
+# Netlify Root Configuration for ParentPulse Monorepo
 [build]
-  base = "apps/web"
-  publish = "dist"
-  command = "npm run build"
+  command = "npm --workspace=web run build"
+  publish = "apps/web/dist"
 
 [[redirects]]
   from = "/*"

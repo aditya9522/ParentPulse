@@ -1,0 +1,9 @@
+# Netlify Configuration if Base directory is set to apps/web
+[build]
+  command = "cd ../.. && npm install && cd apps/web && npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
